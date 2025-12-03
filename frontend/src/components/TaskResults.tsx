@@ -633,8 +633,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                     {/* Objective Score on Top */}
                     <div className="mb-3">
                       <h4 className="text-xs font-medium text-green-700 mb-1.5">Objective Score</h4>
-                      <div className="bg-white rounded-md p-3 border border-green-200 text-center">
-                        <div className="text-4xl font-bold text-green-900">
+                        <div className="text-green-900">
                           {bestExperiment.objective_score?.toFixed(4) || 'N/A'}
                         </div>
                         <p className="text-xs text-green-600 mt-1">
@@ -642,7 +641,6 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                           {task.optimization?.objective === 'maximize_throughput' && 'Higher is better'}
                           {task.optimization?.objective === 'balanced' && 'Balanced score'}
                         </p>
-                      </div>
                     </div>
 
                     {/* Parameters and Metrics in a Row */}
@@ -838,7 +836,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             <select
                               value={scatterXAxis}
                               onChange={(e) => setScatterXAxis(e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
                             >
                               {scatterAxisOptions.map((key) => (
                                 <option key={key} value={key}>
@@ -852,7 +850,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             <select
                               value={scatterYAxis}
                               onChange={(e) => setScatterYAxis(e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
                             >
                               {scatterAxisOptions.map((key) => (
                                 <option key={key} value={key}>
