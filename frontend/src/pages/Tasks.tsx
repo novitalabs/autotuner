@@ -290,7 +290,11 @@ export default function Tasks() {
 											{task.id}
 										</td>
 										<td className="whitespace-nowrap px-3 py-4 text-sm">
-											<div className="font-medium text-gray-900">
+											<div
+												className="font-medium text-blue-600 hover:text-blue-900 cursor-pointer"
+												onClick={() => setSelectedTaskId(task.id)}
+												title="View Details"
+											>
 												{task.task_name}
 											</div>
 											{task.description && (
@@ -327,35 +331,12 @@ export default function Tasks() {
 										</td>
 										<td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm">
 											<div className="flex items-center justify-end gap-1">
-												{/* View Button */}
-												<button
-													onClick={() => setSelectedTaskId(task.id)}
-													className="p-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded transition-colors"
-													title="View Details"
-												>
-													<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-														<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-														<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-													</svg>
-												</button>
-
-												{/* Edit Button - For pending, cancelled, failed, and completed tasks */}
-											{(task.status === 'pending' || task.status === 'cancelled' || task.status === 'failed' || task.status === 'completed') && (
+												{/* Edit Button - For pending, cancelled, and failed tasks only */}
+											{(task.status === 'pending' || task.status === 'cancelled' || task.status === 'failed') && (
 												<button
 													onClick={() => {
-														// Confirm for completed tasks with results
-														if (task.status === 'completed' && task.successful_experiments > 0) {
-															if (confirm(
-																`Are you sure you want to edit task "${task.task_name}"? This task has completed results. Editing will require restarting the task.`
-															)) {
-																setEditingTaskId(task.id);
-																navigateTo('new-task');
-															}
-														} else {
-															// Directly edit for pending/failed/cancelled tasks
-															setEditingTaskId(task.id);
-															navigateTo('new-task');
-														}
+														setEditingTaskId(task.id);
+														navigateTo('new-task');
 													}}
 													className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded transition-colors"
 													title="Edit Task"
@@ -440,8 +421,8 @@ export default function Tasks() {
 													</button>
 												)}
 
-												{/* Clear Button - For non-running tasks that have data */}
-												{task.status !== 'running' && (task.total_experiments > 0 || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') && (
+												{/* Clear Button - For failed/cancelled tasks that have data */}
+												{task.status !== 'running' && task.status !== 'completed' && (task.total_experiments > 0 || task.status === 'failed' || task.status === 'cancelled') && (
 													<button
 														onClick={() => {
 															if (confirm(`Are you sure you want to clear all data for task "${task.task_name}"? This will delete all experiments and logs, but keep the task configuration.`)) {
