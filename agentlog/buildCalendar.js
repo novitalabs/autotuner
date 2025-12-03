@@ -92,7 +92,7 @@ const main = () => {
 			if (today)
 				abstract = "TODAY&#xd;&#xd;" + abstract;
 			const relativeFileLink = fileLink.replace(/^agentlog\//, "");
-			const field = abstract ? `[${dayStr}](${fileLink} "${abstract}")` : `${dayStr}`;
+			const field = abstract ? `[${dayStr}](${relativeFileLink} "${abstract}")` : `${dayStr}`;
 
 			fields.push(field);
 		}
