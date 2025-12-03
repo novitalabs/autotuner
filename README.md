@@ -565,15 +565,15 @@ For production implementation:
 
 ### Features & Configuration
 - [SLO_SCORING.md](docs/SLO_SCORING.md) - SLO-aware scoring with exponential penalties
+- [PARALLEL_EXECUTION.md](docs/PARALLEL_EXECUTION.md) - Parallel experiment execution
+- [WEBSOCKET_IMPLEMENTATION.md](docs/WEBSOCKET_IMPLEMENTATION.md) - Real-time updates via WebSocket
+- [UNIFIED_QUANTIZATION_PARAMETERS.md](docs/UNIFIED_QUANTIZATION_PARAMETERS.md) - Quantization configuration
+- [PRESET_QUICK_REFERENCE.md](docs/PRESET_QUICK_REFERENCE.md) - Parameter preset system
 - [BAYESIAN_OPTIMIZATION.md](docs/BAYESIAN_OPTIMIZATION.md) - Bayesian optimization strategy
 - [GPU_TRACKING.md](docs/GPU_TRACKING.md) - GPU intelligent scheduling
-- [CHECKPOINT_MECHANISM.md](docs/CHECKPOINT_MECHANISM.md) - Fault tolerance with checkpoints
-- [MULTI_OBJECTIVE_OPTIMIZATION_STRATEGY.md](docs/MULTI_OBJECTIVE_OPTIMIZATION_STRATEGY.md) - Pareto optimization
-- [MODEL_CACHING_OPTIMIZATION.md](docs/MODEL_CACHING_OPTIMIZATION.md) - HuggingFace cache optimization
 
 ### Operations & Troubleshooting
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [GENAI_BENCH_LOGS.md](docs/GENAI_BENCH_LOGS.md) - Viewing benchmark logs
 
 ### Development History
 - [agentlog/](agentlog/) - Daily development diary (yyyy/mmdd.md format) written directly to files

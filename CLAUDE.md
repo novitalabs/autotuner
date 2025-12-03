@@ -478,7 +478,7 @@ HF_TOKEN=<your-token>            # Optional: for gated models
 - `docs/DOCKER_MODE.md`: Docker deployment guide
 - `docs/OME_INSTALLATION.md`: Kubernetes/OME setup
 - `docs/TROUBLESHOOTING.md`: Common issues and solutions
-- `docs/GENAI_BENCH_LOGS.md`: Viewing benchmark logs
+- (Benchmark logs info now in TROUBLESHOOTING.md)
 - `agentlog/`: Development diary organized by date (yyyy/mmdd.md format)
 
 ## Meta-Instructions

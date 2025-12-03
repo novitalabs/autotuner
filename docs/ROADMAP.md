@@ -97,8 +97,6 @@ The LLM Inference Autotuner is a comprehensive system for automatically optimizi
 - `docs/DEVELOPMENT.md` - Code formatting and contribution guide
 - `docs/DOCKER_MODE.md` - Docker deployment guide
 - `docs/OME_INSTALLATION.md` - Kubernetes/OME setup
-- `docs/GENAI_BENCH_LOGS.md` - Benchmark log viewing
-- `docs/WEB_INTEGRATION_READINESS.md` - Web development readiness
 
 #### 1.6 Web Integration Readiness ✅
 - [x] Comprehensive codebase analysis: Zero blockers found
