@@ -10,5 +10,6 @@ Update development diary from recent conversations.
    - Fix typos in prompt text if present
 3. Create the diary file if it doesn't exist for today
 4. Use `---` separator between multiple entries on the same day
+5. Write in English always, translate if necessary
 
 Note: The file is directly written to `agentlog/yyyy/mmdd.md` based on today's date.
