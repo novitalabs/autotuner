@@ -6,17 +6,21 @@ import NewTask from "@/pages/NewTask";
 import Containers from "@/pages/Containers";
 import Presets from "@/pages/Presets";
 import AgentChat from "@/pages/AgentChat";
+import NewChatPage from "@/pages/NewChatPage";
+import AllChats from "@/pages/AllChats";
+import ChatHistory from "./ChatHistory";
 import { UpdateNotification } from "./UpdateNotification";
 import { Logo } from "./Logo";
 
-type TabId = "dashboard" | "tasks" | "experiments" | "new-task" | "containers" | "presets" | "agent-chat";
+type TabId = "dashboard" | "tasks" | "experiments" | "new-task" | "containers" | "presets" | "agent-chat" | "new-chat" | "chat-history" | "all-chats";
 
 interface MenuItem {
 	id: TabId;
 	name: string;
-	component: React.ComponentType;
+	component?: React.ComponentType<any>;
 	icon: React.ReactNode;
 	hideInMenu?: boolean;
+	inline?: boolean; // Render inline instead of as full page
 }
 
 interface MenuSection {
@@ -106,19 +110,56 @@ const menuSections: MenuSection[] = [
 		title: "Assistant",
 		items: [
 			{
-				id: "agent-chat",
-				name: "Chat",
-				component: AgentChat,
+				id: "new-chat",
+				name: "New Chat",
+				component: NewChatPage,
 				icon: (
 					<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path
 							strokeLinecap="round"
 							strokeLinejoin="round"
 							strokeWidth={2}
-							d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+							d="M12 4v16m8-8H4"
 						/>
 					</svg>
 				)
+			},
+			{
+				id: "chat-history",
+				name: "Chat History",
+				inline: true, // Render inline in sidebar
+				icon: (
+					<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={2}
+							d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+						/>
+					</svg>
+				)
+			},
+			{
+				id: "all-chats",
+				name: "All Chats",
+				component: AllChats,
+				icon: (
+					<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={2}
+							d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+						/>
+					</svg>
+				)
+			},
+			{
+				id: "agent-chat",
+				name: "Chat",
+				component: AgentChat,
+				hideInMenu: true, // Hidden, accessed via URL hash
+				icon: null as any
 			}
 		]
 	},
@@ -153,7 +194,13 @@ export let navigateTo: (tabId: TabId) => void = () => {};
 // Helper to get tab from URL hash
 const getTabFromHash = (): TabId => {
 	const hash = window.location.hash.slice(1); // Remove leading #
-	const validTabs: TabId[] = ["dashboard", "tasks", "experiments", "new-task", "containers", "presets", "agent-chat"];
+
+	// Handle agent-chat with session parameter
+	if (hash.startsWith("agent-chat")) {
+		return "agent-chat";
+	}
+
+	const validTabs: TabId[] = ["dashboard", "tasks", "experiments", "new-task", "containers", "presets", "agent-chat", "new-chat", "chat-history", "all-chats"];
 	return validTabs.includes(hash as TabId) ? (hash as TabId) : "dashboard";
 };
 
@@ -191,8 +238,27 @@ export default function Layout() {
 			.catch(() => setVersion('unknown'));
 	}, []);
 
+	// Handle navigation for components that need callbacks
+	const handleNavigateToSession = (sessionId: string) => {
+		updateActiveTab("agent-chat");
+		window.location.hash = `agent-chat?session=${sessionId}`;
+	};
+
 	const ActiveComponent =
 		allMenuItems.find((item) => item.id === activeTab)?.component || Dashboard;
+
+	// Render active component with navigation props if needed
+	const renderActiveComponent = () => {
+		if (activeTab === "new-chat") {
+			return <NewChatPage onNavigate={handleNavigateToSession} />;
+		} else if (activeTab === "all-chats") {
+			return <AllChats onNavigate={handleNavigateToSession} />;
+		} else if (ActiveComponent) {
+			return <ActiveComponent />;
+		} else {
+			return <Dashboard />;
+		}
+	};
 
 	return (
 		<div className="h-screen flex overflow-hidden bg-gray-100">
@@ -267,40 +333,66 @@ export default function Layout() {
 							{/* Section Items */}
 							<div className="space-y-1">
 								{section.items.filter(item => !item.hideInMenu).map((item) => (
-									<button
-										key={item.id}
-										onClick={() => {
-											updateActiveTab(item.id);
-											setSidebarOpen(false);
-										}}
-										className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-150 ${
-											activeTab === item.id
-												? "bg-blue-50 text-blue-700 shadow-sm"
-												: "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-										}`}
-									>
-										<span
-											className={`flex-shrink-0 ${activeTab === item.id ? "text-blue-600" : "text-gray-400"}`}
-										>
-											{item.icon}
-										</span>
-										<span className="ml-3">{item.name}</span>
-										{activeTab === item.id && (
-											<span className="ml-auto">
-												<svg
-													className="w-4 h-4 text-blue-600"
-													fill="currentColor"
-													viewBox="0 0 20 20"
+									<div key={item.id}>
+										{/* Regular menu button */}
+										{!item.inline && (
+											<button
+												onClick={() => {
+													updateActiveTab(item.id);
+													setSidebarOpen(false);
+												}}
+												className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-150 ${
+													activeTab === item.id
+														? "bg-blue-50 text-blue-700 shadow-sm"
+														: "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+												}`}
+											>
+												<span
+													className={`flex-shrink-0 ${activeTab === item.id ? "text-blue-600" : "text-gray-400"}`}
 												>
-													<path
-														fillRule="evenodd"
-														d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-														clipRule="evenodd"
-													/>
-												</svg>
-											</span>
+													{item.icon}
+												</span>
+												<span className="ml-3">{item.name}</span>
+												{activeTab === item.id && (
+													<span className="ml-auto">
+														<svg
+															className="w-4 h-4 text-blue-600"
+															fill="currentColor"
+															viewBox="0 0 20 20"
+														>
+															<path
+																fillRule="evenodd"
+																d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+																clipRule="evenodd"
+															/>
+														</svg>
+													</span>
+												)}
+											</button>
 										)}
-									</button>
+
+										{/* Inline content (e.g., ChatHistory widget) */}
+										{item.inline && (
+											<div className="mb-2">
+												<div className="px-3 py-2 text-sm font-medium text-gray-700 flex items-center">
+													<span className="flex-shrink-0 text-gray-400">
+														{item.icon}
+													</span>
+													<span className="ml-3">{item.name}</span>
+												</div>
+												<div className="px-1 mt-2">
+													<ChatHistory
+														limit={5}
+														onSelectSession={(sessionId) => {
+															updateActiveTab("agent-chat");
+															window.location.hash = `agent-chat?session=${sessionId}`;
+															setSidebarOpen(false);
+														}}
+													/>
+												</div>
+											</div>
+										)}
+									</div>
 								))}
 							</div>
 						</div>
@@ -440,7 +532,7 @@ export default function Layout() {
 				<main className="flex-1 overflow-y-auto bg-gray-50">
 					<div className="py-6">
 						<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-							<ActiveComponent />
+							{renderActiveComponent()}
 						</div>
 					</div>
 				</main>

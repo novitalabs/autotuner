@@ -70,3 +70,29 @@ class AgentEventSubscriptionResponse(BaseModel):
 
 	class Config:
 		from_attributes = True
+
+
+class MessageSync(BaseModel):
+	"""Schema for syncing a message from IndexedDB."""
+
+	role: str
+	content: str
+	created_at: datetime
+
+
+class SessionSyncRequest(BaseModel):
+	"""Schema for syncing a full session from IndexedDB to backend."""
+
+	session_id: str
+	created_at: datetime
+	messages: List[MessageSync]
+
+
+class SessionListItem(BaseModel):
+	"""Schema for session list item."""
+
+	session_id: str
+	created_at: datetime
+	updated_at: datetime
+	last_message_preview: str
+	message_count: int

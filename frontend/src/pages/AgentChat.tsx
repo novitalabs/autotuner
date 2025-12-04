@@ -1,65 +1,126 @@
 /**
- * Agent Chat page - Phase 1: Basic chat UI with echo bot
+ * Agent Chat page - With conversation history system
+ * Supports URL parameters, IndexedDB storage, and background sync
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import agentApi from "../services/agentApi";
+import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { ChatMessage } from "../types/agent";
 
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
+	const [messages, setMessages] = useState<MessageData[]>([]);
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const queryClient = useQueryClient();
+	const [loadingFromDb, setLoadingFromDb] = useState(true);
 
-	// Check agent status first
-	const { data: agentStatus, isLoading: statusLoading, error } = useQuery({
-		queryKey: ["agent-status"],
-		queryFn: async () => {
-			console.log("Fetching agent status...");
-			try {
-				const status = await agentApi.getStatus();
-				console.log("Agent status:", status);
-				return status;
-			} catch (err) {
-				console.error("Error fetching agent status:", err);
-				throw err;
-			}
-		},
-		staleTime: 5000, // Cache for 5 seconds
-		refetchOnMount: true, // Always refetch when component mounts
-		retry: false, // Don't retry on error for debugging
-	});
-
-	console.log("AgentChat render - agentStatus:", agentStatus, "loading:", statusLoading, "error:", error);
-
-	// Create session on mount (only if agent is available)
+	// Parse session ID from URL hash
 	useEffect(() => {
-		if (agentStatus?.available && !sessionId) {
-			const initSession = async () => {
-				const session = await agentApi.createSession();
-				setSessionId(session.session_id);
-			};
-			initSession();
-		}
-	}, [agentStatus, sessionId]);
+		const hash = window.location.hash.slice(1); // Remove #
+		const params = new URLSearchParams(hash.split("?")[1] || "");
+		const sessionParam = params.get("session");
 
-	// Fetch messages
-	const { data: messages = [], isLoading } = useQuery({
-		queryKey: ["agent-messages", sessionId],
-		queryFn: () => agentApi.getMessages(sessionId!),
-		enabled: !!sessionId && agentStatus?.available,
-		refetchInterval: 2000, // Poll for new messages
+		if (sessionParam) {
+			setSessionId(sessionParam);
+			loadMessagesFromIndexedDB(sessionParam);
+		} else {
+			// No session ID in URL - show empty state
+			setLoadingFromDb(false);
+		}
+	}, []);
+
+	// Load messages from IndexedDB (fast initial load)
+	const loadMessagesFromIndexedDB = async (sid: string) => {
+		try {
+			const storage = getChatStorage();
+			const msgs = await storage.getMessages(sid);
+			setMessages(msgs);
+		} catch (error) {
+			console.error("Failed to load messages from IndexedDB:", error);
+		} finally {
+			setLoadingFromDb(false);
+		}
+	};
+
+	// Check agent status
+	const { data: agentStatus, isLoading: statusLoading } = useQuery({
+		queryKey: ["agent-status"],
+		queryFn: () => agentApi.getStatus(),
+		staleTime: 5000,
+		refetchOnMount: true,
 	});
 
-	// Send message mutation
+	// Send message mutation with IndexedDB sync
 	const sendMessageMutation = useMutation({
-		mutationFn: (content: string) =>
-			agentApi.sendMessage(sessionId!, { content }),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["agent-messages", sessionId] });
+		mutationFn: async (content: string) => {
+			if (!sessionId) throw new Error("No session ID");
+
+			const storage = getChatStorage();
+			let session = await storage.getSession(sessionId);
+
+			// Create session in IndexedDB if it doesn't exist (first message)
+			if (!session) {
+				await storage.createSession(sessionId);
+				session = await storage.getSession(sessionId);
+			}
+
+			// Sync full session to backend if not synced yet
+			if (session && !session.synced_to_backend) {
+				const allMessages = await storage.getMessages(sessionId);
+				await agentApi.syncSession({
+					session_id: sessionId,
+					created_at: session.created_at,
+					messages: allMessages.map(m => ({
+						role: m.role,
+						content: m.content,
+						created_at: m.created_at,
+					})),
+				});
+				await storage.markSessionSynced(sessionId);
+			}
+
+			// Save user message to IndexedDB (optimistic)
+			const userMessage: MessageData = {
+				session_id: sessionId,
+				role: "user",
+				content: content,
+				created_at: new Date().toISOString(),
+				synced_to_backend: false,
+			};
+			await storage.saveMessage(sessionId, userMessage);
+
+			// Update local state immediately
+			setMessages(prev => [...prev, userMessage]);
+
+			// Send to backend
+			const response = await agentApi.sendMessage(sessionId, { content });
+
+			// Save assistant response to IndexedDB
+			const assistantMessage: MessageData = {
+				session_id: sessionId,
+				role: "assistant",
+				content: response.content,
+				created_at: response.created_at,
+				synced_to_backend: true,
+			};
+			await storage.saveMessage(sessionId, assistantMessage);
+
+			// Update session timestamp
+			await storage.updateSessionTimestamp(sessionId);
+
+			return { userMessage, assistantMessage };
+		},
+		onSuccess: (data) => {
+			// Update local state with assistant response
+			setMessages(prev => [...prev, data.assistantMessage]);
 			setInput("");
+		},
+		onError: (error) => {
+			console.error("Failed to send message:", error);
+			// TODO: Show error toast
 		},
 	});
 
@@ -81,10 +142,12 @@ export default function AgentChat() {
 	};
 
 	// Loading state
-	if (statusLoading) {
+	if (statusLoading || loadingFromDb) {
 		return (
 			<div className="flex items-center justify-center h-full">
-				<div className="text-gray-500">Checking agent availability...</div>
+				<div className="text-gray-500">
+					{statusLoading ? "Checking agent availability..." : "Loading messages..."}
+				</div>
 			</div>
 		);
 	}
@@ -196,11 +259,31 @@ AGENT_MODEL=gpt-4`}
 		);
 	}
 
-	// Session initializing
+	// No session selected
 	if (!sessionId) {
 		return (
-			<div className="flex items-center justify-center h-full">
-				<div className="text-gray-500">Initializing chat session...</div>
+			<div className="flex items-center justify-center h-full bg-gray-50">
+				<div className="text-center">
+					<svg
+						className="mx-auto h-24 w-24 text-gray-400"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+					>
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={2}
+							d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+						/>
+					</svg>
+					<h3 className="mt-4 text-lg font-medium text-gray-900">
+						No chat session selected
+					</h3>
+					<p className="mt-2 text-sm text-gray-500">
+						Select a chat from the sidebar or create a new chat to get started
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -212,22 +295,20 @@ AGENT_MODEL=gpt-4`}
 			<div className="bg-white border-b px-6 py-4">
 				<h1 className="text-2xl font-bold text-gray-900">Agent Chat</h1>
 				<p className="text-sm text-gray-500 mt-1">
-					Phase 1: Echo Bot (LangChain integration coming in Phase 2)
+					Session: {sessionId.slice(0, 8)}...
 				</p>
 			</div>
 
 			{/* Messages */}
 			<div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-				{isLoading ? (
-					<div className="text-center text-gray-500">Loading messages...</div>
-				) : messages.length === 0 ? (
+				{messages.length === 0 ? (
 					<div className="text-center text-gray-400 mt-8">
 						<p className="text-lg mb-2">👋 Welcome to Agent Chat!</p>
 						<p>Send a message to get started</p>
 					</div>
 				) : (
-					messages.map((message: ChatMessage) => (
-						<MessageBubble key={message.id} message={message} />
+					messages.map((message, idx) => (
+						<MessageBubble key={message.id || idx} message={message} />
 					))
 				)}
 				<div ref={messagesEndRef} />
@@ -259,7 +340,7 @@ AGENT_MODEL=gpt-4`}
 	);
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message }: { message: MessageData }) {
 	const isUser = message.role === "user";
 
 	return (

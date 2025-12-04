@@ -18,9 +18,12 @@ from web.schemas.agent import (
 	ChatMessageResponse,
 	AgentEventSubscriptionCreate,
 	AgentEventSubscriptionResponse,
+	SessionSyncRequest,
+	SessionListItem,
 )
 from web.config import get_settings
 from web.agent.llm_client import get_llm_client
+from web.agent.session_cache import get_session_cache
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 logger = logging.getLogger(__name__)
@@ -118,6 +121,57 @@ async def get_messages(
 	return list(reversed(messages))  # Return in chronological order
 
 
+@router.post("/sessions/sync")
+async def sync_session(
+	session_data: SessionSyncRequest,
+	db: AsyncSession = Depends(get_db)
+):
+	"""
+	Sync full session from frontend IndexedDB to backend.
+	Only called once per session (when synced_to_backend=false).
+	"""
+	session_id = session_data.session_id
+
+	# Check if session already exists
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	existing = result.scalar_one_or_none()
+
+	if existing:
+		# Session already synced, ignore
+		logger.info(f"Session {session_id} already exists, skipping sync")
+		return {"status": "already_exists", "session_id": session_id}
+
+	# Create session
+	chat_session = ChatSession(
+		session_id=session_id,
+		created_at=session_data.created_at,
+		is_active=True
+	)
+	db.add(chat_session)
+
+	# Bulk insert messages
+	for msg_data in session_data.messages:
+		message = ChatMessage(
+			session_id=session_id,
+			role=MessageRole(msg_data.role),
+			content=msg_data.content,
+			created_at=msg_data.created_at
+		)
+		db.add(message)
+
+	await db.commit()
+
+	# Clean expired sessions from cache
+	cache = get_session_cache()
+	removed = cache.cleanup_expired()
+	if removed > 0:
+		logger.info(f"Cleaned {removed} expired sessions from cache")
+
+	return {"status": "synced", "session_id": session_id, "message_count": len(session_data.messages)}
+
+
 @router.post("/sessions/{session_id}/messages", response_model=ChatMessageResponse)
 async def send_message(
 	session_id: str,
@@ -125,15 +179,45 @@ async def send_message(
 	db: AsyncSession = Depends(get_db),
 ):
 	"""Send a message and get LLM response."""
-	# Verify session exists
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
-	session = result.scalar_one_or_none()
-	if not session:
-		raise HTTPException(status_code=404, detail="Session not found")
+	# 1. Check memory cache first
+	cache = get_session_cache()
+	cached_entry = cache.get(session_id)
 
-	# Save user message
+	if cached_entry:
+		# Use cached context (fast path)
+		recent_messages = cached_entry.messages
+		logger.debug(f"Cache hit for session {session_id}, using {len(recent_messages)} cached messages")
+	else:
+		# Cache miss: Load from DB
+		logger.debug(f"Cache miss for session {session_id}, loading from database")
+
+		# Verify session exists
+		result = await db.execute(
+			select(ChatSession).where(ChatSession.session_id == session_id)
+		)
+		session = result.scalar_one_or_none()
+		if not session:
+			raise HTTPException(status_code=404, detail="Session not found")
+
+		# Get recent messages
+		result = await db.execute(
+			select(ChatMessage)
+			.where(ChatMessage.session_id == session_id)
+			.order_by(ChatMessage.created_at.desc())
+			.limit(20)  # Last 20 messages for context
+		)
+		messages_from_db = list(reversed(result.scalars().all()))
+
+		# Convert to cache format
+		recent_messages = [
+			{"role": msg.role.value, "content": msg.content}
+			for msg in messages_from_db
+		]
+
+		# Populate cache for next time
+		cache.set(session_id, recent_messages)
+
+	# 2. Save user message to database
 	user_message = ChatMessage(
 		session_id=session_id, role=MessageRole.USER, content=message_data.content
 	)
@@ -142,16 +226,7 @@ async def send_message(
 	await db.refresh(user_message)
 
 	try:
-		# Get recent message history for context
-		result = await db.execute(
-			select(ChatMessage)
-			.where(ChatMessage.session_id == session_id)
-			.order_by(ChatMessage.created_at.desc())
-			.limit(10)  # Last 10 messages for context
-		)
-		recent_messages = list(reversed(result.scalars().all()))
-
-		# Build messages for LLM
+		# 3. Build LLM context and get response
 		llm_messages = []
 
 		# Add system message
@@ -160,18 +235,20 @@ async def send_message(
 			"content": "You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results."
 		})
 
-		# Add conversation history
-		for msg in recent_messages:
-			llm_messages.append({
-				"role": msg.role.value,
-				"content": msg.content
-			})
+		# Add conversation history from cache
+		llm_messages.extend(recent_messages)
+
+		# Add current user message
+		llm_messages.append({
+			"role": "user",
+			"content": message_data.content
+		})
 
 		# Call LLM
 		llm_client = get_llm_client()
 		assistant_content = await llm_client.chat(llm_messages)
 
-		# Save assistant message
+		# 4. Save assistant message
 		assistant_message = ChatMessage(
 			session_id=session_id,
 			role=MessageRole.ASSISTANT,
@@ -180,6 +257,15 @@ async def send_message(
 		db.add(assistant_message)
 		await db.commit()
 		await db.refresh(assistant_message)
+
+		# 5. Update cache with new messages
+		cached_entry = cache.get(session_id)
+		if cached_entry:
+			cached_entry.messages.append({"role": "user", "content": message_data.content})
+			cached_entry.messages.append({"role": "assistant", "content": assistant_content})
+			# Keep only last 20 messages
+			cached_entry.messages = cached_entry.messages[-20:]
+			logger.debug(f"Updated cache for session {session_id} with new messages")
 
 		return assistant_message
 
@@ -257,6 +343,50 @@ async def unsubscribe_from_task(
 	subscription.is_active = False
 	await db.commit()
 	return {"message": "Unsubscribed successfully"}
+
+
+@router.get("/sessions", response_model=List[SessionListItem])
+async def list_sessions(
+	limit: int = 50,
+	db: AsyncSession = Depends(get_db)
+):
+	"""List all sessions, most recent first."""
+	result = await db.execute(
+		select(ChatSession)
+		.where(ChatSession.is_active == True)
+		.order_by(ChatSession.updated_at.desc())
+		.limit(limit)
+	)
+	sessions = result.scalars().all()
+
+	# Enrich with last message preview
+	session_list = []
+	for session in sessions:
+		# Get last message
+		msg_result = await db.execute(
+			select(ChatMessage)
+			.where(ChatMessage.session_id == session.session_id)
+			.order_by(ChatMessage.created_at.desc())
+			.limit(1)
+		)
+		last_message = msg_result.scalar_one_or_none()
+
+		# Get message count
+		count_result = await db.execute(
+			select(ChatMessage)
+			.where(ChatMessage.session_id == session.session_id)
+		)
+		message_count = len(count_result.scalars().all())
+
+		session_list.append(SessionListItem(
+			session_id=session.session_id,
+			created_at=session.created_at,
+			updated_at=session.updated_at,
+			last_message_preview=last_message.content[:100] if last_message else "",
+			message_count=message_count
+		))
+
+	return session_list
 
 
 @router.get(

@@ -11,6 +11,8 @@ import type {
 	ChatSessionCreateRequest,
 	ChatMessageCreateRequest,
 	AgentEventSubscriptionCreateRequest,
+	SessionSyncRequest,
+	SessionListItem,
 } from "../types/agent";
 
 export const agentApi = {
@@ -23,6 +25,14 @@ export const agentApi = {
 
 	getSession: (sessionId: string): Promise<ChatSession> =>
 		apiClient.get(`/agent/sessions/${sessionId}`),
+
+	listSessions: (limit?: number): Promise<SessionListItem[]> =>
+		apiClient.get("/agent/sessions", {
+			params: { limit: limit || 50 },
+		}),
+
+	syncSession: (data: SessionSyncRequest): Promise<{ status: string; session_id: string; message_count?: number }> =>
+		apiClient.post("/agent/sessions/sync", data),
 
 	// Message management
 	getMessages: (sessionId: string, limit?: number): Promise<ChatMessage[]> =>

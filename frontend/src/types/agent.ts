@@ -54,3 +54,24 @@ export interface AgentEventSubscriptionCreateRequest {
 	task_id: number;
 	event_types?: string[];
 }
+
+// Session sync types
+export interface MessageSync {
+	role: string;
+	content: string;
+	created_at: string;
+}
+
+export interface SessionSyncRequest {
+	session_id: string;
+	created_at: string;
+	messages: MessageSync[];
+}
+
+export interface SessionListItem {
+	session_id: string;
+	created_at: string;
+	updated_at: string;
+	last_message_preview: string;
+	message_count: number;
+}
