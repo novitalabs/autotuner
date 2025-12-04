@@ -1,20 +1,20 @@
 /**
  * Chat History Component
  * Displays recent chat sessions from IndexedDB.
- * Can be rendered inline in sidebar or as full-page list.
+ * Clean, minimal design matching the reference UI.
  */
 
 import { useState, useEffect } from "react";
-import { formatDistanceToNow } from "date-fns";
 import { getChatStorage, type SessionData } from "../services/chatStorage";
 import { Trash2 } from "lucide-react";
 
 interface ChatHistoryProps {
 	limit?: number; // Default 5 for sidebar, unlimited for AllChats page
 	onSelectSession: (sessionId: string) => void;
+	activeSessionId?: string; // Currently active session to highlight
 }
 
-export default function ChatHistory({ limit = 5, onSelectSession }: ChatHistoryProps) {
+export default function ChatHistory({ limit = 5, onSelectSession, activeSessionId }: ChatHistoryProps) {
 	const [sessions, setSessions] = useState<SessionData[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [hoveredSession, setHoveredSession] = useState<string | null>(null);
@@ -55,11 +55,11 @@ export default function ChatHistory({ limit = 5, onSelectSession }: ChatHistoryP
 
 	if (loading) {
 		return (
-			<div className="space-y-2 p-2">
-				<div className="animate-pulse">
-					<div className="h-12 bg-gray-200 rounded mb-2"></div>
-					<div className="h-12 bg-gray-200 rounded mb-2"></div>
-					<div className="h-12 bg-gray-200 rounded"></div>
+			<div className="space-y-2 px-3 py-2">
+				<div className="animate-pulse space-y-2">
+					<div className="h-8 bg-gray-200 rounded"></div>
+					<div className="h-8 bg-gray-200 rounded"></div>
+					<div className="h-8 bg-gray-200 rounded"></div>
 				</div>
 			</div>
 		);
@@ -67,54 +67,47 @@ export default function ChatHistory({ limit = 5, onSelectSession }: ChatHistoryP
 
 	if (sessions.length === 0) {
 		return (
-			<div className="p-4 text-center text-gray-500 text-sm">
-				No chat sessions yet. Start a new chat to begin!
+			<div className="px-3 py-4 text-center text-gray-500 text-sm">
+				No chats yet
 			</div>
 		);
 	}
 
 	return (
-		<div className="space-y-2">
-			{sessions.map((session) => (
-				<div
-					key={session.session_id}
-					onClick={() => onSelectSession(session.session_id)}
-					onMouseEnter={() => setHoveredSession(session.session_id)}
-					onMouseLeave={() => setHoveredSession(null)}
-					className="relative cursor-pointer p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm transition-colors border border-transparent hover:border-gray-300 dark:hover:border-gray-600"
-				>
-					<div className="flex justify-between items-start">
-						<div className="flex-1 min-w-0">
-							<div className="font-medium truncate text-gray-900 dark:text-gray-100">
+		<div className="space-y-1">
+			{sessions.map((session) => {
+				const isActive = session.session_id === activeSessionId;
+
+				return (
+					<div
+						key={session.session_id}
+						onClick={() => onSelectSession(session.session_id)}
+						onMouseEnter={() => setHoveredSession(session.session_id)}
+						onMouseLeave={() => setHoveredSession(null)}
+						className={`relative group cursor-pointer px-3 py-2 rounded text-sm transition-colors ${
+							isActive
+								? 'bg-blue-50 text-blue-700 font-medium'
+								: 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+						}`}
+					>
+						<div className="flex items-center justify-between gap-2">
+							<div className="flex-1 truncate">
 								{session.last_message_preview || "New conversation"}
 							</div>
-							<div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2">
-								<span>
-									{formatDistanceToNow(new Date(session.updated_at), {
-										addSuffix: true,
-									})}
-								</span>
-								<span>•</span>
-								<span>{session.message_count} messages</span>
-							</div>
+
+							{hoveredSession === session.session_id && !isActive && (
+								<button
+									onClick={(e) => handleDelete(session.session_id, e)}
+									className="flex-shrink-0 p-1 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
+									title="Delete chat"
+								>
+									<Trash2 className="w-3.5 h-3.5 text-red-600" />
+								</button>
+							)}
 						</div>
-
-						{hoveredSession === session.session_id && (
-							<button
-								onClick={(e) => handleDelete(session.session_id, e)}
-								className="ml-2 p-1 hover:bg-red-100 dark:hover:bg-red-900 rounded transition-colors"
-								title="Delete chat"
-							>
-								<Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
-							</button>
-						)}
 					</div>
-
-					{!session.synced_to_backend && (
-						<div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full" title="Not synced to backend"></div>
-					)}
-				</div>
-			))}
+				);
+			})}
 		</div>
 	);
 }

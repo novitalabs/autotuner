@@ -11,6 +11,7 @@ import AllChats from "@/pages/AllChats";
 import ChatHistory from "./ChatHistory";
 import { UpdateNotification } from "./UpdateNotification";
 import { Logo } from "./Logo";
+import { getChatStorage } from "@/services/chatStorage";
 
 type TabId = "dashboard" | "tasks" | "experiments" | "new-task" | "containers" | "presets" | "agent-chat" | "new-chat" | "chat-history" | "all-chats";
 
@@ -209,6 +210,8 @@ export default function Layout() {
 	const [activeTab, setActiveTab] = useState<TabId>(getTabFromHash);
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [version, setVersion] = useState<string>('');
+	const [sessionCount, setSessionCount] = useState<number>(0);
+	const [activeSessionId, setActiveSessionId] = useState<string | undefined>(undefined);
 
 	// Update URL hash when tab changes
 	const updateActiveTab = (tabId: TabId) => {
@@ -224,7 +227,19 @@ export default function Layout() {
 		const handleHashChange = () => {
 			const tabFromHash = getTabFromHash();
 			setActiveTab(tabFromHash);
+
+			// Update active session ID
+			const hash = window.location.hash.slice(1);
+			if (hash.startsWith("agent-chat")) {
+				const params = new URLSearchParams(hash.split("?")[1] || "");
+				setActiveSessionId(params.get("session") || undefined);
+			} else {
+				setActiveSessionId(undefined);
+			}
 		};
+
+		// Set initial active session ID
+		handleHashChange();
 
 		window.addEventListener("hashchange", handleHashChange);
 		return () => window.removeEventListener("hashchange", handleHashChange);
@@ -236,6 +251,25 @@ export default function Layout() {
 			.then(res => res.json())
 			.then(data => setVersion(data.version))
 			.catch(() => setVersion('unknown'));
+	}, []);
+
+	// Track session count for conditional "All Chats" rendering
+	useEffect(() => {
+		const updateSessionCount = async () => {
+			try {
+				const storage = getChatStorage();
+				const stats = await storage.getStorageStats();
+				setSessionCount(stats.sessions);
+			} catch (error) {
+				console.error("Failed to get session count:", error);
+			}
+		};
+
+		updateSessionCount();
+
+		// Update periodically
+		const interval = setInterval(updateSessionCount, 5000);
+		return () => clearInterval(interval);
 	}, []);
 
 	// Handle navigation for components that need callbacks
@@ -332,7 +366,16 @@ export default function Layout() {
 
 							{/* Section Items */}
 							<div className="space-y-1">
-								{section.items.filter(item => !item.hideInMenu).map((item) => (
+								{section.items
+									.filter(item => !item.hideInMenu)
+									.filter(item => {
+										// Only show "All Chats" if there are more than 5 sessions
+										if (item.id === "all-chats") {
+											return sessionCount > 5;
+										}
+										return true;
+									})
+									.map((item) => (
 									<div key={item.id}>
 										{/* Regular menu button */}
 										{!item.inline && (
@@ -374,15 +417,16 @@ export default function Layout() {
 										{/* Inline content (e.g., ChatHistory widget) */}
 										{item.inline && (
 											<div className="mb-2">
-												<div className="px-3 py-2 text-sm font-medium text-gray-700 flex items-center">
-													<span className="flex-shrink-0 text-gray-400">
+												<div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center">
+													<span className="flex-shrink-0 text-gray-400 mr-2">
 														{item.icon}
 													</span>
-													<span className="ml-3">{item.name}</span>
+													<span>{item.name}</span>
 												</div>
-												<div className="px-1 mt-2">
+												<div className="mt-1">
 													<ChatHistory
 														limit={5}
+														activeSessionId={activeSessionId}
 														onSelectSession={(sessionId) => {
 															updateActiveTab("agent-chat");
 															window.location.hash = `agent-chat?session=${sessionId}`;

@@ -203,11 +203,16 @@ class ChatStorageService {
 		const index = db.transaction('messages').store.index('by-session');
 		const messages = await index.getAll(sessionId);
 
-		// Sort by created_at (most recent last)
-		messages.sort(
-			(a, b) =>
-				new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-		);
+		// Sort by ID (which contains timestamp) to ensure insertion order
+		// ID format: sessionId-timestamp-random
+		messages.sort((a, b) => {
+			// Extract timestamp from ID
+			const getTimestamp = (id: string) => {
+				const parts = id.split('-');
+				return parseInt(parts[parts.length - 2]) || 0;
+			};
+			return getTimestamp(a.id) - getTimestamp(b.id);
+		});
 
 		if (limit) {
 			return messages.slice(-limit); // Get last N messages

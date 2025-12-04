@@ -37,7 +37,12 @@ export default function AgentChat() {
 		try {
 			const storage = getChatStorage();
 			const msgs = await storage.getMessages(sid);
+
+			// Messages are already sorted by insertion order (ID timestamp)
 			setMessages(msgs);
+
+			// Update session timestamp to move it to top of list
+			await storage.updateSessionTimestamp(sid);
 		} catch (error) {
 			console.error("Failed to load messages from IndexedDB:", error);
 		} finally {
