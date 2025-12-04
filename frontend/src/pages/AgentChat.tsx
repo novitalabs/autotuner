@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import agentApi from "../services/agentApi";
-import type { ChatMessage, AgentStatus } from "../types/agent";
+import type { ChatMessage } from "../types/agent";
 
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
@@ -14,11 +14,25 @@ export default function AgentChat() {
 	const queryClient = useQueryClient();
 
 	// Check agent status first
-	const { data: agentStatus, isLoading: statusLoading } = useQuery({
+	const { data: agentStatus, isLoading: statusLoading, error } = useQuery({
 		queryKey: ["agent-status"],
-		queryFn: () => agentApi.getStatus(),
-		staleTime: 60000, // Cache for 1 minute
+		queryFn: async () => {
+			console.log("Fetching agent status...");
+			try {
+				const status = await agentApi.getStatus();
+				console.log("Agent status:", status);
+				return status;
+			} catch (err) {
+				console.error("Error fetching agent status:", err);
+				throw err;
+			}
+		},
+		staleTime: 5000, // Cache for 5 seconds
+		refetchOnMount: true, // Always refetch when component mounts
+		retry: false, // Don't retry on error for debugging
 	});
+
+	console.log("AgentChat render - agentStatus:", agentStatus, "loading:", statusLoading, "error:", error);
 
 	// Create session on mount (only if agent is available)
 	useEffect(() => {
@@ -129,6 +143,28 @@ AGENT_PROVIDER=local
 AGENT_BASE_URL=http://localhost:8000/v1
 AGENT_MODEL=llama-3-70b-instruct`}
 								</pre>
+
+								<p className="mt-3">
+									<strong>For Jiekou AI:</strong>
+								</p>
+								<pre className="bg-gray-800 text-gray-100 p-3 rounded text-xs overflow-x-auto">
+{`# Set in .env file or environment
+AGENT_PROVIDER=jiekou
+AGENT_BASE_URL=https://api.jiekou.ai/v1
+AGENT_API_KEY=your-jiekou-api-key
+AGENT_MODEL=openai-gpt-oss-120b`}
+								</pre>
+								<p className="text-xs text-gray-600 mt-1">
+									Note: Jiekou uses OpenAI-compatible API format. Get your API key from{" "}
+									<a
+										href="https://jiekou.ai"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-blue-600 hover:underline"
+									>
+										jiekou.ai
+									</a>
+								</p>
 
 								<p className="mt-3">
 									<strong>For Claude API:</strong>

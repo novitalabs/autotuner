@@ -214,6 +214,32 @@ class ApiClient {
 		const { data } = await this.client.get("/docker/info");
 		return data;
 	}
+
+	// Generic methods for other API calls
+	async get<T = any>(url: string, config?: any): Promise<T> {
+		const { data } = await this.client.get(url, config);
+		return data;
+	}
+
+	async post<T = any>(url: string, body?: any, config?: any): Promise<T> {
+		const { data } = await this.client.post(url, body, config);
+		return data;
+	}
+
+	async put<T = any>(url: string, body?: any, config?: any): Promise<T> {
+		const { data } = await this.client.put(url, body, config);
+		return data;
+	}
+
+	async delete<T = any>(url: string, config?: any): Promise<T> {
+		const { data } = await this.client.delete(url, config);
+		return data;
+	}
+
+	async patch<T = any>(url: string, body?: any, config?: any): Promise<T> {
+		const { data } = await this.client.patch(url, body, config);
+		return data;
+	}
 }
 
 export const apiClient = new ApiClient();

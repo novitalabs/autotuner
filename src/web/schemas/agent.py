@@ -41,9 +41,9 @@ class ChatMessageResponse(BaseModel):
 	session_id: str
 	role: str  # user, assistant, system
 	content: str
-	tool_calls: Optional[Dict[str, Any]]
-	metadata: Optional[Dict[str, Any]]
-	token_count: Optional[int]
+	tool_calls: Optional[Dict[str, Any]] = None
+	message_metadata: Optional[Dict[str, Any]] = None
+	token_count: Optional[int] = None
 	created_at: datetime
 
 	class Config:

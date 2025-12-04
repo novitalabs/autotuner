@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 import uuid
+import logging
 
 from web.db.session import get_db
 from web.db.models import ChatSession, ChatMessage, MessageRole, AgentEventSubscription
@@ -19,8 +20,10 @@ from web.schemas.agent import (
 	AgentEventSubscriptionResponse,
 )
 from web.config import get_settings
+from web.agent.llm_client import get_llm_client
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/status")
@@ -43,6 +46,14 @@ async def get_agent_status():
 		if not settings.agent_api_key:
 			missing_config.append("agent_api_key (no API key configured)")
 		else:
+			is_configured = True
+	elif settings.agent_provider == "jiekou":
+		# Jiekou needs both base_url and API key
+		if not settings.agent_base_url or settings.agent_base_url == "http://localhost:8000/v1":
+			missing_config.append("agent_base_url (Jiekou API endpoint not configured)")
+		if not settings.agent_api_key:
+			missing_config.append("agent_api_key (Jiekou API key not configured)")
+		if not missing_config:
 			is_configured = True
 	else:
 		missing_config.append(f"agent_provider (invalid provider: {settings.agent_provider})")
@@ -113,7 +124,7 @@ async def send_message(
 	message_data: ChatMessageCreate,
 	db: AsyncSession = Depends(get_db),
 ):
-	"""Send a message and get echo response (Phase 1: simple echo bot)."""
+	"""Send a message and get LLM response."""
 	# Verify session exists
 	result = await db.execute(
 		select(ChatSession).where(ChatSession.session_id == session_id)
@@ -130,19 +141,61 @@ async def send_message(
 	await db.commit()
 	await db.refresh(user_message)
 
-	# Phase 1: Simple echo bot response
-	# TODO Phase 2: Replace with actual LangChain agent
-	echo_content = f"[Echo Bot] You said: {message_data.content}"
+	try:
+		# Get recent message history for context
+		result = await db.execute(
+			select(ChatMessage)
+			.where(ChatMessage.session_id == session_id)
+			.order_by(ChatMessage.created_at.desc())
+			.limit(10)  # Last 10 messages for context
+		)
+		recent_messages = list(reversed(result.scalars().all()))
 
-	# Save assistant message
-	assistant_message = ChatMessage(
-		session_id=session_id, role=MessageRole.ASSISTANT, content=echo_content
-	)
-	db.add(assistant_message)
-	await db.commit()
-	await db.refresh(assistant_message)
+		# Build messages for LLM
+		llm_messages = []
 
-	return assistant_message
+		# Add system message
+		llm_messages.append({
+			"role": "system",
+			"content": "You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results."
+		})
+
+		# Add conversation history
+		for msg in recent_messages:
+			llm_messages.append({
+				"role": msg.role.value,
+				"content": msg.content
+			})
+
+		# Call LLM
+		llm_client = get_llm_client()
+		assistant_content = await llm_client.chat(llm_messages)
+
+		# Save assistant message
+		assistant_message = ChatMessage(
+			session_id=session_id,
+			role=MessageRole.ASSISTANT,
+			content=assistant_content
+		)
+		db.add(assistant_message)
+		await db.commit()
+		await db.refresh(assistant_message)
+
+		return assistant_message
+
+	except Exception as e:
+		logger.error(f"Error calling LLM: {str(e)}")
+		# Save error message
+		error_content = f"Sorry, I encountered an error: {str(e)}"
+		assistant_message = ChatMessage(
+			session_id=session_id,
+			role=MessageRole.ASSISTANT,
+			content=error_content
+		)
+		db.add(assistant_message)
+		await db.commit()
+		await db.refresh(assistant_message)
+		return assistant_message
 
 
 @router.post(
