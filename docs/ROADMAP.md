@@ -1,14 +1,14 @@
 # LLM Inference Autotuner - Product Roadmap
 
-> **Last Updated**: 2025/11/25
+> **Last Updated**: 2025/12/03
 > **Project Status**: Production-Ready with Active Development
-> **Current Version**: v1.0 (Milestone 3 Complete)
+> **Current Version**: v1.0 (Milestone 4 Complete)
 
 ---
 
 ## Executive Summary
 
-The LLM Inference Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed three major milestones including dual-mode deployment (Kubernetes/OME and standalone Docker), full-stack web application, and runtime-agnostic configuration architecture.
+The LLM Inference Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed four major milestones including dual-mode deployment (Kubernetes/OME and standalone Docker), full-stack web application, and runtime-agnostic configuration architecture.
 
 **Key Achievements:**
 - ✅ 28 tasks executed, 408 experiments run, 312 successful results
@@ -16,6 +16,10 @@ The LLM Inference Autotuner is a comprehensive system for automatically optimizi
 - ✅ Full-stack web application with React frontend and FastAPI backend
 - ✅ Runtime-agnostic quantization and parallelism configuration
 - ✅ GPU-aware optimization with per-GPU efficiency metrics
+- ✅ YAML import/export for configuration management
+- ✅ Real-time WebSocket updates and auto-update notifications
+- ✅ Per-batch SLO filtering with graceful OOM handling
+- ✅ Documentation refinement (66→15 files, 77% reduction)
 - ✅ SLO-aware scoring with exponential penalty functions
 
 ---
@@ -26,7 +30,7 @@ The LLM Inference Autotuner is a comprehensive system for automatically optimizi
 2025/10/24 ────► Milestone 1: Core Autotuner Foundation
 2025/10/30 ────► Milestone 2: Complete Web Interface & Parameter Preset System
 2025/11/14 ────► Milestone 3: Runtime-Agnostic Configuration & GPU-Aware Optimization
-              ► Future: WebSocket, Parallel Execution, Enterprise Features
+2025/12/03 ────► Milestone 4: UI/UX Polish & Documentation Refinement
 ```
 
 ---
@@ -506,6 +510,131 @@ gpu_info = {
 
 ---
 
+---
+
+## 🎉 Milestone 4: UI/UX Polish & Documentation Refinement
+
+**Date**: 2025-12-03 (tag: `milestone-4`)
+**Status**: ✅ COMPLETED
+**Timeline**: 2025-11-15 → 2025-12-03
+**Objective**: Transform from functional prototype to production-ready platform with professional UI, robust error handling, and maintainable documentation
+
+### Key Accomplishments
+
+#### 4.1 Frontend UI/UX Enhancements ✅
+- [x] Real-time WebSocket updates (<100ms latency)
+- [x] YAML import/export for task configurations
+- [x] Auto-update notification system (GitHub releases)
+- [x] Enhanced result visualization with SLO reference lines
+- [x] Custom logo and branding (SVG icon + favicon)
+- [x] Protected completed tasks (hidden edit/cleanup buttons)
+- [x] Clickable task names for details view
+- [x] UI refinements (width-limited controls, placeholder cleanup)
+
+**YAML Import/Export System:**
+```typescript
+// Import: Full-page drag-and-drop zone
+<TaskYAMLImport onImport={(config) => populateForm(config)} />
+
+// Export: Single-click download
+<button onClick={() => exportTaskAsYAML(task)}>Export YAML</button>
+```
+
+**Auto-Update Notifications:**
+- Automatic version checking against GitHub releases
+- Notification banner when updates available
+- Build timestamp tracking: `v1.0.0+20251203T195130Z`
+
+#### 4.2 SLO-Aware Benchmarking ✅
+- [x] Per-batch SLO filtering (filter non-compliant batches before aggregation)
+- [x] Graceful OOM handling (partial success support)
+- [x] Visual SLO indicators (reference lines on performance charts)
+- [x] Detailed compliance logging per batch
+
+**Per-Batch Filtering Example:**
+```
+[Benchmark] Filtering 4 batches by SLO compliance...
+[Benchmark] ✗ Batch concurrency=8 violated SLO: {'p90': {'threshold': 5.0, 'actual': 6.2}}
+[Benchmark] ✓ 3/4 batches passed SLO
+[Benchmark] Max throughput: 145.2 req/s (from 3 SLO-compliant batches)
+```
+
+**Graceful Degradation:**
+- Experiments succeed if at least one batch completes
+- Partial results better than no results
+- OOM at high concurrency doesn't invalidate low-concurrency data
+
+#### 4.3 Documentation Refinement ✅
+- [x] Aggressive cleanup (66 → 15 files, 77% reduction)
+- [x] Content merges (GENAI_BENCH_LOGS → TROUBLESHOOTING, etc.)
+- [x] Reference fixes (zero broken links across all docs)
+- [x] Focus on long-term maintainability
+
+**15 Essential Files Kept:**
+- **User Guides (4)**: QUICKSTART, DOCKER_MODE, OME_INSTALLATION, TROUBLESHOOTING
+- **Architecture (3)**: DEPLOYMENT_ARCHITECTURE, GPU_TRACKING, ROADMAP
+- **Features (4)**: BAYESIAN_OPTIMIZATION, SLO_SCORING, PARALLEL_EXECUTION, WEBSOCKET_IMPLEMENTATION
+- **Configuration (4)**: UNIFIED_QUANTIZATION_PARAMETERS, PARALLEL_PARAMETERS, PRESET_QUICK_REFERENCE, PVC_STORAGE
+
+#### 4.4 Bug Fixes & Infrastructure ✅
+- [x] Template parameter fix (OME InferenceService: `params=parameters` instead of `**parameters`)
+- [x] API proxy configuration (fixed hardcoded URLs in service files)
+- [x] Pydantic settings fix (added `extra='ignore'` for VITE_* variables)
+
+### Technical Achievements
+
+**Code Statistics:**
+- **Frontend**: ~700 lines (YAML I/O, auto-update, UI refinements)
+- **Backend**: ~410 lines (SLO filtering, OOM handling, fixes)
+- **Total New Code**: ~1,110 lines
+- **Documentation**: 51 files removed, 15 kept (-77%)
+
+**Components Created:**
+- `TaskYAMLImport.tsx` (180 lines) - Drag-and-drop import with validation
+- `TaskYAMLExport.tsx` (80 lines) - Single-click YAML export
+- `UpdateNotification.tsx` (110 lines) - Auto-update banner with GitHub integration
+- `versionService.ts` (60 lines) - Version checking service
+- `check_batch_slo_compliance()` (133 lines) - Per-batch SLO validation
+
+**Files Modified:**
+- Frontend: Tasks.tsx, TaskResults.tsx, NewTask.tsx, Logo.tsx (10+ files)
+- Backend: optimizer.py, direct_benchmark_controller.py, config.py (5 files)
+- Documentation: README.md, CLAUDE.md, ROADMAP.md (reference fixes)
+
+### Performance Impact
+
+| Metric | Before M4 | After M4 | Improvement |
+|--------|-----------|----------|-------------|
+| **UI Response Time** | 2-5s polling | <100ms WebSocket | 20-50x faster |
+| **Config Reusability** | Manual JSON edit | YAML import/export | Instant |
+| **Update Awareness** | Manual check | Auto-notification | Automatic |
+| **SLO Visibility** | Numbers only | Visual ref lines | Intuitive |
+| **OOM Resilience** | Experiment fails | Partial success | Graceful |
+| **Doc Files** | 66 files | 15 files | 77% reduction |
+
+### Impact Summary
+
+**For Users:**
+- ✅ Faster feedback: WebSocket real-time updates
+- ✅ Better visualization: SLO reference lines, enhanced charts
+- ✅ Config management: YAML import/export workflow
+- ✅ Stay updated: Automatic version checking
+- ✅ Fewer failures: Graceful OOM handling
+- ✅ Cleaner UI: Protected actions, clickable names
+- ✅ Professional branding: Custom logo and favicon
+
+**For Operators:**
+- ✅ Easier troubleshooting: Per-batch SLO logging
+- ✅ Better resource utilization: Partial success support
+- ✅ Clearer documentation: 15 essential files vs 66
+- ✅ No broken links: All references verified
+
+**For Developers:**
+- ✅ Maintainable docs: Focused, merged content
+- ✅ Working examples: Templates verified
+- ✅ Clear architecture: Essential docs only
+- ✅ Build tracking: Timestamp in version display
+
 ## Current Status: Production-Ready v1.0 ✅
 
 ### What Works Today
@@ -543,96 +672,6 @@ gpu_info = {
 
 ## Future Roadmap
 
-### 🔵 Phase 4: Configuration & I/O Improvements (Planned)
-
-**Priority**: High
-**Effort**: 1-2 weeks
-**Value**: ⭐⭐⭐⭐⭐
-
-#### 4.1 YAML-Based Task Configuration
-- [ ] YAML task file format support (in addition to JSON)
-- [ ] YAML parser with schema validation
-- [ ] Automatic conversion between JSON ↔ YAML
-- [ ] YAML syntax highlighting in frontend
-- [ ] Multi-line comment support for documentation
-
-**Benefits:**
-- More human-readable configuration files
-- Better for version control (cleaner diffs)
-- Comments for documenting parameter choices
-- Industry-standard format for DevOps workflows
-
-**Example YAML Format:**
-```yaml
-task_name: llama-3-70b-optimization
-model:
-  id_or_path: llama-3-70b
-  namespace: autotuner
-base_runtime: sglang
-
-parameters:
-  tp-size: [2, 4, 8]  # Tensor parallelism degrees
-  mem-fraction-static: [0.85, 0.9]  # Memory allocation
-
-optimization:
-  strategy: bayesian
-  objective: maximize_throughput
-  max_iterations: 30
-```
-
-#### 4.2 Import/Export Features
-- [ ] Export task configuration to YAML/JSON
-- [ ] Export experiment results to CSV
-- [ ] Export results to JSON for analysis
-- [ ] Batch import multiple task configs
-- [ ] Template library (export/import task templates)
-- [ ] Share configurations via file or URL
-
-**Benefits:**
-- Reusable configurations across teams
-- Easy integration with CI/CD pipelines
-- Data portability for analysis tools
-- Configuration versioning and rollback
-
-**Export Formats:**
-- Task Config: `.json`, `.yaml`
-- Experiment Results: `.csv`, `.json`, `.xlsx`
-- Templates: Zip archive with metadata
-
-#### 4.3 WebSocket Real-Time Communication ✅ **COMPLETED (2025/11/14)**
-
-**Status**: ✅ Fully implemented and operational
-
-**Implementation:**
-- [x] Backend WebSocket endpoint `/ws/tasks/{task_id}` (FastAPI)
-- [x] Event broadcaster with Redis pub/sub (`src/web/events/broadcaster.py`)
-- [x] Frontend WebSocket hooks (`useWebSocket`, `useTaskWebSocket`)
-- [x] Real-time task status updates
-- [x] Real-time experiment progress notifications
-- [x] Automatic reconnection with exponential backoff
-- [x] Connection state management (CONNECTING, OPEN, CLOSED)
-- [x] Message history tracking
-
-**Files:**
-- Backend: `src/web/routes/websocket.py`, `src/web/events/broadcaster.py`
-- Frontend: `frontend/src/hooks/useWebSocket.ts`, `frontend/src/hooks/useTaskWebSocket.ts`
-- Integration: `frontend/src/pages/Tasks.tsx`, `frontend/src/pages/Experiments.tsx`
-
-**Usage:**
-```typescript
-// Frontend usage
-const { isConnected, lastMessage } = useTaskWebSocket(taskId);
-```
-
-**Benefits Achieved:**
-- ✅ Reduced server load (polling reduced to 30s fallback)
-- ✅ Instant UI updates (< 100ms latency)
-- ✅ Better user experience with real-time progress
-- ✅ Lower network traffic
-
-**Note**: Polling is still used as fallback (30s interval) for robustness.
-
----
 
 ### 🔵 Phase 5: Distributed Architecture & Parallel Execution (Planned)
 
@@ -776,6 +815,29 @@ def reset_sglang_radix_cache(container_id: str):
 - [ ] Pareto frontier approximation with surrogate models
 
 ---
+
+#### 6.5 Enhanced Export & Data Portability
+- [ ] Export experiment results to CSV
+- [ ] Export results to JSON for analysis
+- [ ] Export results to Excel (.xlsx) format
+- [ ] Batch import multiple task configs
+- [ ] Template library (export/import task templates)
+- [ ] Share configurations via file or URL
+- [ ] YAML parser with schema validation
+- [ ] Automatic conversion between JSON ↔ YAML
+- [ ] YAML syntax highlighting in frontend
+
+**Benefits:**
+- Data portability for external analysis tools (Excel, Python, R)
+- Batch operations for managing multiple tasks
+- Configuration templates for common use cases
+- Team collaboration via shared configs
+- Integration with data science workflows
+
+**Export Formats:**
+- Experiment Results: `.csv`, `.json`, `.xlsx`
+- Task Configs: `.yaml`, `.json`
+- Templates: Zip archive with metadata
 
 ### 🔵 Phase 7: Enterprise Features (Planned)
 
