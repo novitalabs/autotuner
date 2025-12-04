@@ -34,6 +34,13 @@ export const agentApi = {
 	syncSession: (data: SessionSyncRequest): Promise<{ status: string; session_id: string; message_count?: number }> =>
 		apiClient.post("/agent/sessions/sync", data),
 
+	// Title management
+	generateTitle: (sessionId: string): Promise<{ title: string }> =>
+		apiClient.post(`/agent/sessions/${sessionId}/title/generate`),
+
+	updateTitle: (sessionId: string, title: string): Promise<ChatSession> =>
+		apiClient.patch(`/agent/sessions/${sessionId}/title`, { title }),
+
 	// Message management
 	getMessages: (sessionId: string, limit?: number): Promise<ChatMessage[]> =>
 		apiClient.get(`/agent/sessions/${sessionId}/messages`, {

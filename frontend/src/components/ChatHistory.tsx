@@ -6,7 +6,8 @@
 
 import { useState, useEffect } from "react";
 import { getChatStorage, type SessionData } from "../services/chatStorage";
-import { Trash2 } from "lucide-react";
+import { Trash2, Edit2 } from "lucide-react";
+import agentApi from "../services/agentApi";
 
 interface ChatHistoryProps {
 	limit?: number; // Default 5 for sidebar, unlimited for AllChats page
@@ -18,6 +19,8 @@ export default function ChatHistory({ limit = 5, onSelectSession, activeSessionI
 	const [sessions, setSessions] = useState<SessionData[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [hoveredSession, setHoveredSession] = useState<string | null>(null);
+	const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+	const [editTitle, setEditTitle] = useState("");
 
 	const loadSessions = async () => {
 		try {
@@ -53,6 +56,26 @@ export default function ChatHistory({ limit = 5, onSelectSession, activeSessionI
 		}
 	};
 
+	const handleSaveTitle = async () => {
+		if (!editingSessionId || !editTitle.trim()) {
+			setEditingSessionId(null);
+			return;
+		}
+
+		try {
+			await agentApi.updateTitle(editingSessionId, editTitle.trim());
+
+			const storage = getChatStorage();
+			await storage.updateSessionTitle(editingSessionId, editTitle.trim());
+
+			setEditingSessionId(null);
+			await loadSessions();  // Refresh list
+		} catch (error) {
+			console.error("Failed to update title:", error);
+			// Optionally show error toast
+		}
+	};
+
 	if (loading) {
 		return (
 			<div className="space-y-2 px-3 py-2">
@@ -74,37 +97,77 @@ export default function ChatHistory({ limit = 5, onSelectSession, activeSessionI
 	}
 
 	return (
-		<div className="space-y-1">
+		<div className="space-y-1 pl-7">
 			{sessions.map((session) => {
 				const isActive = session.session_id === activeSessionId;
+				const isEditing = editingSessionId === session.session_id;
+				const displayText = session.title || session.last_message_preview || "New conversation";
 
 				return (
 					<div
 						key={session.session_id}
-						onClick={() => onSelectSession(session.session_id)}
 						onMouseEnter={() => setHoveredSession(session.session_id)}
 						onMouseLeave={() => setHoveredSession(null)}
-						className={`relative group cursor-pointer px-3 py-2 rounded text-sm transition-colors ${
+						className={`relative group cursor-pointer px-4 py-2 rounded text-sm transition-colors ${
 							isActive
 								? 'bg-blue-50 text-blue-700 font-medium'
 								: 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
 						}`}
 					>
-						<div className="flex items-center justify-between gap-2">
-							<div className="flex-1 truncate">
-								{session.last_message_preview || "New conversation"}
-							</div>
+						{isEditing ? (
+							// Edit mode
+							<input
+								type="text"
+								value={editTitle}
+								onChange={(e) => setEditTitle(e.target.value)}
+								onBlur={handleSaveTitle}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') handleSaveTitle();
+									if (e.key === 'Escape') setEditingSessionId(null);
+								}}
+								className="w-full px-2 py-1 text-sm border rounded"
+								autoFocus
+								maxLength={100}
+							/>
+						) : (
+							// Display mode
+							<div
+								onClick={() => onSelectSession(session.session_id)}
+								className="flex items-center justify-between gap-2"
+							>
+								<div className="flex-1 truncate">
+									{displayText}
+								</div>
 
-							{hoveredSession === session.session_id && !isActive && (
-								<button
-									onClick={(e) => handleDelete(session.session_id, e)}
-									className="flex-shrink-0 p-1 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
-									title="Delete chat"
-								>
-									<Trash2 className="w-3.5 h-3.5 text-red-600" />
-								</button>
-							)}
-						</div>
+								{hoveredSession === session.session_id && (
+									<div className="flex gap-1">
+										{/* Edit button */}
+										<button
+											onClick={(e) => {
+												e.stopPropagation();
+												setEditingSessionId(session.session_id);
+												setEditTitle(session.title || session.last_message_preview);
+											}}
+											className="flex-shrink-0 p-1 hover:bg-blue-100 rounded transition-colors"
+											title="Edit title"
+										>
+											<Edit2 className="w-3.5 h-3.5 text-blue-600" />
+										</button>
+
+										{/* Delete button - only show for inactive sessions */}
+										{!isActive && (
+											<button
+												onClick={(e) => handleDelete(session.session_id, e)}
+												className="flex-shrink-0 p-1 hover:bg-red-100 rounded transition-colors"
+												title="Delete chat"
+											>
+												<Trash2 className="w-3.5 h-3.5 text-red-600" />
+											</button>
+										)}
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 				);
 			})}

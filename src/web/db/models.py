@@ -166,6 +166,7 @@ class ChatSession(Base):
 	id = Column(Integer, primary_key=True, index=True)
 	session_id = Column(String, unique=True, index=True, nullable=False)  # UUID
 	user_id = Column(String, nullable=True, index=True)  # For future multi-user support
+	title = Column(String, nullable=True)  # Session title (auto-generated or user-edited)
 	context_summary = Column(Text, nullable=True)  # Long-term context summary
 	is_active = Column(Boolean, default=True, index=True)
 	created_at = Column(DateTime, default=datetime.utcnow)

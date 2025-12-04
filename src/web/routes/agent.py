@@ -20,6 +20,7 @@ from web.schemas.agent import (
 	AgentEventSubscriptionResponse,
 	SessionSyncRequest,
 	SessionListItem,
+	TitleUpdateRequest,
 )
 from web.config import get_settings
 from web.agent.llm_client import get_llm_client
@@ -382,6 +383,7 @@ async def list_sessions(
 			session_id=session.session_id,
 			created_at=session.created_at,
 			updated_at=session.updated_at,
+			title=session.title,
 			last_message_preview=last_message.content[:100] if last_message else "",
 			message_count=message_count
 		))
@@ -402,3 +404,85 @@ async def get_subscriptions(session_id: str, db: AsyncSession = Depends(get_db))
 	)
 	subscriptions = result.scalars().all()
 	return list(subscriptions)
+
+
+@router.post("/sessions/{session_id}/title/generate")
+async def generate_title(
+	session_id: str,
+	db: AsyncSession = Depends(get_db)
+):
+	"""Generate title for session based on first user message."""
+	# 1. Get session
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	session = result.scalar_one_or_none()
+	if not session:
+		raise HTTPException(status_code=404, detail="Session not found")
+
+	# 2. Get first user message
+	result = await db.execute(
+		select(ChatMessage)
+		.where(ChatMessage.session_id == session_id)
+		.where(ChatMessage.role == MessageRole.USER)
+		.order_by(ChatMessage.created_at.asc())
+		.limit(1)
+	)
+	first_message = result.scalar_one_or_none()
+	if not first_message:
+		raise HTTPException(status_code=400, detail="No user messages found")
+
+	# 3. Call LLM for title generation
+	llm_client = get_llm_client()
+	messages = [
+		{
+			"role": "system",
+			"content": "You are a title generator. Generate a concise, descriptive title (6-8 words maximum) for a chat conversation based on the user's first message. Output only the title text, nothing else. Do not use quotes or punctuation at the end."
+		},
+		{
+			"role": "user",
+			"content": first_message.content
+		}
+	]
+
+	try:
+		title = await llm_client.chat(messages, temperature=0.3)
+		title = title.strip()
+
+		# Remove quotes if LLM added them
+		if title.startswith('"') and title.endswith('"'):
+			title = title[1:-1]
+
+		# Limit length
+		if len(title) > 100:
+			title = title[:97] + "..."
+
+		# 4. Save title
+		session.title = title
+		await db.commit()
+
+		return {"title": title}
+	except Exception as e:
+		logger.error(f"Failed to generate title: {str(e)}")
+		raise HTTPException(status_code=500, detail="Failed to generate title")
+
+
+@router.patch("/sessions/{session_id}/title", response_model=ChatSessionResponse)
+async def update_title(
+	session_id: str,
+	title_data: TitleUpdateRequest,
+	db: AsyncSession = Depends(get_db)
+):
+	"""Update session title."""
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	session = result.scalar_one_or_none()
+	if not session:
+		raise HTTPException(status_code=404, detail="Session not found")
+
+	session.title = title_data.title.strip()
+	await db.commit()
+	await db.refresh(session)
+
+	return session

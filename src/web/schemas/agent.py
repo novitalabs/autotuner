@@ -19,6 +19,7 @@ class ChatSessionResponse(BaseModel):
 	id: int
 	session_id: str
 	user_id: Optional[str]
+	title: Optional[str]
 	context_summary: Optional[str]
 	is_active: bool
 	created_at: datetime
@@ -94,5 +95,12 @@ class SessionListItem(BaseModel):
 	session_id: str
 	created_at: datetime
 	updated_at: datetime
+	title: Optional[str]
 	last_message_preview: str
 	message_count: int
+
+
+class TitleUpdateRequest(BaseModel):
+	"""Schema for updating session title."""
+
+	title: str = Field(..., min_length=1, max_length=100)

@@ -38,6 +38,7 @@ export interface SessionData {
 	session_id: string;
 	created_at: string;
 	updated_at: string;
+	title: string;
 	last_message_preview: string;
 	message_count: number;
 	synced_to_backend: boolean;
@@ -97,6 +98,7 @@ class ChatStorageService {
 			session_id: sessionId,
 			created_at: now,
 			updated_at: now,
+			title: '',
 			last_message_preview: '',
 			message_count: 0,
 			synced_to_backend: false,
@@ -107,7 +109,14 @@ class ChatStorageService {
 
 	async getSession(sessionId: string): Promise<SessionData | undefined> {
 		const db = await this.dbPromise;
-		return db.get('sessions', sessionId);
+		const session = await db.get('sessions', sessionId);
+
+		// Handle legacy sessions without title field
+		if (session && !('title' in session)) {
+			(session as any).title = '';
+		}
+
+		return session as SessionData | undefined;
 	}
 
 	async listSessions(limit?: number): Promise<SessionData[]> {
@@ -118,11 +127,18 @@ class ChatStorageService {
 		const sessions = await index.getAll();
 		sessions.reverse(); // Most recent first
 
+		// Handle legacy sessions without title field
+		sessions.forEach(session => {
+			if (!('title' in session)) {
+				(session as any).title = '';
+			}
+		});
+
 		if (limit) {
-			return sessions.slice(0, limit);
+			return sessions.slice(0, limit) as SessionData[];
 		}
 
-		return sessions;
+		return sessions as SessionData[];
 	}
 
 	async deleteSession(sessionId: string): Promise<void> {
@@ -148,6 +164,17 @@ class ChatStorageService {
 		const session = await db.get('sessions', sessionId);
 
 		if (session) {
+			session.updated_at = new Date().toISOString();
+			await db.put('sessions', session);
+		}
+	}
+
+	async updateSessionTitle(sessionId: string, title: string): Promise<void> {
+		const db = await this.dbPromise;
+		const session = await db.get('sessions', sessionId);
+
+		if (session) {
+			(session as any).title = title;
 			session.updated_at = new Date().toISOString();
 			await db.put('sessions', session);
 		}

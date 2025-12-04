@@ -122,6 +122,35 @@ export default function AgentChat() {
 			// Update local state with assistant response
 			setMessages(prev => [...prev, data.assistantMessage]);
 			setInput("");
+
+			// Generate title after first user message (message count = 2: 1 user + 1 assistant)
+			// Only generate if no title exists yet (don't override user-edited titles)
+			if (messages.length === 0 && sessionId) {  // Before adding new messages
+				try {
+					const storage = getChatStorage();
+
+					// Check if session already has a title
+					setTimeout(async () => {
+						try {
+							const session = await storage.getSession(sessionId);
+
+							// Only generate title if it's empty or missing
+							if (!session?.title || session.title.trim() === '') {
+								const response = await agentApi.generateTitle(sessionId);
+								await storage.updateSessionTitle(sessionId, response.title);
+								console.debug(`Generated title: ${response.title}`);
+							} else {
+								console.debug(`Session already has title: "${session.title}", skipping generation`);
+							}
+						} catch (error) {
+							console.error("Failed to generate title:", error);
+							// Silent fail - not critical to chat flow
+						}
+					}, 100);  // Small delay to not block UI
+				} catch (error) {
+					console.error("Failed to trigger title generation:", error);
+				}
+			}
 		},
 		onError: (error) => {
 			console.error("Failed to send message:", error);
