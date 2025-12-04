@@ -12,6 +12,7 @@ import type { ChatMessage } from "../types/agent";
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
 	const [messages, setMessages] = useState<MessageData[]>([]);
+	const [sessionTitle, setSessionTitle] = useState<string>("");
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const queryClient = useQueryClient();
@@ -40,6 +41,12 @@ export default function AgentChat() {
 
 			// Messages are already sorted by insertion order (ID timestamp)
 			setMessages(msgs);
+
+			// Load session to get title
+			const session = await storage.getSession(sid);
+			if (session?.title) {
+				setSessionTitle(session.title);
+			}
 
 			// Update session timestamp to move it to top of list
 			await storage.updateSessionTimestamp(sid);
@@ -138,6 +145,7 @@ export default function AgentChat() {
 							if (!session?.title || session.title.trim() === '') {
 								const response = await agentApi.generateTitle(sessionId);
 								await storage.updateSessionTitle(sessionId, response.title);
+								setSessionTitle(response.title);  // Update UI immediately
 								console.debug(`Generated title: ${response.title}`);
 							} else {
 								console.debug(`Session already has title: "${session.title}", skipping generation`);
@@ -327,7 +335,9 @@ AGENT_MODEL=gpt-4`}
 		<div className="flex flex-col h-full bg-gray-50">
 			{/* Header */}
 			<div className="bg-white border-b px-6 py-4">
-				<h1 className="text-2xl font-bold text-gray-900">Agent Chat</h1>
+				<h1 className="text-2xl font-bold text-gray-900">
+					{sessionTitle || "New Chat"}
+				</h1>
 				<p className="text-sm text-gray-500 mt-1">
 					Session: {sessionId.slice(0, 8)}...
 				</p>
