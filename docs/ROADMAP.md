@@ -839,6 +839,97 @@ def reset_sglang_radix_cache(container_id: str):
 - Task Configs: `.yaml`, `.json`
 - Templates: Zip archive with metadata
 
+#### 6.6 Custom Dataset Support for GenAI-Bench
+- [ ] Fetch datasets from user-specified URLs
+- [ ] Support CSV format parsing
+- [ ] Support JSONL (JSON Lines) format parsing
+- [ ] Conversion script to genai-bench format
+- [ ] Dataset validation and preprocessing
+- [ ] Automatic schema detection
+- [ ] Support for custom prompt templates
+- [ ] Integration with task configuration
+
+**Supported Input Formats:**
+```csv
+# CSV format
+prompt,max_tokens,temperature
+"Explain quantum computing",100,0.7
+"Write a story about AI",200,0.9
+```
+
+```jsonl
+# JSONL format
+{"prompt": "Explain quantum computing", "max_tokens": 100, "temperature": 0.7}
+{"prompt": "Write a story about AI", "max_tokens": 200, "temperature": 0.9}
+```
+
+**Conversion Pipeline:**
+```python
+# Download and convert custom dataset
+python scripts/prepare_custom_dataset.py \
+  --url https://example.com/dataset.csv \
+  --format csv \
+  --output ./data/custom_benchmark.json
+
+# Use in task configuration
+{
+  "benchmark": {
+    "custom_dataset": "./data/custom_benchmark.json",
+    "task": "text-to-text"
+  }
+}
+```
+
+**Features:**
+- HTTP/HTTPS URL fetching with authentication support
+- Automatic format detection (CSV/JSONL)
+- Field mapping configuration (map CSV columns to genai-bench schema)
+- Data validation (check required fields, token limits)
+- Sampling strategies (random, stratified, sequential)
+- Dataset caching to avoid re-downloading
+
+**Benefits:**
+- Use real production workloads for benchmarking
+- Test with domain-specific prompts
+- Reproducible benchmarks with versioned datasets
+- Support for custom evaluation scenarios
+- Integration with existing data pipelines
+
+**GenAI-Bench Schema Mapping:**
+```python
+# Required fields for genai-bench
+{
+  "prompt": str,           # Input text
+  "output_len": int,       # Expected output length
+  "input_len": int,        # Input length (auto-calculated if not provided)
+  "temperature": float,    # Optional: sampling temperature
+  "top_p": float,          # Optional: nucleus sampling
+  "max_tokens": int        # Optional: max output tokens
+}
+```
+
+**Implementation Components:**
+1. **Dataset Fetcher** (`src/utils/dataset_fetcher.py`)
+   - URL download with retries
+   - Authentication headers support
+   - Local file caching
+
+2. **Format Converters** (`src/utils/dataset_converters/`)
+   - `csv_converter.py`: CSV → genai-bench JSON
+   - `jsonl_converter.py`: JSONL → genai-bench JSON
+   - Base converter interface for extensibility
+
+3. **Validation Module** (`src/utils/dataset_validator.py`)
+   - Schema validation
+   - Token limit checking
+   - Duplicate detection
+
+4. **CLI Tool** (`scripts/prepare_custom_dataset.py`)
+   - Standalone conversion utility
+   - Preview mode (show first N records)
+   - Statistics reporting
+
+
 ### 🔵 Phase 7: Enterprise Features (Planned)
 
 **Priority**: Low-Medium
