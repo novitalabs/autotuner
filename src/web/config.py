@@ -57,6 +57,14 @@ class Settings(BaseSettings):
 	# Timezone settings
 	timezone: str = Field(default="UTC", description="Timezone for displaying timestamps (e.g., 'UTC', 'Asia/Shanghai', 'America/New_York')")
 
+	# Agent configuration
+	agent_provider: str = Field(default="local", description="LLM provider: local, claude, openai")
+	agent_model: str = Field(default="llama-3-70b-instruct", description="Model name for agent")
+	agent_base_url: str = Field(default="http://localhost:8000/v1", description="Base URL for local models (vLLM/SGLang)")
+	agent_api_key: str = Field(default="", description="API key for Claude/OpenAI")
+	agent_max_context_messages: int = Field(default=20, description="Recent messages to keep in memory")
+	agent_context_summary_threshold: int = Field(default=30, description="Summarize context after N messages")
+
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -12,7 +12,7 @@ import orjson
 from web.config import get_settings
 from web.db.session import init_db, get_db
 from web.db.seed_presets import seed_system_presets
-from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources
+from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent
 
 
 
@@ -80,6 +80,7 @@ app.include_router(runtime_params.router)
 app.include_router(dashboard.router)
 app.include_router(websocket.router, prefix="/api", tags=["websocket"])
 app.include_router(ome_resources.router)
+app.include_router(agent.router)
 
 
 @app.get("/")

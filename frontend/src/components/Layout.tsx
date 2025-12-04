@@ -5,10 +5,11 @@ import Experiments from "@/pages/Experiments";
 import NewTask from "@/pages/NewTask";
 import Containers from "@/pages/Containers";
 import Presets from "@/pages/Presets";
+import AgentChat from "@/pages/AgentChat";
 import { UpdateNotification } from "./UpdateNotification";
 import { Logo } from "./Logo";
 
-type TabId = "dashboard" | "tasks" | "experiments" | "new-task" | "containers" | "presets";
+type TabId = "dashboard" | "tasks" | "experiments" | "new-task" | "containers" | "presets" | "agent-chat";
 
 interface MenuItem {
 	id: TabId;
@@ -102,6 +103,26 @@ const menuSections: MenuSection[] = [
 		]
 	},
 	{
+		title: "Assistant",
+		items: [
+			{
+				id: "agent-chat",
+				name: "Chat",
+				component: AgentChat,
+				icon: (
+					<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={2}
+							d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+						/>
+					</svg>
+				)
+			}
+		]
+	},
+	{
 		title: "Infrastructure",
 		items: [
 			{
@@ -132,7 +153,7 @@ export let navigateTo: (tabId: TabId) => void = () => {};
 // Helper to get tab from URL hash
 const getTabFromHash = (): TabId => {
 	const hash = window.location.hash.slice(1); // Remove leading #
-	const validTabs: TabId[] = ["dashboard", "tasks", "experiments", "new-task", "containers", "presets"];
+	const validTabs: TabId[] = ["dashboard", "tasks", "experiments", "new-task", "containers", "presets", "agent-chat"];
 	return validTabs.includes(hash as TabId) ? (hash as TabId) : "dashboard";
 };
 

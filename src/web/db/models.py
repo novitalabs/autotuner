@@ -148,3 +148,65 @@ class ParameterPreset(Base):
 			"created_at": self.created_at.isoformat() if self.created_at else None,
 			"updated_at": self.updated_at.isoformat() if self.updated_at else None,
 		}
+
+
+class MessageRole(str, enum.Enum):
+	"""Chat message role enum."""
+
+	USER = "user"
+	ASSISTANT = "assistant"
+	SYSTEM = "system"
+
+
+class ChatSession(Base):
+	"""Agent chat session model."""
+
+	__tablename__ = "chat_sessions"
+
+	id = Column(Integer, primary_key=True, index=True)
+	session_id = Column(String, unique=True, index=True, nullable=False)  # UUID
+	user_id = Column(String, nullable=True, index=True)  # For future multi-user support
+	context_summary = Column(Text, nullable=True)  # Long-term context summary
+	is_active = Column(Boolean, default=True, index=True)
+	created_at = Column(DateTime, default=datetime.utcnow)
+	updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+	# Relationships
+	messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+	subscriptions = relationship("AgentEventSubscription", back_populates="session", cascade="all, delete-orphan")
+
+
+class ChatMessage(Base):
+	"""Agent chat message model."""
+
+	__tablename__ = "chat_messages"
+
+	id = Column(Integer, primary_key=True, index=True)
+	session_id = Column(String, ForeignKey("chat_sessions.session_id"), nullable=False, index=True)
+	role = Column(SQLEnum(MessageRole), nullable=False)
+	content = Column(Text, nullable=False)
+	tool_calls = Column(JSON, nullable=True)  # Record of tool executions
+	message_metadata = Column("metadata", JSON, nullable=True)  # task_id, experiment_id references
+	token_count = Column(Integer, nullable=True)  # For context management
+	created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+	# Relationship
+	session = relationship("ChatSession", back_populates="messages")
+
+
+class AgentEventSubscription(Base):
+	"""Agent event subscription model for auto-triggering analysis."""
+
+	__tablename__ = "agent_event_subscriptions"
+
+	id = Column(Integer, primary_key=True, index=True)
+	session_id = Column(String, ForeignKey("chat_sessions.session_id"), nullable=False, index=True)
+	task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False, index=True)
+	event_types = Column(JSON, nullable=False)  # List of event types to monitor
+	is_active = Column(Boolean, default=True, index=True)
+	created_at = Column(DateTime, default=datetime.utcnow)
+	expires_at = Column(DateTime, nullable=True)
+
+	# Relationships
+	session = relationship("ChatSession", back_populates="subscriptions")
+	task = relationship("Task")
