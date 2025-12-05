@@ -19,6 +19,7 @@ class AuthorizationScope(str, enum.Enum):
     FILE_WRITE = "file_write"
     DOCKER_CONTROL = "docker_control"
     KUBECTL_OPERATIONS = "kubectl_operations"
+    DATABASE_WRITE = "database_write"
 
 
 class ToolCategory(str, enum.Enum):
@@ -27,6 +28,9 @@ class ToolCategory(str, enum.Enum):
     SYSTEM = "system"
     FILE = "file"
     API = "api"
+    TASK = "task"
+    EXPERIMENT = "experiment"
+    PRESET = "preset"
 
 
 def register_tool(

@@ -14,6 +14,7 @@ import os
 from web.db.session import get_db
 from web.db.models import Task, TaskStatus, Experiment
 from web.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskListResponse
+from web.services import TaskService
 
 router = APIRouter()
 
@@ -59,23 +60,16 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 @router.get("/", response_model=List[TaskListResponse])
 async def list_tasks(skip: int = 0, limit: int = 100, status_filter: str = None, db: AsyncSession = Depends(get_db)):
 	"""List all autotuning tasks."""
-	query = select(Task).order_by(Task.created_at.desc())
-
-	if status_filter:
-		query = query.where(Task.status == status_filter)
-
-	query = query.offset(skip).limit(limit)
-	result = await db.execute(query)
-	tasks = result.scalars().all()
-
+	# Use TaskService for business logic
+	tasks = await TaskService.list_tasks(db, status=status_filter, skip=skip, limit=limit)
 	return tasks
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	"""Get task by ID."""
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
+	# Use TaskService for business logic
+	task = await TaskService.get_task_by_id(db, task_id)
 
 	if not task:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
@@ -86,8 +80,8 @@ async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/name/{task_name}", response_model=TaskResponse)
 async def get_task_by_name(task_name: str, db: AsyncSession = Depends(get_db)):
 	"""Get task by name."""
-	result = await db.execute(select(Task).where(Task.task_name == task_name))
-	task = result.scalar_one_or_none()
+	# Use TaskService for business logic
+	task = await TaskService.get_task_by_name(db, task_name)
 
 	if not task:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task '{task_name}' not found")

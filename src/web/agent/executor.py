@@ -201,9 +201,87 @@ class ToolExecutor:
 			include_privileged: Whether to include tools requiring authorization
 
 		Returns:
-			List of BaseTool objects
+			List of BaseTool objects with 'db' parameter filtered out from schemas
 		"""
 		if include_privileged:
-			return self.registry.get_all_tools()
+			tools = self.registry.get_all_tools()
 		else:
-			return self.registry.get_safe_tools()
+			tools = self.registry.get_safe_tools()
+
+		# Filter out 'db' parameter from tool schemas
+		# The 'db' parameter is injected at runtime by the executor,
+		# but LangChain needs to generate JSON schemas for the LLM API,
+		# and AsyncSession cannot be serialized to JSON schema.
+		filtered_tools = []
+		for tool in tools:
+			# Create a copy of the tool with filtered args
+			filtered_tool = self._filter_db_parameter(tool)
+			filtered_tools.append(filtered_tool)
+
+		return filtered_tools
+
+	def _filter_db_parameter(self, tool: BaseTool) -> BaseTool:
+		"""
+		Create a copy of the tool with 'db' parameter removed from args schema.
+
+		Args:
+			tool: Original tool
+
+		Returns:
+			Tool with 'db' parameter filtered out
+		"""
+		from pydantic import create_model
+		from typing import get_type_hints
+		import inspect
+
+		# Get the original function (coroutine for async tools)
+		if hasattr(tool, 'coroutine'):
+			original_func = tool.coroutine
+		else:
+			return tool  # Not a StructuredTool, return as-is
+
+		# Get function signature
+		sig = inspect.signature(original_func)
+
+		# Check if 'db' parameter exists
+		if 'db' not in sig.parameters:
+			return tool  # No 'db' parameter, return as-is
+
+		# Create new args_schema without 'db' parameter
+		if hasattr(tool, 'args_schema') and tool.args_schema:
+			# Get all fields except 'db'
+			original_schema = tool.args_schema
+			fields_dict = {}
+
+			for field_name, field_info in original_schema.model_fields.items():
+				if field_name != 'db':
+					fields_dict[field_name] = (field_info.annotation, field_info)
+
+			# Create new Pydantic model without 'db'
+			new_schema = create_model(
+				f"{original_schema.__name__}Filtered",
+				**fields_dict
+			)
+
+			# Create new tool with filtered schema
+			from langchain_core.tools import StructuredTool
+
+			filtered_tool = StructuredTool(
+				name=tool.name,
+				description=tool.description,
+				func=original_func if not hasattr(tool, 'coroutine') else None,
+				coroutine=original_func if hasattr(tool, 'coroutine') else None,
+				args_schema=new_schema
+			)
+
+			# Copy metadata attributes
+			if hasattr(tool, '_tool_category'):
+				filtered_tool._tool_category = tool._tool_category
+			if hasattr(tool, '_requires_authorization'):
+				filtered_tool._requires_authorization = tool._requires_authorization
+			if hasattr(tool, '_authorization_scope'):
+				filtered_tool._authorization_scope = tool._authorization_scope
+
+			return filtered_tool
+
+		return tool

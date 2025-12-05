@@ -266,7 +266,9 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 
 		# 5. Call LLM with tools
 		llm_client = get_llm_client()
+		print(f"[DEBUG] Calling LLM with {len(available_tools)} tools available")
 		llm_response = await llm_client.chat_with_tools(llm_messages, available_tools)
+		print(f"[DEBUG] LLM response: content_length={len(llm_response['content']) if llm_response['content'] else 0}, tool_calls={len(llm_response['tool_calls'])}")
 
 		assistant_content = llm_response["content"]
 		tool_calls = llm_response["tool_calls"]

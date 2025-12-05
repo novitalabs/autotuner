@@ -1,188 +1,303 @@
 """
-Database query tools for agent.
+Generic low-level database tools for agent.
 
-These tools allow the agent to query autotuning tasks, experiments, and parameter presets.
-All tools are SAFE (no authorization required) as they only perform read-only operations.
+These tools provide low-level database access:
+- Read operations are SAFE (no authorization required)
+- Write operations REQUIRE authorization (DATABASE_WRITE scope)
 
-NOTE: These tools use shared Service layer (web.services) to avoid code duplication
-with REST API routes.
+For business-level operations, prefer high-level tools:
+- task_tools.py for task management
+- preset_tools.py for parameter presets
+- experiment_tools.py for experiments (future)
 """
 
 from langchain_core.tools import tool
 from sqlalchemy.ext.asyncio import AsyncSession
-from web.services import TaskService, ExperimentService, PresetService
-from web.agent.tools.base import register_tool, ToolCategory
+from sqlalchemy import text, select
+from web.agent.tools.base import register_tool, ToolCategory, AuthorizationScope
 import json
 from typing import Optional
 
 
 @tool
 @register_tool(ToolCategory.DATABASE)
-async def list_tasks(
-    status: Optional[str] = None,
+async def query_records(
+    table_name: str,
+    filters: dict = None,
     limit: int = 10,
     db: AsyncSession = None
 ) -> str:
     """
-    List autotuning tasks with optional status filter.
+    Generic low-level query to fetch records from any table.
 
     Args:
-        status: Filter by status (pending, running, completed, failed, cancelled). Leave empty for all.
-        limit: Maximum number of tasks to return (default 10, max 50)
+        table_name: Table name (tasks, experiments, parameter_presets, etc.)
+        filters: Optional dict of field:value filters, e.g., {"status": "running", "deployment_mode": "docker"}
+        limit: Maximum number of records to return (default 10, max 100)
 
     Returns:
-        JSON string with task list containing id, name, status, created_at, total_experiments
+        JSON string with list of records
+
+    Examples:
+        - List all tasks: table_name="tasks", filters=None
+        - List running tasks: table_name="tasks", filters={"status": "running"}
+        - List experiments for task 1: table_name="experiments", filters={"task_id": 1}
     """
     if db is None:
         return json.dumps({"error": "Database session not provided"})
 
-    limit = min(limit, 50)  # Cap at 50
-
-    # Use TaskService for business logic
-    tasks = await TaskService.list_tasks(db, status=status, skip=0, limit=limit)
-
-    # Use model's to_dict() for consistent serialization
-    return json.dumps([t.to_dict() for t in tasks], indent=2)
-
-
-@tool
-@register_tool(ToolCategory.DATABASE)
-async def get_task_details(task_id: int, db: AsyncSession = None) -> str:
-    """
-    Get detailed information about a specific task.
-
-    Args:
-        task_id: Task ID to query
-
-    Returns:
-        JSON string with complete task configuration and results
-    """
-    if db is None:
-        return json.dumps({"error": "Database session not provided"})
-
-    # Use TaskService for business logic
-    task = await TaskService.get_task_by_id(db, task_id)
-    if not task:
-        return json.dumps({"error": f"Task {task_id} not found"})
-
-    # Use model's to_dict() with full config
-    return json.dumps(task.to_dict(include_full_config=True), indent=2)
-
-
-@tool
-@register_tool(ToolCategory.DATABASE)
-async def get_task_experiments(
-    task_id: int,
-    status: Optional[str] = None,
-    limit: int = 20,
-    db: AsyncSession = None
-) -> str:
-    """
-    Get experiments for a task with optional status filter.
-
-    Args:
-        task_id: Task ID to query
-        status: Filter by experiment status (pending, deploying, benchmarking, success, failed). Leave empty for all.
-        limit: Maximum number of experiments to return (default 20, max 100)
-
-    Returns:
-        JSON string with experiment list including parameters and metrics
-    """
-    if db is None:
-        return json.dumps({"error": "Database session not provided"})
+    # Validate table name
+    valid_tables = ["tasks", "experiments", "parameter_presets", "chat_sessions", "chat_messages", "agent_event_subscriptions"]
+    if table_name not in valid_tables:
+        return json.dumps({
+            "error": f"Invalid table name. Must be one of: {', '.join(valid_tables)}"
+        })
 
     limit = min(limit, 100)  # Cap at 100
 
-    # Use ExperimentService for business logic
-    experiments = await ExperimentService.list_experiments(
-        db, task_id=task_id, status=status, skip=0, limit=limit
-    )
+    try:
+        # Build query
+        query = f"SELECT * FROM {table_name}"
+        params = {}
 
-    # Use model's to_dict() for consistent serialization
-    return json.dumps([exp.to_dict() for exp in experiments], indent=2)
+        if filters:
+            where_clauses = []
+            for i, (field, value) in enumerate(filters.items()):
+                param_name = f"filter_{i}"
+                where_clauses.append(f"{field} = :{param_name}")
+                params[param_name] = value
+            query += " WHERE " + " AND ".join(where_clauses)
 
+        query += f" LIMIT :limit"
+        params["limit"] = limit
 
-@tool
-@register_tool(ToolCategory.DATABASE)
-async def get_experiment_metrics(experiment_id: int, db: AsyncSession = None) -> str:
-    """
-    Get detailed metrics for a specific experiment.
+        result = await db.execute(text(query), params)
+        rows = result.fetchall()
 
-    Args:
-        experiment_id: Experiment ID to query
+        if rows:
+            columns = result.keys()
+            results = [dict(zip(columns, row)) for row in rows]
+            return json.dumps({
+                "success": True,
+                "table": table_name,
+                "row_count": len(results),
+                "results": results
+            }, indent=2)
+        else:
+            return json.dumps({
+                "success": True,
+                "table": table_name,
+                "row_count": 0,
+                "results": []
+            })
 
-    Returns:
-        JSON string with experiment metrics including latency, throughput, TTFT, TPOT, etc.
-    """
-    if db is None:
-        return json.dumps({"error": "Database session not provided"})
-
-    # Use ExperimentService for business logic
-    exp = await ExperimentService.get_experiment_by_id(db, experiment_id)
-    if not exp:
-        return json.dumps({"error": f"Experiment {experiment_id} not found"})
-
-    # Use model's to_dict() with logs (truncated)
-    result = exp.to_dict(include_logs=True)
-    # Truncate logs to first 500 chars
-    if result.get("benchmark_logs"):
-        result["benchmark_logs"] = result["benchmark_logs"][:500]
-
-    return json.dumps(result, indent=2)
-
-
-@tool
-@register_tool(ToolCategory.DATABASE)
-async def get_best_experiment(task_id: int, db: AsyncSession = None) -> str:
-    """
-    Get the best performing experiment for a task.
-
-    Args:
-        task_id: Task ID to query
-
-    Returns:
-        JSON string with best experiment details including parameters and metrics
-    """
-    if db is None:
-        return json.dumps({"error": "Database session not provided"})
-
-    # Use ExperimentService for business logic
-    best_exp = await ExperimentService.get_best_experiment(db, task_id)
-    if not best_exp:
-        return json.dumps({"error": "No best experiment found for this task"})
-
-    # Use model's to_dict() for consistent serialization
-    return json.dumps(best_exp.to_dict(), indent=2)
+    except Exception as e:
+        return json.dumps({
+            "error": f"Query failed: {str(e)}"
+        })
 
 
 @tool
 @register_tool(ToolCategory.DATABASE)
-async def search_presets(
-    category: Optional[str] = None,
-    runtime: Optional[str] = None,
-    limit: int = 10,
+async def get_record_by_id(
+    table_name: str,
+    record_id: int,
     db: AsyncSession = None
 ) -> str:
     """
-    Search parameter presets by category and runtime.
+    Generic low-level query to fetch a single record by ID.
 
     Args:
-        category: Filter by category (performance, memory, latency, throughput). Leave empty for all.
-        runtime: Filter by runtime (sglang, vllm). Leave empty for all.
-        limit: Maximum number of presets to return (default 10, max 50)
+        table_name: Table name (tasks, experiments, parameter_presets, etc.)
+        record_id: Primary key ID of the record
 
     Returns:
-        JSON string with matching presets including parameters
+        JSON string with record details
+
+    Examples:
+        - Get task 1: table_name="tasks", record_id=1
+        - Get experiment 5: table_name="experiments", record_id=5
     """
     if db is None:
         return json.dumps({"error": "Database session not provided"})
 
-    limit = min(limit, 50)  # Cap at 50
+    # Validate table name
+    valid_tables = ["tasks", "experiments", "parameter_presets", "chat_sessions", "chat_messages", "agent_event_subscriptions"]
+    if table_name not in valid_tables:
+        return json.dumps({
+            "error": f"Invalid table name. Must be one of: {', '.join(valid_tables)}"
+        })
 
-    # Use PresetService for business logic
-    presets = await PresetService.list_presets(
-        db, category=category, runtime=runtime, skip=0, limit=limit
-    )
+    try:
+        query = text(f"SELECT * FROM {table_name} WHERE id = :id")
+        result = await db.execute(query, {"id": record_id})
+        row = result.fetchone()
 
-    # Use model's to_dict() for consistent serialization
-    return json.dumps([p.to_dict() for p in presets], indent=2)
+        if row:
+            columns = result.keys()
+            record = dict(zip(columns, row))
+            return json.dumps({
+                "success": True,
+                "table": table_name,
+                "record": record
+            }, indent=2)
+        else:
+            return json.dumps({
+                "error": f"No record found with id {record_id} in table {table_name}"
+            })
+
+    except Exception as e:
+        return json.dumps({
+            "error": f"Query failed: {str(e)}"
+        })
+
+
+# ============================================================================
+# Generic Low-Level Write Operations (Require Authorization)
+# ============================================================================
+
+@tool
+@register_tool(
+    ToolCategory.DATABASE,
+    requires_auth=True,
+    auth_scope=AuthorizationScope.DATABASE_WRITE
+)
+async def update_database_field(
+    table_name: str,
+    record_id: int,
+    field_name: str,
+    field_value: str,
+    db: AsyncSession = None
+) -> str:
+    """
+    Generic low-level operation to update a single field in any database table.
+
+    **REQUIRES AUTHORIZATION**: This is a privileged operation that requires user approval.
+
+    Args:
+        table_name: Table name (tasks, experiments, parameter_presets, chat_sessions, etc.)
+        record_id: Primary key ID of the record to update
+        field_name: Name of the field to update
+        field_value: New value for the field (as string, will be converted)
+
+    Returns:
+        JSON string with success/error message
+
+    Examples:
+        - Update task description: table_name="tasks", record_id=1, field_name="description", field_value="New desc"
+        - Update experiment status: table_name="experiments", record_id=5, field_name="status", field_value="failed"
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Validate table name
+    valid_tables = ["tasks", "experiments", "parameter_presets", "chat_sessions", "chat_messages", "agent_event_subscriptions"]
+    if table_name not in valid_tables:
+        return json.dumps({
+            "error": f"Invalid table name. Must be one of: {', '.join(valid_tables)}"
+        })
+
+    try:
+        # Use raw SQL for generic update
+        query = text(f"UPDATE {table_name} SET {field_name} = :value WHERE id = :id")
+        result = await db.execute(query, {"value": field_value, "id": record_id})
+        await db.commit()
+
+        if result.rowcount == 0:
+            return json.dumps({
+                "error": f"No record found with id {record_id} in table {table_name}"
+            })
+
+        return json.dumps({
+            "success": True,
+            "message": f"Updated {table_name}.{field_name} for record {record_id}",
+            "table": table_name,
+            "record_id": record_id,
+            "field": field_name,
+            "new_value": field_value
+        }, indent=2)
+
+    except Exception as e:
+        await db.rollback()
+        return json.dumps({
+            "error": f"Failed to update record: {str(e)}"
+        })
+
+
+@tool
+@register_tool(
+    ToolCategory.DATABASE,
+    requires_auth=True,
+    auth_scope=AuthorizationScope.DATABASE_WRITE
+)
+async def execute_raw_sql(
+    sql_query: str,
+    is_write: bool = False,
+    db: AsyncSession = None
+) -> str:
+    """
+    Execute raw SQL query on the database.
+
+    **REQUIRES AUTHORIZATION**: This is a privileged operation that requires user approval.
+    **DANGEROUS**: Use with caution. Prefer high-level business tools when available.
+
+    Args:
+        sql_query: SQL query to execute (SELECT, UPDATE, DELETE, etc.)
+        is_write: Set to True if this is a write operation (INSERT/UPDATE/DELETE)
+
+    Returns:
+        JSON string with query results or success message
+
+    Safety Notes:
+        - Only allows operations on application tables (tasks, experiments, etc.)
+        - Read queries return results as JSON
+        - Write queries return affected row count
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Basic safety check: prevent operations on system tables
+    dangerous_keywords = ["DROP", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE"]
+    query_upper = sql_query.upper()
+
+    for keyword in dangerous_keywords:
+        if keyword in query_upper:
+            return json.dumps({
+                "error": f"Dangerous operation '{keyword}' not allowed. Use high-level tools instead."
+            })
+
+    try:
+        result = await db.execute(text(sql_query))
+
+        if is_write:
+            await db.commit()
+            return json.dumps({
+                "success": True,
+                "message": "Query executed successfully",
+                "rows_affected": result.rowcount
+            }, indent=2)
+        else:
+            # Fetch results for SELECT queries
+            rows = result.fetchall()
+            if rows:
+                # Convert rows to list of dicts
+                columns = result.keys()
+                results = [dict(zip(columns, row)) for row in rows]
+                return json.dumps({
+                    "success": True,
+                    "row_count": len(results),
+                    "results": results
+                }, indent=2)
+            else:
+                return json.dumps({
+                    "success": True,
+                    "row_count": 0,
+                    "results": []
+                })
+
+    except Exception as e:
+        if is_write:
+            await db.rollback()
+        return json.dumps({
+            "error": f"Query execution failed: {str(e)}"
+        })
