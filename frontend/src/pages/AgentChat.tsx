@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Edit2 } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { ChatMessage } from "../types/agent";
@@ -13,8 +14,11 @@ export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
 	const [messages, setMessages] = useState<MessageData[]>([]);
 	const [sessionTitle, setSessionTitle] = useState<string>("");
+	const [isEditingTitle, setIsEditingTitle] = useState(false);
+	const [editTitleValue, setEditTitleValue] = useState("");
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const titleInputRef = useRef<HTMLInputElement>(null);
 	const queryClient = useQueryClient();
 	const [loadingFromDb, setLoadingFromDb] = useState(true);
 
@@ -208,6 +212,48 @@ export default function AgentChat() {
 		}
 	};
 
+	const handleStartEditTitle = () => {
+		setEditTitleValue(sessionTitle || "");
+		setIsEditingTitle(true);
+	};
+
+	const handleSaveTitle = async () => {
+		if (!sessionId) {
+			setIsEditingTitle(false);
+			return;
+		}
+
+		const newTitle = editTitleValue.trim();
+		if (!newTitle) {
+			setIsEditingTitle(false);
+			return;
+		}
+
+		try {
+			await agentApi.updateTitle(sessionId, newTitle);
+			const storage = getChatStorage();
+			await storage.updateSessionTitle(sessionId, newTitle);
+			setSessionTitle(newTitle);
+			setIsEditingTitle(false);
+		} catch (error) {
+			console.error("Failed to update title:", error);
+			setIsEditingTitle(false);
+		}
+	};
+
+	const handleCancelEditTitle = () => {
+		setIsEditingTitle(false);
+		setEditTitleValue("");
+	};
+
+	// Auto-focus title input when entering edit mode
+	useEffect(() => {
+		if (isEditingTitle && titleInputRef.current) {
+			titleInputRef.current.focus();
+			titleInputRef.current.select();
+		}
+	}, [isEditingTitle]);
+
 	// Loading state
 	if (statusLoading || loadingFromDb) {
 		return (
@@ -360,9 +406,42 @@ AGENT_MODEL=gpt-4`}
 		<div className="flex flex-col h-full bg-gray-50">
 			{/* Header */}
 			<div className="bg-white border-b px-6 py-4">
-				<h1 className="text-2xl font-bold text-gray-900">
-					{sessionTitle || "New Chat"}
-				</h1>
+				<div className="flex items-center gap-3">
+					{isEditingTitle ? (
+						// Edit mode
+						<input
+							ref={titleInputRef}
+							type="text"
+							value={editTitleValue}
+							onChange={(e) => setEditTitleValue(e.target.value)}
+							onBlur={handleSaveTitle}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') {
+									e.currentTarget.blur(); // Trigger onBlur to save
+								}
+								if (e.key === 'Escape') {
+									handleCancelEditTitle();
+								}
+							}}
+							className="flex-1 text-2xl font-bold text-gray-900 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+							placeholder="Enter title..."
+						/>
+					) : (
+						// Display mode
+						<>
+							<h1 className="flex-1 text-2xl font-bold text-gray-900">
+								{sessionTitle || "New Chat"}
+							</h1>
+							<button
+								onClick={handleStartEditTitle}
+								className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+								title="Edit title"
+							>
+								<Edit2 className="w-5 h-5" />
+							</button>
+						</>
+					)}
+				</div>
 				<p className="text-sm text-gray-500 mt-1">
 					Session: {sessionId.slice(0, 8)}...
 				</p>
