@@ -405,7 +405,7 @@ AGENT_MODEL=gpt-4`}
 	return (
 		<div className="flex flex-col h-full bg-gray-50">
 			{/* Header */}
-			<div className="bg-white border-b px-6 py-4">
+			<div className="group bg-white border-b px-6 py-4">
 				<div className="flex items-center gap-3">
 					{isEditingTitle ? (
 						// Edit mode
@@ -442,9 +442,13 @@ AGENT_MODEL=gpt-4`}
 						</>
 					)}
 				</div>
-				<p className="text-sm text-gray-500 mt-1">
-					Session: {sessionId.slice(0, 8)}...
-				</p>
+			</div>
+
+			{/* Session ID - below header, only visible on hover */}
+			<div className="group relative">
+				<div className="px-6 py-1 text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+					Session ID: {sessionId.slice(0, 8)}
+				</div>
 			</div>
 
 			{/* Messages */}
@@ -493,19 +497,23 @@ function MessageBubble({ message }: { message: MessageData }) {
 
 	return (
 		<div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-			<div
-				className={`max-w-2xl rounded-lg px-4 py-3 ${
-					isUser
-						? "bg-blue-600 text-white"
-						: "bg-white border border-gray-200 text-gray-900"
-				}`}
-			>
-				<div className="text-sm whitespace-pre-wrap break-words">
-					{message.content}
-				</div>
+			<div className="group relative">
+				{/* Message bubble */}
 				<div
-					className={`text-xs mt-1 ${
-						isUser ? "text-blue-100" : "text-gray-400"
+					className={`max-w-2xl rounded-lg px-4 py-3 ${
+						isUser
+							? "bg-blue-600 text-white"
+							: "bg-white border border-gray-200 text-gray-900"
+					}`}
+				>
+					<div className="text-sm whitespace-pre-wrap break-words">
+						{message.content}
+					</div>
+				</div>
+				{/* Timestamp - below bubble, only visible on hover */}
+				<div
+					className={`text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity ${
+						isUser ? "text-right" : "text-left"
 					}`}
 				>
 					{new Date(message.created_at).toLocaleTimeString()}
