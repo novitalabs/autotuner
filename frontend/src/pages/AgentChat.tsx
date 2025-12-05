@@ -418,8 +418,8 @@ AGENT_MODEL=gpt-4`}
 	return (
 		<div className="flex flex-col h-full bg-gray-50">
 			{/* Header */}
-			<div className="group bg-white border-b px-6 py-4">
-				<div className="flex items-center gap-3">
+			<div className="bg-white border-b px-6 py-4">
+				<div className="group/title flex items-center gap-3">
 					{isEditingTitle ? (
 						// Edit mode
 						<input
@@ -447,7 +447,7 @@ AGENT_MODEL=gpt-4`}
 							</h1>
 							<button
 								onClick={handleStartEditTitle}
-								className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+								className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-all opacity-0 group-hover/title:opacity-100"
 								title="Edit title"
 							>
 								<Edit2 className="w-5 h-5" />
