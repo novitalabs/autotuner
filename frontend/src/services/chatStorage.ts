@@ -4,6 +4,7 @@
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { ToolCall } from '../types/agent';
 
 // Database schema types
 interface ChatDB extends DBSchema {
@@ -26,6 +27,7 @@ interface ChatDB extends DBSchema {
 			session_id: string;
 			role: 'user' | 'assistant' | 'system';
 			content: string;
+			tool_calls?: ToolCall[];
 			created_at: string;
 			synced_to_backend: boolean;
 		};
@@ -52,6 +54,7 @@ export interface MessageData {
 	session_id: string;
 	role: 'user' | 'assistant' | 'system';
 	content: string;
+	tool_calls?: ToolCall[];
 	created_at: string;
 	synced_to_backend: boolean;
 }
@@ -196,11 +199,12 @@ class ChatStorageService {
 		const db = await this.dbPromise;
 
 		// Generate unique ID if not provided
-		const messageWithId: Required<MessageData> = {
+		const messageWithId: Required<MessageData> & { id: string } = {
 			id: message.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 			session_id: sessionId,
 			role: message.role,
 			content: message.content,
+			tool_calls: message.tool_calls,
 			created_at: message.created_at,
 			synced_to_backend: message.synced_to_backend,
 		};

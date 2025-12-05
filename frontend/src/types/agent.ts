@@ -20,12 +20,22 @@ export interface ChatSession {
 	updated_at: string;
 }
 
+export interface ToolCall {
+	tool_name: string;
+	args: Record<string, any>;
+	id: string;
+	status: "executed" | "requires_auth" | "failed";
+	result?: string;
+	auth_scope?: string;
+	error?: string;
+}
+
 export interface ChatMessage {
 	id: number;
 	session_id: string;
 	role: "user" | "assistant" | "system";
 	content: string;
-	tool_calls: Record<string, any> | null;
+	tool_calls: ToolCall[] | null;
 	metadata: Record<string, any> | null;
 	token_count: number | null;
 	created_at: string;
@@ -74,4 +84,15 @@ export interface SessionListItem {
 	updated_at: string;
 	last_message_preview: string;
 	message_count: number;
+}
+
+// Authorization types
+export interface ToolAuthorizationRequest {
+	scopes: string[];
+	expires_at?: string;
+}
+
+export interface AuthorizationResponse {
+	status: "granted" | "revoked";
+	scopes: string[];
 }

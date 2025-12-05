@@ -9,6 +9,7 @@ import { Edit2, ArrowUp, Loader2 } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { ChatMessage } from "../types/agent";
+import ToolCallCard from "../components/ToolCallCard";
 
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
@@ -156,6 +157,7 @@ export default function AgentChat() {
 				session_id: sessionId,
 				role: "assistant",
 				content: response.content,
+				tool_calls: response.tool_calls || undefined,
 				created_at: response.created_at,
 				synced_to_backend: true,
 			};
@@ -514,20 +516,56 @@ AGENT_MODEL=gpt-4`}
 function MessageBubble({ message }: { message: MessageData }) {
 	const isUser = message.role === "user";
 
+	// Debug logging
+	console.log("[MessageBubble] Message:", {
+		role: message.role,
+		hasToolCalls: !!message.tool_calls,
+		toolCallsType: typeof message.tool_calls,
+		toolCallsIsArray: Array.isArray(message.tool_calls),
+		toolCallsLength: message.tool_calls?.length,
+		toolCalls: message.tool_calls,
+	});
+
+	const handleAuthorize = (scope: string) => {
+		// TODO: Implement authorization flow
+		console.log("Authorization requested for scope:", scope);
+		alert(`Authorization for ${scope} will be implemented in next step`);
+	};
+
 	return (
 		<div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-			<div className="group relative">
+			<div className="group relative max-w-3xl">
 				{/* Message bubble */}
 				<div
-					className={`max-w-2xl rounded-lg px-4 py-3 ${
+					className={`rounded-lg px-4 py-3 ${
 						isUser
 							? "bg-blue-600 text-white"
 							: "bg-white border border-gray-200 text-gray-900"
 					}`}
 				>
-					<div className="text-sm whitespace-pre-wrap break-words">
-						{message.content}
-					</div>
+					{/* Message content */}
+					{message.content && (
+						<div className="text-sm whitespace-pre-wrap break-words">
+							{message.content}
+						</div>
+					)}
+
+					{/* Tool calls - only for assistant messages */}
+					{!isUser && message.tool_calls && message.tool_calls.length > 0 && (
+						<div className="mt-2">
+							{console.log("[MessageBubble] Rendering tool calls:", message.tool_calls.length)}
+							{message.tool_calls.map((toolCall: any, index: number) => {
+								console.log(`[MessageBubble] Rendering ToolCallCard #${index}:`, toolCall);
+								return (
+									<ToolCallCard
+										key={toolCall.id}
+										toolCall={toolCall}
+										onAuthorize={handleAuthorize}
+									/>
+								);
+							})}
+						</div>
+					)}
 				</div>
 				{/* Timestamp - below bubble, only visible on hover */}
 				<div

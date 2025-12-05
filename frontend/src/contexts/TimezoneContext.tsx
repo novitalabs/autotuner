@@ -70,13 +70,13 @@ export function TimezoneProvider({ children }: TimezoneProviderProps) {
 				const offsetMs = tzParsed - utcParsed;
 				setTimezoneOffsetMs(offsetMs);
 
-				console.log('Timezone offset:', {
+				/*console.log('Timezone offset:', {
 					timezone: tz,
 					offsetMs,
 					offsetHours: offsetMs / 3600000,
 					utcStr,
 					tzStr
-				});
+				});*/
 			})
 			.catch((err) => {
 				console.error('Failed to fetch timezone:', err);
