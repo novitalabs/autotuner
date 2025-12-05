@@ -213,8 +213,8 @@ class ChatStorageService {
 			session.updated_at = message.created_at;
 			session.message_count++;
 
-			// Update last message preview (first 100 chars)
-			if (message.role === 'user' || message.role === 'assistant') {
+			// Update last message preview (first 100 chars) - only use user messages
+			if (message.role === 'user') {
 				session.last_message_preview = message.content.substring(0, 100);
 			}
 

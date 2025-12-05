@@ -437,11 +437,11 @@ async def generate_title(
 	messages = [
 		{
 			"role": "system",
-			"content": "You are a title generator. Generate a concise, descriptive title (6-8 words maximum) for a chat conversation based on the user's first message. Output only the title text, nothing else. Do not use quotes or punctuation at the end."
+			"content": "You are a title generator. Generate a concise, descriptive title (6-8 words maximum) for a chat conversation based on the user's first message. Output ONLY the title text, nothing else. Do not use quotes or punctuation at the end. Do not add explanations, greetings, or any other text."
 		},
 		{
 			"role": "user",
-			"content": first_message.content
+			"content": f"Generate a short title (6-8 words) for this conversation:\n\n{first_message.content}"
 		}
 	]
 
@@ -453,9 +453,18 @@ async def generate_title(
 		if title.startswith('"') and title.endswith('"'):
 			title = title[1:-1]
 
-		# Limit length
-		if len(title) > 100:
-			title = title[:97] + "..."
+		# Take only first line if LLM generated multiple lines
+		if '\n' in title:
+			title = title.split('\n')[0].strip()
+
+		# Limit length more aggressively - if too long, take first 50 chars
+		if len(title) > 50:
+			title = title[:47] + "..."
+
+		# If still empty or too short, use fallback
+		if not title or len(title) < 3:
+			# Fallback: use first 50 chars of user message
+			title = first_message.content[:47] + "..." if len(first_message.content) > 50 else first_message.content
 
 		# 4. Save title
 		session.title = title

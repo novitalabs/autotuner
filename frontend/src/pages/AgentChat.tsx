@@ -18,6 +18,30 @@ export default function AgentChat() {
 	const queryClient = useQueryClient();
 	const [loadingFromDb, setLoadingFromDb] = useState(true);
 
+	// Periodically refresh session title from IndexedDB
+	useEffect(() => {
+		if (!sessionId) return;
+
+		const refreshTitle = async () => {
+			try {
+				const storage = getChatStorage();
+				const session = await storage.getSession(sessionId);
+				if (session?.title && session.title !== sessionTitle) {
+					setSessionTitle(session.title);
+				}
+			} catch (error) {
+				console.error("Failed to refresh title:", error);
+			}
+		};
+
+		// Initial refresh
+		refreshTitle();
+
+		// Refresh every 2 seconds
+		const interval = setInterval(refreshTitle, 2000);
+		return () => clearInterval(interval);
+	}, [sessionId, sessionTitle]);
+
 	// Parse session ID from URL hash
 	useEffect(() => {
 		const hash = window.location.hash.slice(1); // Remove #
@@ -132,22 +156,23 @@ export default function AgentChat() {
 
 			// Generate title after first user message (message count = 2: 1 user + 1 assistant)
 			// Only generate if no title exists yet (don't override user-edited titles)
-			if (messages.length === 0 && sessionId) {  // Before adding new messages
+			if (sessionId) {
 				try {
 					const storage = getChatStorage();
 
-					// Check if session already has a title
+					// Check if this is the first message exchange
 					setTimeout(async () => {
 						try {
+							const msgs = await storage.getMessages(sessionId);
 							const session = await storage.getSession(sessionId);
 
-							// Only generate title if it's empty or missing
-							if (!session?.title || session.title.trim() === '') {
+							// Generate title if: (1) no title yet, AND (2) we now have exactly 2 messages (1 user + 1 assistant)
+							if ((!session?.title || session.title.trim() === '') && msgs.length === 2) {
 								const response = await agentApi.generateTitle(sessionId);
 								await storage.updateSessionTitle(sessionId, response.title);
 								setSessionTitle(response.title);  // Update UI immediately
 								console.debug(`Generated title: ${response.title}`);
-							} else {
+							} else if (session?.title) {
 								console.debug(`Session already has title: "${session.title}", skipping generation`);
 							}
 						} catch (error) {
