@@ -70,6 +70,51 @@ class Task(Base):
 	experiments = relationship("Experiment", back_populates="task", foreign_keys="Experiment.task_id")
 	best_experiment = relationship("Experiment", foreign_keys=[best_experiment_id], post_update=True)
 
+	def to_dict(self, include_full_config=False):
+		"""
+		Convert task to dictionary.
+
+		Args:
+			include_full_config: If True, include all configuration details.
+							   If False, return summary view (for list endpoints).
+		"""
+		base = {
+			"id": self.id,
+			"task_name": self.task_name,
+			"status": self.status.value if hasattr(self.status, 'value') else str(self.status),
+			"deployment_mode": self.deployment_mode,
+			"created_at": self.created_at.isoformat() if self.created_at else None,
+			"total_experiments": self.total_experiments,
+			"completed_experiments": self.completed_experiments,
+			"best_experiment_id": self.best_experiment_id,
+		}
+
+		if include_full_config:
+			base.update({
+				"description": self.description,
+				"base_runtime": self.base_runtime,
+				"runtime_image_tag": self.runtime_image_tag,
+				"model_config": self.model_config,
+				"parameters": self.parameters,
+				"optimization_config": self.optimization_config,
+				"benchmark_config": self.benchmark_config,
+				"slo_config": self.slo_config,
+				"quant_config": self.quant_config,
+				"parallel_config": self.parallel_config,
+				"clusterbasemodel_config": self.clusterbasemodel_config,
+				"clusterservingruntime_config": self.clusterservingruntime_config,
+				"created_clusterbasemodel": self.created_clusterbasemodel,
+				"created_clusterservingruntime": self.created_clusterservingruntime,
+				"task_metadata": self.task_metadata,
+				"successful_experiments": self.successful_experiments,
+				"failed_experiments": getattr(self, 'failed_experiments', 0),
+				"started_at": self.started_at.isoformat() if self.started_at else None,
+				"completed_at": self.completed_at.isoformat() if self.completed_at else None,
+				"elapsed_time": self.elapsed_time,
+			})
+
+		return base
+
 
 class ExperimentStatus(str, enum.Enum):
 	"""Experiment status enum."""
@@ -116,6 +161,38 @@ class Experiment(Base):
 
 	# Relationship
 	task = relationship("Task", back_populates="experiments", foreign_keys=[task_id])
+
+	def to_dict(self, include_logs=False):
+		"""
+		Convert experiment to dictionary.
+
+		Args:
+			include_logs: If True, include benchmark_logs (can be large).
+		"""
+		data = {
+			"id": self.id,
+			"task_id": self.task_id,
+			"experiment_id": self.experiment_id,
+			"experiment_name": getattr(self, 'experiment_name', f"exp-{self.id}"),
+			"status": self.status.value if hasattr(self.status, 'value') else str(self.status),
+			"parameters": self.parameters,
+			"metrics": self.metrics,
+			"objective_score": self.objective_score,
+			"slo_violations": getattr(self, 'slo_violations', None),
+			"gpu_info": self.gpu_info,
+			"service_name": self.service_name,
+			"service_url": self.service_url,
+			"error_message": self.error_message,
+			"created_at": self.created_at.isoformat() if self.created_at else None,
+			"started_at": self.started_at.isoformat() if self.started_at else None,
+			"completed_at": self.completed_at.isoformat() if self.completed_at else None,
+			"elapsed_time": self.elapsed_time,
+		}
+
+		if include_logs:
+			data["benchmark_logs"] = getattr(self, 'benchmark_logs', None)
+
+		return data
 
 
 class ParameterPreset(Base):

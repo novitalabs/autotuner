@@ -3,12 +3,16 @@ LangChain-based LLM client for agent chat.
 Supports OpenAI-compatible APIs (Jiekou, local models, OpenAI) and Claude.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.tools import BaseTool
 from web.config import get_settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainLLMClient:
@@ -100,6 +104,102 @@ class LangChainLLMClient:
 		# Invoke the model asynchronously
 		response = await chat_model.ainvoke(langchain_messages)
 		return response.content
+
+	async def chat_with_tools(
+		self,
+		messages: List[Dict[str, str]],
+		tools: List[BaseTool],
+		temperature: float = 0.7
+	) -> Dict[str, Any]:
+		"""
+		Send chat messages with tool binding and get response.
+
+		Args:
+			messages: List of message dicts with 'role' and 'content'
+			tools: List of LangChain BaseTool objects available for the LLM
+			temperature: Sampling temperature
+
+		Returns:
+			Dict with:
+				- 'content': Assistant's text response (if any)
+				- 'tool_calls': List of tool calls (if any), each with:
+					- 'name': Tool name
+					- 'args': Tool arguments dict
+					- 'id': Unique call ID
+				- 'message': Full AIMessage object for context
+		"""
+		# Convert dict messages to LangChain message objects
+		langchain_messages = []
+		for msg in messages:
+			role = msg["role"]
+			content = msg.get("content", "")
+
+			if role == "system":
+				langchain_messages.append(SystemMessage(content=content))
+			elif role == "user":
+				langchain_messages.append(HumanMessage(content=content))
+			elif role == "assistant":
+				langchain_messages.append(AIMessage(content=content))
+			elif role == "tool":
+				# Tool result messages
+				langchain_messages.append(ToolMessage(
+					content=content,
+					tool_call_id=msg.get("tool_call_id", "")
+				))
+
+		# Get chat model
+		chat_model = self._get_chat_model()
+
+		# Override temperature if needed
+		if temperature != 0.7:
+			provider = self.settings.agent_provider
+			if provider in ["jiekou", "local", "openai"]:
+				chat_model = ChatOpenAI(
+					model=self.settings.agent_model,
+					openai_api_base=self.settings.agent_base_url,
+					openai_api_key=self.settings.agent_api_key or "dummy",
+					temperature=temperature,
+					max_tokens=2000,
+					timeout=60.0,
+				)
+			elif provider == "claude":
+				chat_model = ChatAnthropic(
+					model=self.settings.agent_model,
+					anthropic_api_key=self.settings.agent_api_key,
+					temperature=temperature,
+					max_tokens=2000,
+					timeout=60.0,
+				)
+
+		# Bind tools to the model
+		chat_model_with_tools = chat_model.bind_tools(tools)
+
+		# Invoke the model
+		try:
+			response = await chat_model_with_tools.ainvoke(langchain_messages)
+
+			# Parse response
+			result = {
+				"content": response.content if response.content else "",
+				"tool_calls": [],
+				"message": response
+			}
+
+			# Extract tool calls if present
+			if hasattr(response, "tool_calls") and response.tool_calls:
+				for tool_call in response.tool_calls:
+					result["tool_calls"].append({
+						"name": tool_call["name"],
+						"args": tool_call["args"],
+						"id": tool_call.get("id", "")
+					})
+				logger.info(f"LLM requested {len(result['tool_calls'])} tool calls")
+
+			return result
+
+		except Exception as e:
+			logger.error(f"Error in chat_with_tools: {str(e)}")
+			raise
 
 
 # Singleton instance

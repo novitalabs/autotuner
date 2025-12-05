@@ -31,6 +31,7 @@ from web.schemas.tools import (
 from web.config import get_settings
 from web.agent.llm_client import get_llm_client
 from web.agent.session_cache import get_session_cache
+from web.agent.executor import ToolExecutor
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 logger = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ async def send_message(
 	message_data: ChatMessageCreate,
 	db: AsyncSession = Depends(get_db),
 ):
-	"""Send a message and get LLM response."""
+	"""Send a message and get LLM response with tool support."""
 	# 1. Check memory cache first
 	cache = get_session_cache()
 	cached_entry = cache.get(session_id)
@@ -233,13 +234,21 @@ async def send_message(
 	await db.refresh(user_message)
 
 	try:
-		# 3. Build LLM context and get response
+		# 3. Build LLM context
 		llm_messages = []
 
-		# Add system message
+		# Add system message with tool usage instructions
 		llm_messages.append({
 			"role": "system",
-			"content": "You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results."
+			"content": """You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results.
+
+You have access to various tools for querying tasks, experiments, parameter presets, and external APIs. Use these tools when needed to provide accurate, data-driven responses.
+
+Available tool categories:
+- DATABASE: Query tasks, experiments, and parameter presets
+- API: Search HuggingFace models and check service health
+
+When a user asks about tasks, experiments, or results, use the appropriate database tools to fetch current data."""
 		})
 
 		# Add conversation history from cache
@@ -251,21 +260,104 @@ async def send_message(
 			"content": message_data.content
 		})
 
-		# Call LLM
-		llm_client = get_llm_client()
-		assistant_content = await llm_client.chat(llm_messages)
+		# 4. Get tools for this session
+		executor = ToolExecutor(session_id, db)
+		available_tools = executor.get_available_tools(include_privileged=False)  # Only safe tools for now
 
-		# 4. Save assistant message
-		assistant_message = ChatMessage(
-			session_id=session_id,
-			role=MessageRole.ASSISTANT,
-			content=assistant_content
-		)
+		# 5. Call LLM with tools
+		llm_client = get_llm_client()
+		llm_response = await llm_client.chat_with_tools(llm_messages, available_tools)
+
+		assistant_content = llm_response["content"]
+		tool_calls = llm_response["tool_calls"]
+
+		# 6. Handle tool calls if any
+		tool_results = []
+		if tool_calls:
+			logger.info(f"Processing {len(tool_calls)} tool calls")
+
+			# Execute all tool calls
+			tool_results = await executor.execute_tool_calls(tool_calls)
+
+			# Check for authorization errors
+			auth_required = []
+			for result in tool_results:
+				if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
+					auth_required.append({
+						"tool_name": result["tool_name"],
+						"auth_scope": result["auth_scope"]
+					})
+
+			# If any tools require authorization, save message with tool_calls metadata
+			if auth_required:
+				assistant_message = ChatMessage(
+					session_id=session_id,
+					role=MessageRole.ASSISTANT,
+					content=assistant_content if assistant_content else "I need authorization to perform some operations.",
+					tool_calls=[{
+						"tool_name": tc["name"],
+						"args": tc["args"],
+						"id": tc["id"],
+						"status": "requires_auth",
+						"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
+					} for tc in tool_calls],
+					message_metadata={
+						"auth_required": auth_required
+					}
+				)
+				db.add(assistant_message)
+				await db.commit()
+				await db.refresh(assistant_message)
+
+				logger.info(f"Saved message with authorization requirement for session {session_id}")
+				return assistant_message
+
+			# All tools executed successfully, format results
+			tool_output_messages = []
+			for result in tool_results:
+				tool_output_messages.append({
+					"role": "tool",
+					"content": result["result"],
+					"tool_call_id": result["call_id"]
+				})
+
+			# Add tool results to context and ask LLM to synthesize response
+			llm_messages.append({
+				"role": "assistant",
+				"content": assistant_content if assistant_content else ""
+			})
+			llm_messages.extend(tool_output_messages)
+
+			# Get final response from LLM
+			final_response = await llm_client.chat(llm_messages)
+			assistant_content = final_response
+
+			# Save assistant message with tool execution metadata
+			assistant_message = ChatMessage(
+				session_id=session_id,
+				role=MessageRole.ASSISTANT,
+				content=assistant_content,
+				tool_calls=[{
+					"tool_name": tc["name"],
+					"args": tc["args"],
+					"id": tc["id"],
+					"status": "executed",
+					"result": next((r["result"] for r in tool_results if r["tool_name"] == tc["name"]), None)
+				} for tc in tool_calls]
+			)
+		else:
+			# No tool calls, just save regular assistant message
+			assistant_message = ChatMessage(
+				session_id=session_id,
+				role=MessageRole.ASSISTANT,
+				content=assistant_content
+			)
+
 		db.add(assistant_message)
 		await db.commit()
 		await db.refresh(assistant_message)
 
-		# 5. Update cache with new messages
+		# 7. Update cache with new messages
 		cached_entry = cache.get(session_id)
 		if cached_entry:
 			cached_entry.messages.append({"role": "user", "content": message_data.content})
@@ -277,7 +369,7 @@ async def send_message(
 		return assistant_message
 
 	except Exception as e:
-		logger.error(f"Error calling LLM: {str(e)}")
+		logger.error(f"Error calling LLM: {str(e)}", exc_info=True)
 		# Save error message
 		error_content = f"Sorry, I encountered an error: {str(e)}"
 		assistant_message = ChatMessage(

@@ -36,8 +36,19 @@ class ToolsRegistry:
 
                 obj = getattr(module, name)
 
-                # Check if it's a tool (has _tool_category attribute from our decorator)
-                if hasattr(obj, '_tool_category'):
+                # Check if it's a LangChain StructuredTool
+                if hasattr(obj, 'coroutine') and callable(obj.coroutine):
+                    # The original function is in the coroutine attribute
+                    original_func = obj.coroutine
+                    if hasattr(original_func, '_tool_category'):
+                        # Copy metadata from original function to tool object
+                        obj._tool_category = original_func._tool_category
+                        obj._requires_authorization = original_func._requires_authorization
+                        obj._authorization_scope = getattr(original_func, '_authorization_scope', None)
+                        self._tools[name] = obj
+                        logger.info(f"Registered tool: {name} (category: {obj._tool_category})")
+                elif hasattr(obj, '_tool_category'):
+                    # Direct function with metadata (fallback)
                     self._tools[name] = obj
                     logger.info(f"Registered tool: {name} (category: {obj._tool_category})")
 
