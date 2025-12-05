@@ -5,7 +5,9 @@ API routes for agent chat functionality.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from sqlalchemy.orm.attributes import flag_modified
+from typing import List, Dict, Any
+from datetime import datetime
 import uuid
 import logging
 
@@ -21,6 +23,10 @@ from web.schemas.agent import (
 	SessionSyncRequest,
 	SessionListItem,
 	TitleUpdateRequest,
+)
+from web.schemas.tools import (
+	ToolAuthorizationRequest,
+	AuthorizationResponse,
 )
 from web.config import get_settings
 from web.agent.llm_client import get_llm_client
@@ -495,3 +501,122 @@ async def update_title(
 	await db.refresh(session)
 
 	return session
+
+
+# ============================================================================
+# Tool Authorization Endpoints
+# ============================================================================
+
+@router.post("/sessions/{session_id}/authorize", response_model=AuthorizationResponse)
+async def grant_tool_authorization(
+	session_id: str,
+	auth_data: ToolAuthorizationRequest,
+	db: AsyncSession = Depends(get_db)
+):
+	"""
+	Grant authorization for specific tool scopes.
+
+	This allows the agent to execute privileged operations (bash commands, file operations, etc.)
+	within this chat session. Authorizations can have an expiration time or be permanent
+	for the session duration.
+	"""
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	session = result.scalar_one_or_none()
+	if not session:
+		raise HTTPException(status_code=404, detail="Session not found")
+
+	# Initialize metadata if needed
+	metadata = session.session_metadata or {}
+	if "tool_authorizations" not in metadata:
+		metadata["tool_authorizations"] = {}
+
+	# Grant authorization for each scope
+	now = datetime.utcnow()
+	for scope in auth_data.scopes:
+		metadata["tool_authorizations"][scope] = {
+			"granted": True,
+			"granted_at": now.isoformat(),
+			"expires_at": auth_data.expires_at.isoformat() if auth_data.expires_at else None
+		}
+		logger.info(f"Granted authorization for scope '{scope}' in session {session_id}")
+
+	session.session_metadata = metadata
+	flag_modified(session, "session_metadata")  # Tell SQLAlchemy the JSON field changed
+	await db.commit()
+
+	return AuthorizationResponse(status="granted", scopes=auth_data.scopes)
+
+
+@router.get("/sessions/{session_id}/authorizations")
+async def get_authorizations(
+	session_id: str,
+	db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+	"""
+	Get current authorization grants for a session.
+
+	Returns only active (non-expired) authorizations.
+	"""
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	session = result.scalar_one_or_none()
+	if not session:
+		raise HTTPException(status_code=404, detail="Session not found")
+
+	authorizations = {}
+	if session.session_metadata and "tool_authorizations" in session.session_metadata:
+		now = datetime.utcnow()
+
+		# Filter out expired grants
+		for scope, grant in session.session_metadata["tool_authorizations"].items():
+			if not grant.get("granted"):
+				continue
+
+			expires_at = grant.get("expires_at")
+			if expires_at is None or datetime.fromisoformat(expires_at) > now:
+				authorizations[scope] = grant
+			else:
+				logger.debug(f"Authorization for scope '{scope}' expired in session {session_id}")
+
+	return {"authorizations": authorizations}
+
+
+@router.delete("/sessions/{session_id}/authorize/{scope}", response_model=AuthorizationResponse)
+async def revoke_authorization(
+	session_id: str,
+	scope: str,
+	db: AsyncSession = Depends(get_db)
+):
+	"""
+	Revoke authorization for a specific scope.
+
+	This immediately removes the user's authorization for the specified operation type.
+	"""
+	result = await db.execute(
+		select(ChatSession).where(ChatSession.session_id == session_id)
+	)
+	session = result.scalar_one_or_none()
+	if not session:
+		raise HTTPException(status_code=404, detail="Session not found")
+
+	metadata = session.session_metadata or {}
+	revoked = False
+
+	if "tool_authorizations" in metadata and scope in metadata["tool_authorizations"]:
+		metadata["tool_authorizations"][scope]["granted"] = False
+		session.session_metadata = metadata
+		flag_modified(session, "session_metadata")  # Tell SQLAlchemy the JSON field changed
+		await db.commit()
+		revoked = True
+		logger.info(f"Revoked authorization for scope '{scope}' in session {session_id}")
+
+	if not revoked:
+		raise HTTPException(
+			status_code=404,
+			detail=f"No active authorization found for scope '{scope}'"
+		)
+
+	return AuthorizationResponse(status="revoked", scopes=[scope])

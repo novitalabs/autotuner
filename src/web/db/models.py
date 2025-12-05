@@ -169,6 +169,7 @@ class ChatSession(Base):
 	title = Column(String, nullable=True)  # Session title (auto-generated or user-edited)
 	context_summary = Column(Text, nullable=True)  # Long-term context summary
 	is_active = Column(Boolean, default=True, index=True)
+	session_metadata = Column("metadata", JSON, nullable=True)  # Session metadata including tool authorizations
 	created_at = Column(DateTime, default=datetime.utcnow)
 	updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
