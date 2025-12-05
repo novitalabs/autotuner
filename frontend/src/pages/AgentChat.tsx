@@ -46,19 +46,32 @@ export default function AgentChat() {
 		return () => clearInterval(interval);
 	}, [sessionId, sessionTitle]);
 
-	// Parse session ID from URL hash
+	// Parse session ID from URL hash and listen for changes
 	useEffect(() => {
-		const hash = window.location.hash.slice(1); // Remove #
-		const params = new URLSearchParams(hash.split("?")[1] || "");
-		const sessionParam = params.get("session");
+		const handleHashChange = () => {
+			const hash = window.location.hash.slice(1); // Remove #
+			const params = new URLSearchParams(hash.split("?")[1] || "");
+			const sessionParam = params.get("session");
 
-		if (sessionParam) {
-			setSessionId(sessionParam);
-			loadMessagesFromIndexedDB(sessionParam);
-		} else {
-			// No session ID in URL - show empty state
-			setLoadingFromDb(false);
-		}
+			if (sessionParam) {
+				setSessionId(sessionParam);
+				setLoadingFromDb(true);
+				loadMessagesFromIndexedDB(sessionParam);
+			} else {
+				// No session ID in URL - show empty state
+				setSessionId(null);
+				setMessages([]);
+				setSessionTitle("");
+				setLoadingFromDb(false);
+			}
+		};
+
+		// Initial load
+		handleHashChange();
+
+		// Listen for hash changes (when switching sessions)
+		window.addEventListener('hashchange', handleHashChange);
+		return () => window.removeEventListener('hashchange', handleHashChange);
 	}, []);
 
 	// Load messages from IndexedDB (fast initial load)
