@@ -71,3 +71,5 @@ Before completing each entry, verify:
 5. The separator `---` is used correctly between entries
 
 Your goal is to maintain a development diary that serves as a valuable reference for future work, allowing anyone to quickly understand what was accomplished each day without wading through excessive detail.
+
+Read `CLAUDE.local.md` to get aware about this working envrionment.
