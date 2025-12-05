@@ -18,6 +18,9 @@ export default function AgentChat() {
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitleValue, setEditTitleValue] = useState("");
 	const [input, setInput] = useState("");
+	const [streamingContent, setStreamingContent] = useState("");
+	const [isStreaming, setIsStreaming] = useState(false);
+	const [toolCallStatus, setToolCallStatus] = useState<string | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const queryClient = useQueryClient();
@@ -107,7 +110,7 @@ export default function AgentChat() {
 		refetchOnMount: true,
 	});
 
-	// Send message mutation with IndexedDB sync
+	// Send message mutation with IndexedDB sync and streaming
 	const sendMessageMutation = useMutation({
 		mutationFn: async (content: string) => {
 			if (!sessionId) throw new Error("No session ID");
@@ -149,24 +152,93 @@ export default function AgentChat() {
 			// Update local state immediately
 			setMessages(prev => [...prev, userMessage]);
 
-			// Send to backend
-			const response = await agentApi.sendMessage(sessionId, { content });
+			// HYBRID STREAMING MODE:
+			// - Initial response: streamed for progressive display
+			// - Tool execution: shown in real-time status
+			// - Final response after tools: non-streamed (Jiekou API limitation with ToolMessage)
+			//
+			// Note: Full streaming with tool results doesn't work due to Jiekou API returning
+			// 400 errors when ToolMessage entries are included in streaming requests.
+			// The backend now uses non-streaming for the final synthesis after tools.
 
-			// Save assistant response to IndexedDB
-			const assistantMessage: MessageData = {
-				session_id: sessionId,
-				role: "assistant",
-				content: response.content,
-				tool_calls: response.tool_calls || undefined,
-				created_at: response.created_at,
-				synced_to_backend: true,
-			};
-			await storage.saveMessage(sessionId, assistantMessage);
+			// Reset streaming state
+			setStreamingContent("");
+			setIsStreaming(true);
+			setToolCallStatus(null);
 
-			// Update session timestamp
-			await storage.updateSessionTimestamp(sessionId);
+			// Track accumulated content for error recovery
+			let accumulatedContent = "";
 
-			return { userMessage, assistantMessage };
+			try {
+				const response = await agentApi.sendMessageStream(
+					sessionId,
+					{ content },
+					(chunk) => {
+						if (chunk.type === "content") {
+							// Append streaming content
+							const newContent = chunk.content || "";
+							accumulatedContent += newContent;
+							setStreamingContent(prev => prev + newContent);
+						} else if (chunk.type === "tool_start") {
+							// Tool execution started
+							const toolNames = chunk.tool_calls?.map(tc => tc.name).join(", ") || "";
+							setToolCallStatus(`Calling tools: ${toolNames}...`);
+						} else if (chunk.type === "tool_results") {
+							setToolCallStatus("Processing tool results...");
+						} else if (chunk.type === "final_response_start") {
+							setToolCallStatus(null);
+							// Don't reset accumulatedContent, but reset display
+							setStreamingContent("");
+						} else if (chunk.type === "error") {
+							console.error("Stream error:", chunk.error);
+							setToolCallStatus(null);
+							setIsStreaming(false);
+						}
+					}
+				);
+
+				setIsStreaming(false);
+				setStreamingContent("");
+				setToolCallStatus(null);
+
+				// Save assistant response to IndexedDB
+				const assistantMessage: MessageData = {
+					session_id: sessionId,
+					role: "assistant",
+					content: response.content,
+					tool_calls: response.tool_calls || undefined,
+					created_at: response.created_at,
+					synced_to_backend: true,
+				};
+				await storage.saveMessage(sessionId, assistantMessage);
+
+				// Update session timestamp
+				await storage.updateSessionTimestamp(sessionId);
+
+				return { userMessage, assistantMessage };
+			} catch (error) {
+				// Error occurred, but save what we got so far
+				setIsStreaming(false);
+				setStreamingContent("");
+				setToolCallStatus(null);
+
+				if (accumulatedContent) {
+					// Save partial response
+					const partialMessage: MessageData = {
+						session_id: sessionId,
+						role: "assistant",
+						content: accumulatedContent + "\n\n[Error: Response incomplete due to server error]",
+						created_at: new Date().toISOString(),
+						synced_to_backend: false,
+					};
+					await storage.saveMessage(sessionId, partialMessage);
+
+					// Update local state
+					setMessages(prev => [...prev, partialMessage]);
+				}
+
+				throw error;
+			}
 		},
 		onSuccess: (data) => {
 			// Update local state with assistant response
@@ -212,7 +284,7 @@ export default function AgentChat() {
 	// Auto-scroll to bottom
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages]);
+	}, [messages, streamingContent, toolCallStatus]);
 
 	const handleSend = () => {
 		if (!input.trim() || !sessionId) return;
@@ -479,6 +551,31 @@ AGENT_MODEL=gpt-4`}
 						<MessageBubble key={message.id || idx} message={message} />
 					))
 				)}
+
+				{/* Streaming message */}
+				{isStreaming && streamingContent && (
+					<div className="flex justify-start">
+						<div className="group relative max-w-3xl">
+							<div className="rounded-lg px-4 py-3 bg-white border border-gray-200 text-gray-900">
+								<div className="text-sm whitespace-pre-wrap break-words">
+									{streamingContent}
+									<span className="inline-block w-2 h-4 ml-1 bg-blue-600 animate-pulse"></span>
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Tool calling status */}
+				{toolCallStatus && (
+					<div className="flex justify-start">
+						<div className="rounded-lg px-4 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm flex items-center gap-2">
+							<Loader2 className="w-4 h-4 animate-spin" />
+							{toolCallStatus}
+						</div>
+					</div>
+				)}
+
 				<div ref={messagesEndRef} />
 			</div>
 
@@ -516,19 +613,8 @@ AGENT_MODEL=gpt-4`}
 function MessageBubble({ message }: { message: MessageData }) {
 	const isUser = message.role === "user";
 
-	// Debug logging
-	console.log("[MessageBubble] Message:", {
-		role: message.role,
-		hasToolCalls: !!message.tool_calls,
-		toolCallsType: typeof message.tool_calls,
-		toolCallsIsArray: Array.isArray(message.tool_calls),
-		toolCallsLength: message.tool_calls?.length,
-		toolCalls: message.tool_calls,
-	});
-
 	const handleAuthorize = (scope: string) => {
 		// TODO: Implement authorization flow
-		console.log("Authorization requested for scope:", scope);
 		alert(`Authorization for ${scope} will be implemented in next step`);
 	};
 
@@ -553,17 +639,13 @@ function MessageBubble({ message }: { message: MessageData }) {
 					{/* Tool calls - only for assistant messages */}
 					{!isUser && message.tool_calls && message.tool_calls.length > 0 && (
 						<div className="mt-2">
-							{console.log("[MessageBubble] Rendering tool calls:", message.tool_calls.length)}
-							{message.tool_calls.map((toolCall: any, index: number) => {
-								console.log(`[MessageBubble] Rendering ToolCallCard #${index}:`, toolCall);
-								return (
-									<ToolCallCard
-										key={toolCall.id}
-										toolCall={toolCall}
-										onAuthorize={handleAuthorize}
-									/>
-								);
-							})}
+							{message.tool_calls.map((toolCall: any, index: number) => (
+								<ToolCallCard
+									key={toolCall.id}
+									toolCall={toolCall}
+									onAuthorize={handleAuthorize}
+								/>
+							))}
 						</div>
 					)}
 				</div>

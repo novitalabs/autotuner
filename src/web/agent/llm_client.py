@@ -201,6 +201,106 @@ class LangChainLLMClient:
 			logger.error(f"Error in chat_with_tools: {str(e)}")
 			raise
 
+	async def chat_with_tools_stream(
+		self,
+		messages: List[Dict[str, str]],
+		tools: List[BaseTool],
+		temperature: float = 0.7
+	):
+		"""
+		Stream chat messages with tool binding.
+
+		Args:
+			messages: List of message dicts with 'role' and 'content'
+			tools: List of LangChain BaseTool objects available for the LLM
+			temperature: Sampling temperature
+
+		Yields:
+			Dict chunks with:
+				- 'type': 'content' | 'tool_call' | 'done'
+				- 'content': Text chunk (for type='content')
+				- 'tool_call': Tool call info (for type='tool_call')
+				- 'complete_message': Full message (for type='done')
+		"""
+		# Convert dict messages to LangChain message objects
+		langchain_messages = []
+		for msg in messages:
+			role = msg["role"]
+			content = msg.get("content", "")
+
+			if role == "system":
+				langchain_messages.append(SystemMessage(content=content))
+			elif role == "user":
+				langchain_messages.append(HumanMessage(content=content))
+			elif role == "assistant":
+				langchain_messages.append(AIMessage(content=content))
+			elif role == "tool":
+				langchain_messages.append(ToolMessage(
+					content=content,
+					tool_call_id=msg.get("tool_call_id", "")
+				))
+
+		# Get chat model
+		chat_model = self._get_chat_model()
+
+		# Override temperature if needed
+		if temperature != 0.7:
+			provider = self.settings.agent_provider
+			if provider in ["jiekou", "local", "openai"]:
+				chat_model = ChatOpenAI(
+					model=self.settings.agent_model,
+					openai_api_base=self.settings.agent_base_url,
+					openai_api_key=self.settings.agent_api_key or "dummy",
+					temperature=temperature,
+					max_tokens=2000,
+					timeout=60.0,
+				)
+			elif provider == "claude":
+				chat_model = ChatAnthropic(
+					model=self.settings.agent_model,
+					anthropic_api_key=self.settings.agent_api_key,
+					temperature=temperature,
+					max_tokens=2000,
+					timeout=60.0,
+				)
+
+		# Bind tools to the model
+		chat_model_with_tools = chat_model.bind_tools(tools)
+
+		# Stream the model
+		try:
+			full_content = ""
+			tool_calls = []
+
+			async for chunk in chat_model_with_tools.astream(langchain_messages):
+				# Handle content chunks
+				if chunk.content:
+					full_content += chunk.content
+					yield {
+						"type": "content",
+						"content": chunk.content
+					}
+
+				# Handle tool calls (accumulated in final chunk)
+				if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+					for tool_call in chunk.tool_calls:
+						tool_calls.append({
+							"name": tool_call["name"],
+							"args": tool_call["args"],
+							"id": tool_call.get("id", "")
+						})
+
+			# Send complete message at end
+			yield {
+				"type": "done",
+				"content": full_content,
+				"tool_calls": tool_calls
+			}
+
+		except Exception as e:
+			logger.error(f"Error in chat_with_tools_stream: {str(e)}")
+			raise
+
 
 # Singleton instance
 _llm_client: Optional[LangChainLLMClient] = None

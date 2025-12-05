@@ -266,9 +266,7 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 
 		# 5. Call LLM with tools
 		llm_client = get_llm_client()
-		print(f"[DEBUG] Calling LLM with {len(available_tools)} tools available")
 		llm_response = await llm_client.chat_with_tools(llm_messages, available_tools)
-		print(f"[DEBUG] LLM response: content_length={len(llm_response['content']) if llm_response['content'] else 0}, tool_calls={len(llm_response['tool_calls'])}")
 
 		assistant_content = llm_response["content"]
 		tool_calls = llm_response["tool_calls"]
@@ -393,6 +391,210 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 		await db.commit()
 		await db.refresh(assistant_message)
 		return assistant_message
+
+
+@router.post("/sessions/{session_id}/messages/stream")
+async def send_message_stream(
+	session_id: str,
+	message_data: ChatMessageCreate,
+	db: AsyncSession = Depends(get_db),
+):
+	"""Send a message and stream LLM response with tool support."""
+	from fastapi.responses import StreamingResponse
+	import json
+	import asyncio
+
+	async def event_stream():
+		"""SSE event stream generator."""
+		try:
+			# 1. Check memory cache first
+			cache = get_session_cache()
+			cached_entry = cache.get(session_id)
+
+			if cached_entry:
+				recent_messages = cached_entry.messages
+				logger.debug(f"Cache hit for session {session_id}")
+			else:
+				logger.debug(f"Cache miss for session {session_id}, loading from database")
+				result = await db.execute(
+					select(ChatSession).where(ChatSession.session_id == session_id)
+				)
+				session = result.scalar_one_or_none()
+				if not session:
+					yield f"data: {json.dumps({'type': 'error', 'error': 'Session not found'})}\n\n"
+					return
+
+				result = await db.execute(
+					select(ChatMessage)
+					.where(ChatMessage.session_id == session_id)
+					.order_by(ChatMessage.created_at.desc())
+					.limit(20)
+				)
+				messages_from_db = list(reversed(result.scalars().all()))
+				recent_messages = [
+					{"role": msg.role.value, "content": msg.content}
+					for msg in messages_from_db
+				]
+				cache.set(session_id, recent_messages)
+
+			# 2. Save user message
+			user_message = ChatMessage(
+				session_id=session_id, role=MessageRole.USER, content=message_data.content
+			)
+			db.add(user_message)
+			await db.commit()
+			await db.refresh(user_message)
+
+			# 3. Build LLM context
+			llm_messages = [{
+				"role": "system",
+				"content": """You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results.
+
+You have access to various tools for querying tasks, experiments, parameter presets, and external APIs. Use these tools when needed to provide accurate, data-driven responses."""
+			}]
+			llm_messages.extend(recent_messages)
+			llm_messages.append({"role": "user", "content": message_data.content})
+
+			# 4. Get tools
+			executor = ToolExecutor(session_id, db)
+			available_tools = executor.get_available_tools(include_privileged=False)
+
+			# 5. Stream LLM response
+			llm_client = get_llm_client()
+			logger.info(f"Starting stream with {len(available_tools)} tools available")
+
+			assistant_content = ""
+			tool_calls = []
+
+			async for chunk in llm_client.chat_with_tools_stream(llm_messages, available_tools):
+				if chunk["type"] == "content":
+					assistant_content += chunk["content"]
+					# Send content chunk to frontend
+					yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']})}\n\n"
+					await asyncio.sleep(0.01)  # Small delay to prevent overwhelming client
+
+				elif chunk["type"] == "done":
+					assistant_content = chunk["content"]
+					tool_calls = chunk["tool_calls"]
+
+			# 6. Handle tool calls if any
+			if tool_calls:
+				logger.info(f"Processing {len(tool_calls)} tool calls")
+
+				# Send tool calling status
+				yield f"data: {json.dumps({'type': 'tool_start', 'tool_calls': tool_calls})}\n\n"
+
+				# Execute tools
+				tool_results = await executor.execute_tool_calls(tool_calls)
+
+				# Send tool results
+				yield f"data: {json.dumps({'type': 'tool_results', 'results': tool_results})}\n\n"
+
+				# Check for authorization errors
+				auth_required = []
+				for result in tool_results:
+					if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
+						auth_required.append({
+							"tool_name": result["tool_name"],
+							"auth_scope": result["auth_scope"]
+						})
+
+				if auth_required:
+					# Save message with auth requirement
+					assistant_message = ChatMessage(
+						session_id=session_id,
+						role=MessageRole.ASSISTANT,
+						content=assistant_content if assistant_content else "I need authorization to perform some operations.",
+						tool_calls=[{
+							"tool_name": tc["name"],
+							"args": {k: v for k, v in tc["args"].items() if k != "db"},
+							"id": tc["id"],
+							"status": "requires_auth",
+							"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
+						} for tc in tool_calls],
+						message_metadata={"auth_required": auth_required}
+					)
+					db.add(assistant_message)
+					await db.commit()
+					await db.refresh(assistant_message)
+
+					# Send completion
+					yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
+					return
+
+				# Get final response with tool results
+				tool_output_messages = []
+				for result in tool_results:
+					# Ensure tool_call_id is not None
+					call_id = result.get("call_id") or result.get("tool_name", "unknown")
+					tool_output_messages.append({
+						"role": "tool",
+						"content": result["result"],
+						"tool_call_id": call_id
+					})
+
+				llm_messages.append({"role": "assistant", "content": assistant_content if assistant_content else ""})
+				llm_messages.extend(tool_output_messages)
+
+				# Get final response using non-streaming (streaming fails with tool messages)
+				# Note: Jiekou API doesn't support streaming after tool calls due to ToolMessage format
+				yield f"data: {json.dumps({'type': 'final_response_start'})}\n\n"
+
+				final_content = await llm_client.chat(llm_messages)
+
+				# Send the complete final response as one chunk
+				yield f"data: {json.dumps({'type': 'content', 'content': final_content})}\n\n"
+
+				assistant_content = final_content
+
+				# Save with tool execution metadata
+				assistant_message = ChatMessage(
+					session_id=session_id,
+					role=MessageRole.ASSISTANT,
+					content=assistant_content,
+					tool_calls=[{
+						"tool_name": tc["name"],
+						"args": {k: v for k, v in tc["args"].items() if k != "db"},
+						"id": tc["id"],
+						"status": "executed",
+						"result": next((r["result"] for r in tool_results if r["tool_name"] == tc["name"]), None)
+					} for tc in tool_calls]
+				)
+			else:
+				# No tool calls, save regular message
+				assistant_message = ChatMessage(
+					session_id=session_id,
+					role=MessageRole.ASSISTANT,
+					content=assistant_content
+				)
+
+			db.add(assistant_message)
+			await db.commit()
+			await db.refresh(assistant_message)
+
+			# 7. Update cache
+			cached_entry = cache.get(session_id)
+			if cached_entry:
+				cached_entry.messages.append({"role": "user", "content": message_data.content})
+				cached_entry.messages.append({"role": "assistant", "content": assistant_content})
+				cached_entry.messages = cached_entry.messages[-20:]
+
+			# Send completion
+			yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
+
+		except Exception as e:
+			logger.error(f"Error in stream: {str(e)}", exc_info=True)
+			yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+	return StreamingResponse(
+		event_stream(),
+		media_type="text/event-stream",
+		headers={
+			"Cache-Control": "no-cache",
+			"Connection": "keep-alive",
+			"X-Accel-Buffering": "no"  # Disable nginx buffering
+		}
+	)
 
 
 @router.post(

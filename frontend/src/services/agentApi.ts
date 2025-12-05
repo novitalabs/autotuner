@@ -53,6 +53,87 @@ export const agentApi = {
 	): Promise<ChatMessage> =>
 		apiClient.post(`/agent/sessions/${sessionId}/messages`, data),
 
+	sendMessageStream: (
+		sessionId: string,
+		data: ChatMessageCreateRequest,
+		onChunk: (chunk: {
+			type: "content" | "tool_start" | "tool_results" | "final_response_start" | "complete" | "error";
+			content?: string;
+			tool_calls?: any[];
+			results?: any[];
+			message?: ChatMessage;
+			error?: string;
+		}) => void
+	) => {
+		// Use native EventSource for SSE
+		const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+		const url = `${baseURL}/api/agent/sessions/${sessionId}/messages/stream`;
+
+		return new Promise<ChatMessage>((resolve, reject) => {
+			// Use fetch with streaming instead of EventSource for POST
+			fetch(url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(data),
+			})
+				.then((response) => {
+					if (!response.ok) {
+						throw new Error(`HTTP error! status: ${response.status}`);
+					}
+
+					const reader = response.body?.getReader();
+					if (!reader) {
+						throw new Error("No reader available");
+					}
+
+					const decoder = new TextDecoder();
+					let buffer = "";
+
+					function processChunk(): any {
+						return reader.read().then(({ done, value }) => {
+							if (done) {
+								return;
+							}
+
+							buffer += decoder.decode(value, { stream: true });
+							const lines = buffer.split("\n");
+							buffer = lines.pop() || "";
+
+							for (const line of lines) {
+								if (line.startsWith("data: ")) {
+									try {
+										const data = JSON.parse(line.slice(6));
+										onChunk(data);
+
+										if (data.type === "complete") {
+											resolve(data.message);
+											return;
+										} else if (data.type === "error") {
+											console.error("[agentApi] Error:", data.error);
+											reject(new Error(data.error));
+											return;
+										}
+									} catch (e) {
+										console.error("Failed to parse SSE data:", line, e);
+									}
+								}
+							}
+
+							return processChunk();
+						});
+					}
+
+					return processChunk();
+				})
+				.catch((error) => {
+					console.error("[agentApi] Stream error:", error);
+					reject(error);
+				});
+		});
+	},
+
 	// Event subscriptions
 	subscribeToTask: (
 		sessionId: string,
