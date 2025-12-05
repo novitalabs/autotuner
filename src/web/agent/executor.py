@@ -132,19 +132,22 @@ class ToolExecutor:
 
 		# Execute tool
 		try:
+			# Make a copy of tool_args to avoid mutating the original
+			execution_args = tool_args.copy()
+
 			# Inject database session for database tools
 			if hasattr(tool, "_tool_category") and tool._tool_category.value == "database":
-				tool_args["db"] = self.db
+				execution_args["db"] = self.db
 
-			logger.info(f"Executing tool '{tool_name}' with args: {tool_args}")
+			logger.info(f"Executing tool '{tool_name}' with args (excluding db): {tool_args}")
 
 			# Execute the tool
 			if hasattr(tool, "ainvoke"):
 				# Async tool
-				result = await tool.ainvoke(tool_args)
+				result = await tool.ainvoke(execution_args)
 			else:
 				# Sync tool (shouldn't happen with our tools, but handle it)
-				result = tool.invoke(tool_args)
+				result = tool.invoke(execution_args)
 
 			logger.info(f"Tool '{tool_name}' executed successfully")
 

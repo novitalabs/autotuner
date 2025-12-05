@@ -264,32 +264,36 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 		executor = ToolExecutor(session_id, db)
 		available_tools = executor.get_available_tools(include_privileged=False)  # Only safe tools for now
 
-		# 5. Call LLM with tools
+		# 5. Multi-turn tool calling loop
 		llm_client = get_llm_client()
-		llm_response = await llm_client.chat_with_tools(llm_messages, available_tools)
+		max_iterations = 10
+		iteration = 0
+		assistant_content = ""
+		all_tool_calls = []  # Track all tool calls across iterations
+		all_tool_results = []  # Track all tool results across iterations
+		termination_reason = "natural"  # Track why loop ended
 
-		assistant_content = llm_response["content"]
-		tool_calls = llm_response["tool_calls"]
+		while iteration < max_iterations:
+			iteration += 1
+			logger.info(f"Multi-turn iteration {iteration}/{max_iterations} for session {session_id}")
 
-		# Filter out 'db' parameter from tool_calls before saving to database
-		# The LLM may include 'db' in args, but it's not JSON serializable
-		def clean_tool_call_args(tool_call):
-			"""Remove db parameter from tool call args for JSON serialization"""
-			cleaned_tc = tool_call.copy()
-			if "args" in cleaned_tc and isinstance(cleaned_tc["args"], dict):
-				cleaned_args = {k: v for k, v in cleaned_tc["args"].items() if k != "db"}
-				cleaned_tc["args"] = cleaned_args
-			return cleaned_tc
+			# 5a. Call LLM with tools
+			llm_response = await llm_client.chat_with_tools(llm_messages, available_tools)
 
-		# 6. Handle tool calls if any
-		tool_results = []
-		if tool_calls:
-			logger.info(f"Processing {len(tool_calls)} tool calls")
+			assistant_content = llm_response["content"]
+			tool_calls = llm_response["tool_calls"]
 
-			# Execute all tool calls
+			# 5b. Check if LLM wants to stop (no tool calls)
+			if not tool_calls:
+				logger.info(f"LLM returned no tool calls - natural termination at iteration {iteration}")
+				break
+
+			logger.info(f"Processing {len(tool_calls)} tool calls in iteration {iteration}")
+
+			# 5c. Execute all tool calls
 			tool_results = await executor.execute_tool_calls(tool_calls)
 
-			# Check for authorization errors
+			# 5d. Check for authorization errors
 			auth_required = []
 			for result in tool_results:
 				if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
@@ -298,21 +302,26 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 						"auth_scope": result["auth_scope"]
 					})
 
-			# If any tools require authorization, save message with tool_calls metadata
+			# If any tools require authorization, stop loop and return auth request
 			if auth_required:
+				logger.info(f"Authorization required in iteration {iteration}, stopping multi-turn loop")
+				termination_reason = "auth_required"
+
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
 					content=assistant_content if assistant_content else "I need authorization to perform some operations.",
 					tool_calls=[{
 						"tool_name": tc["name"],
-						"args": {k: v for k, v in tc["args"].items() if k != "db"},  # Filter out db parameter
+						"args": {k: v for k, v in tc["args"].items() if k != "db"},
 						"id": tc["id"],
 						"status": "requires_auth",
 						"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
 					} for tc in tool_calls],
 					message_metadata={
-						"auth_required": auth_required
+						"auth_required": auth_required,
+						"iterations": iteration,
+						"termination_reason": termination_reason
 					}
 				)
 				db.add(assistant_message)
@@ -322,46 +331,88 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 				logger.info(f"Saved message with authorization requirement for session {session_id}")
 				return assistant_message
 
-			# All tools executed successfully, format results
-			tool_output_messages = []
-			for result in tool_results:
-				tool_output_messages.append({
-					"role": "tool",
-					"content": result["result"],
-					"tool_call_id": result["call_id"]
-				})
+			# 5e. Check for execution errors
+			# NOTE: Jiekou API has issues with ToolMessage in conversation history,
+			# especially when tools fail. So we stop here instead of continuing.
+			failed_tools = [r for r in tool_results if not r["success"]]
+			if failed_tools:
+				logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, terminating loop (Jiekou API limitation)")
+				termination_reason = "tool_execution_error"
 
-			# Add tool results to context and ask LLM to synthesize response
+				# Build error summary for user
+				error_summary = "\n\nSome tool calls failed:\n"
+				for failed in failed_tools:
+					error_summary += f"- {failed.get('tool_name', 'unknown')}: {failed.get('result', 'Unknown error')}\n"
+				assistant_content = (assistant_content or "") + error_summary
+
+				# Break out of loop - don't add ToolMessage to avoid Jiekou API 400 error
+				all_tool_calls.extend(tool_calls)
+				all_tool_results.extend(tool_results)
+				break
+
+			# 5f. Add assistant message with tool calls to context
 			llm_messages.append({
 				"role": "assistant",
 				"content": assistant_content if assistant_content else ""
 			})
-			llm_messages.extend(tool_output_messages)
 
-			# Get final response from LLM
-			final_response = await llm_client.chat(llm_messages)
-			assistant_content = final_response
+			# 5g. Add tool results to context as ToolMessage
+			for result in tool_results:
+				call_id = result.get("call_id") or result.get("tool_name", "unknown")
+				llm_messages.append({
+					"role": "tool",
+					"content": result["result"],
+					"tool_call_id": call_id
+				})
 
-			# Save assistant message with tool execution metadata
+			# 5h. Track all tool calls and results for database storage
+			all_tool_calls.extend(tool_calls)
+			all_tool_results.extend(tool_results)
+
+		# Check if max iterations reached
+		if iteration >= max_iterations:
+			logger.warning(f"Reached max iterations ({max_iterations}) for session {session_id}")
+			termination_reason = "max_iterations"
+			assistant_content += "\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
+
+		# 6. Save final assistant message with complete tool execution history
+		if all_tool_calls:
+			# Find result for each tool call
+			def find_result_for_call(call_id):
+				for r in all_tool_results:
+					if r.get("call_id") == call_id:
+						return r.get("result")
+				# Fallback: match by tool_name if call_id doesn't match
+				for r in all_tool_results:
+					if r.get("tool_name") == call_id:
+						return r.get("result")
+				return None
+
 			assistant_message = ChatMessage(
 				session_id=session_id,
 				role=MessageRole.ASSISTANT,
 				content=assistant_content,
 				tool_calls=[{
 					"tool_name": tc["name"],
-					"args": {k: v for k, v in tc["args"].items() if k != "db"},  # Filter out db parameter
+					"args": {k: v for k, v in tc["args"].items() if k != "db"},
 					"id": tc["id"],
 					"status": "executed",
-					"result": next((r["result"] for r in tool_results if r["tool_name"] == tc["name"]), None)
-				} for tc in tool_calls]
+					"result": find_result_for_call(tc["id"])
+				} for tc in all_tool_calls],
+				message_metadata={
+					"iterations": iteration,
+					"termination_reason": termination_reason
+				}
 			)
 		else:
-			# No tool calls, just save regular assistant message
+			# No tool calls at all - simple response
 			assistant_message = ChatMessage(
 				session_id=session_id,
 				role=MessageRole.ASSISTANT,
 				content=assistant_content
 			)
+
+		logger.info(f"Multi-turn conversation completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}")
 
 		db.add(assistant_message)
 		await db.commit()
@@ -459,38 +510,62 @@ You have access to various tools for querying tasks, experiments, parameter pres
 			executor = ToolExecutor(session_id, db)
 			available_tools = executor.get_available_tools(include_privileged=False)
 
-			# 5. Stream LLM response
+			# 5. Multi-turn tool calling loop with streaming
 			llm_client = get_llm_client()
-			logger.info(f"Starting stream with {len(available_tools)} tools available")
-
+			max_iterations = 10
+			iteration = 0
 			assistant_content = ""
-			tool_calls = []
+			all_tool_calls = []  # Track all tool calls across iterations
+			all_tool_results = []  # Track all tool results across iterations
+			termination_reason = "natural"
 
-			async for chunk in llm_client.chat_with_tools_stream(llm_messages, available_tools):
-				if chunk["type"] == "content":
-					assistant_content += chunk["content"]
-					# Send content chunk to frontend
-					yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']})}\n\n"
-					await asyncio.sleep(0.01)  # Small delay to prevent overwhelming client
+			logger.info(f"Starting multi-turn stream with {len(available_tools)} tools available")
 
-				elif chunk["type"] == "done":
-					assistant_content = chunk["content"]
-					tool_calls = chunk["tool_calls"]
+			while iteration < max_iterations:
+				iteration += 1
+				logger.info(f"Multi-turn streaming iteration {iteration}/{max_iterations} for session {session_id}")
 
-			# 6. Handle tool calls if any
-			if tool_calls:
-				logger.info(f"Processing {len(tool_calls)} tool calls")
+				# Send iteration start event
+				yield f"data: {json.dumps({'type': 'iteration_start', 'iteration': iteration, 'max_iterations': max_iterations})}\n\n"
+
+				# 5a. Stream LLM response for this iteration
+				tool_calls = []
+				iteration_content = ""
+
+				async for chunk in llm_client.chat_with_tools_stream(llm_messages, available_tools):
+					if chunk["type"] == "content":
+						iteration_content += chunk["content"]
+						# Send content chunk to frontend
+						yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']})}\n\n"
+						await asyncio.sleep(0.01)  # Small delay to prevent overwhelming client
+
+					elif chunk["type"] == "done":
+						iteration_content = chunk["content"]
+						tool_calls = chunk["tool_calls"]
+
+				# Accumulate content across iterations
+				if iteration_content:
+					assistant_content = iteration_content
+
+				# 5b. Check if LLM wants to stop (no tool calls)
+				if not tool_calls:
+					logger.info(f"LLM returned no tool calls - natural termination at iteration {iteration}")
+					# Send iteration complete event
+					yield f"data: {json.dumps({'type': 'iteration_complete', 'iteration': iteration, 'tool_calls_count': 0})}\n\n"
+					break
+
+				logger.info(f"Processing {len(tool_calls)} tool calls in iteration {iteration}")
 
 				# Send tool calling status
 				yield f"data: {json.dumps({'type': 'tool_start', 'tool_calls': tool_calls})}\n\n"
 
-				# Execute tools
+				# 5c. Execute all tool calls
 				tool_results = await executor.execute_tool_calls(tool_calls)
 
 				# Send tool results
 				yield f"data: {json.dumps({'type': 'tool_results', 'results': tool_results})}\n\n"
 
-				# Check for authorization errors
+				# 5d. Check for authorization errors
 				auth_required = []
 				for result in tool_results:
 					if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
@@ -499,8 +574,11 @@ You have access to various tools for querying tasks, experiments, parameter pres
 							"auth_scope": result["auth_scope"]
 						})
 
+				# If any tools require authorization, stop loop and return auth request
 				if auth_required:
-					# Save message with auth requirement
+					logger.info(f"Authorization required in iteration {iteration}, stopping multi-turn loop")
+					termination_reason = "auth_required"
+
 					assistant_message = ChatMessage(
 						session_id=session_id,
 						role=MessageRole.ASSISTANT,
@@ -512,7 +590,11 @@ You have access to various tools for querying tasks, experiments, parameter pres
 							"status": "requires_auth",
 							"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
 						} for tc in tool_calls],
-						message_metadata={"auth_required": auth_required}
+						message_metadata={
+							"auth_required": auth_required,
+							"iterations": iteration,
+							"termination_reason": termination_reason
+						}
 					)
 					db.add(assistant_message)
 					await db.commit()
@@ -522,32 +604,66 @@ You have access to various tools for querying tasks, experiments, parameter pres
 					yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
 					return
 
-				# Get final response with tool results
-				tool_output_messages = []
+				# 5e. Check for execution errors
+				# NOTE: Jiekou API has issues with ToolMessage in conversation history,
+				# especially when tools fail. So we stop here instead of continuing.
+				failed_tools = [r for r in tool_results if not r["success"]]
+				if failed_tools:
+					logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, terminating loop (Jiekou API limitation)")
+					termination_reason = "tool_execution_error"
+
+					# Build error summary for user
+					error_summary = "\n\nSome tool calls failed:\n"
+					for failed in failed_tools:
+						error_summary += f"- {failed.get('tool_name', 'unknown')}: {failed.get('result', 'Unknown error')}\n"
+					assistant_content = (assistant_content or "") + error_summary
+
+					# Break out of loop - don't add ToolMessage to avoid Jiekou API 400 error
+					all_tool_calls.extend(tool_calls)
+					all_tool_results.extend(tool_results)
+					break
+
+				# 5f. Add assistant message with tool calls to context
+				llm_messages.append({
+					"role": "assistant",
+					"content": assistant_content if assistant_content else ""
+				})
+
+				# 5g. Add tool results to context as ToolMessage
 				for result in tool_results:
-					# Ensure tool_call_id is not None
 					call_id = result.get("call_id") or result.get("tool_name", "unknown")
-					tool_output_messages.append({
+					llm_messages.append({
 						"role": "tool",
 						"content": result["result"],
 						"tool_call_id": call_id
 					})
 
-				llm_messages.append({"role": "assistant", "content": assistant_content if assistant_content else ""})
-				llm_messages.extend(tool_output_messages)
+				# 5h. Track all tool calls and results for database storage
+				all_tool_calls.extend(tool_calls)
+				all_tool_results.extend(tool_results)
 
-				# Get final response using non-streaming (streaming fails with tool messages)
-				# Note: Jiekou API doesn't support streaming after tool calls due to ToolMessage format
-				yield f"data: {json.dumps({'type': 'final_response_start'})}\n\n"
+				# Send iteration complete event
+				yield f"data: {json.dumps({'type': 'iteration_complete', 'iteration': iteration, 'tool_calls_count': len(tool_calls)})}\n\n"
 
-				final_content = await llm_client.chat(llm_messages)
+			# Check if max iterations reached
+			if iteration >= max_iterations:
+				logger.warning(f"Reached max iterations ({max_iterations}) for session {session_id}")
+				termination_reason = "max_iterations"
+				assistant_content += "\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
 
-				# Send the complete final response as one chunk
-				yield f"data: {json.dumps({'type': 'content', 'content': final_content})}\n\n"
+			# 6. Save final assistant message with complete tool execution history
+			if all_tool_calls:
+				# Find result for each tool call
+				def find_result_for_call(call_id):
+					for r in all_tool_results:
+						if r.get("call_id") == call_id:
+							return r.get("result")
+					# Fallback: match by tool_name if call_id doesn't match
+					for r in all_tool_results:
+						if r.get("tool_name") == call_id:
+							return r.get("result")
+					return None
 
-				assistant_content = final_content
-
-				# Save with tool execution metadata
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
@@ -557,16 +673,22 @@ You have access to various tools for querying tasks, experiments, parameter pres
 						"args": {k: v for k, v in tc["args"].items() if k != "db"},
 						"id": tc["id"],
 						"status": "executed",
-						"result": next((r["result"] for r in tool_results if r["tool_name"] == tc["name"]), None)
-					} for tc in tool_calls]
+						"result": find_result_for_call(tc["id"])
+					} for tc in all_tool_calls],
+					message_metadata={
+						"iterations": iteration,
+						"termination_reason": termination_reason
+					}
 				)
 			else:
-				# No tool calls, save regular message
+				# No tool calls at all - simple response
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
 					content=assistant_content
 				)
+
+			logger.info(f"Multi-turn streaming completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}")
 
 			db.add(assistant_message)
 			await db.commit()

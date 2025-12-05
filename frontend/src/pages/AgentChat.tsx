@@ -21,6 +21,8 @@ export default function AgentChat() {
 	const [streamingContent, setStreamingContent] = useState("");
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [toolCallStatus, setToolCallStatus] = useState<string | null>(null);
+	const [currentIteration, setCurrentIteration] = useState<number>(0);
+	const [maxIterations, setMaxIterations] = useState<number>(0);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const queryClient = useQueryClient();
@@ -165,6 +167,8 @@ export default function AgentChat() {
 			setStreamingContent("");
 			setIsStreaming(true);
 			setToolCallStatus(null);
+			setCurrentIteration(0);
+			setMaxIterations(0);
 
 			// Track accumulated content for error recovery
 			let accumulatedContent = "";
@@ -174,7 +178,15 @@ export default function AgentChat() {
 					sessionId,
 					{ content },
 					(chunk) => {
-						if (chunk.type === "content") {
+						if (chunk.type === "iteration_start") {
+							// New iteration starting - just track iteration number, don't show status
+							// Tool call and thinking are different concepts
+							setCurrentIteration(chunk.iteration || 0);
+							setMaxIterations(chunk.max_iterations || 0);
+						} else if (chunk.type === "iteration_complete") {
+							// Iteration completed - clear any tool status
+							setToolCallStatus(null);
+						} else if (chunk.type === "content") {
 							// Append streaming content
 							const newContent = chunk.content || "";
 							accumulatedContent += newContent;
@@ -193,6 +205,8 @@ export default function AgentChat() {
 							console.error("Stream error:", chunk.error);
 							setToolCallStatus(null);
 							setIsStreaming(false);
+							setCurrentIteration(0);
+							setMaxIterations(0);
 						}
 					}
 				);
@@ -200,6 +214,8 @@ export default function AgentChat() {
 				setIsStreaming(false);
 				setStreamingContent("");
 				setToolCallStatus(null);
+				setCurrentIteration(0);
+				setMaxIterations(0);
 
 				// Save assistant response to IndexedDB
 				const assistantMessage: MessageData = {
@@ -221,6 +237,8 @@ export default function AgentChat() {
 				setIsStreaming(false);
 				setStreamingContent("");
 				setToolCallStatus(null);
+				setCurrentIteration(0);
+				setMaxIterations(0);
 
 				if (accumulatedContent) {
 					// Save partial response
@@ -641,7 +659,7 @@ function MessageBubble({ message }: { message: MessageData }) {
 						<div className="mt-2">
 							{message.tool_calls.map((toolCall: any, index: number) => (
 								<ToolCallCard
-									key={toolCall.id}
+									key={`${toolCall.id}-${index}`}
 									toolCall={toolCall}
 									onAuthorize={handleAuthorize}
 								/>

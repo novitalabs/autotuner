@@ -57,12 +57,15 @@ export const agentApi = {
 		sessionId: string,
 		data: ChatMessageCreateRequest,
 		onChunk: (chunk: {
-			type: "content" | "tool_start" | "tool_results" | "final_response_start" | "complete" | "error";
+			type: "content" | "tool_start" | "tool_results" | "final_response_start" | "complete" | "error" | "iteration_start" | "iteration_complete";
 			content?: string;
 			tool_calls?: any[];
 			results?: any[];
 			message?: ChatMessage;
 			error?: string;
+			iteration?: number;
+			max_iterations?: number;
+			tool_calls_count?: number;
 		}) => void
 	) => {
 		// Use native EventSource for SSE
