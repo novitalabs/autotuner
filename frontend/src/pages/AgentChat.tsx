@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Edit2 } from "lucide-react";
+import { Edit2, ArrowUp, Loader2 } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { ChatMessage } from "../types/agent";
@@ -169,7 +169,6 @@ export default function AgentChat() {
 		onSuccess: (data) => {
 			// Update local state with assistant response
 			setMessages(prev => [...prev, data.assistantMessage]);
-			setInput("");
 
 			// Generate title after first user message (message count = 2: 1 user + 1 assistant)
 			// Only generate if no title exists yet (don't override user-edited titles)
@@ -215,7 +214,9 @@ export default function AgentChat() {
 
 	const handleSend = () => {
 		if (!input.trim() || !sessionId) return;
-		sendMessageMutation.mutate(input);
+		const content = input;
+		setInput("");  // Clear input immediately when sending
+		sendMessageMutation.mutate(content);
 	};
 
 	const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -495,9 +496,14 @@ AGENT_MODEL=gpt-4`}
 					<button
 						onClick={handleSend}
 						disabled={!input.trim() || sendMessageMutation.isPending}
-						className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+						className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+						title={sendMessageMutation.isPending ? "Sending..." : "Send message"}
 					>
-						{sendMessageMutation.isPending ? "Sending..." : "Send"}
+						{sendMessageMutation.isPending ? (
+							<Loader2 className="w-5 h-5 animate-spin" />
+						) : (
+							<ArrowUp className="w-5 h-5" />
+						)}
 					</button>
 				</div>
 			</div>
