@@ -273,6 +273,16 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 		assistant_content = llm_response["content"]
 		tool_calls = llm_response["tool_calls"]
 
+		# Filter out 'db' parameter from tool_calls before saving to database
+		# The LLM may include 'db' in args, but it's not JSON serializable
+		def clean_tool_call_args(tool_call):
+			"""Remove db parameter from tool call args for JSON serialization"""
+			cleaned_tc = tool_call.copy()
+			if "args" in cleaned_tc and isinstance(cleaned_tc["args"], dict):
+				cleaned_args = {k: v for k, v in cleaned_tc["args"].items() if k != "db"}
+				cleaned_tc["args"] = cleaned_args
+			return cleaned_tc
+
 		# 6. Handle tool calls if any
 		tool_results = []
 		if tool_calls:
@@ -298,7 +308,7 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 					content=assistant_content if assistant_content else "I need authorization to perform some operations.",
 					tool_calls=[{
 						"tool_name": tc["name"],
-						"args": tc["args"],
+						"args": {k: v for k, v in tc["args"].items() if k != "db"},  # Filter out db parameter
 						"id": tc["id"],
 						"status": "requires_auth",
 						"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
@@ -341,7 +351,7 @@ When a user asks about tasks, experiments, or results, use the appropriate datab
 				content=assistant_content,
 				tool_calls=[{
 					"tool_name": tc["name"],
-					"args": tc["args"],
+					"args": {k: v for k, v in tc["args"].items() if k != "db"},  # Filter out db parameter
 					"id": tc["id"],
 					"status": "executed",
 					"result": next((r["result"] for r in tool_results if r["tool_name"] == tc["name"]), None)
