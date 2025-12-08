@@ -85,7 +85,7 @@ class Task(Base):
 			"deployment_mode": self.deployment_mode,
 			"created_at": self.created_at.isoformat() if self.created_at else None,
 			"total_experiments": self.total_experiments,
-			"completed_experiments": self.completed_experiments,
+			"successful_experiments": self.successful_experiments,
 			"best_experiment_id": self.best_experiment_id,
 		}
 

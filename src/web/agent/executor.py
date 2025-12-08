@@ -135,9 +135,11 @@ class ToolExecutor:
 			# Make a copy of tool_args to avoid mutating the original
 			execution_args = tool_args.copy()
 
-			# Inject database session for database tools
-			if hasattr(tool, "_tool_category") and tool._tool_category.value == "database":
-				execution_args["db"] = self.db
+			# Inject database session for tools that need it (database, task, preset tools)
+			if hasattr(tool, "_tool_category"):
+				category = tool._tool_category.value
+				if category in ["database", "task", "preset"]:
+					execution_args["db"] = self.db
 
 			logger.info(f"Executing tool '{tool_name}' with args (excluding db): {tool_args}")
 

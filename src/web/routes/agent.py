@@ -476,6 +476,7 @@ async def send_message_stream(
 
 	async def event_stream():
 		"""SSE event stream generator."""
+		logger.info(f"event_stream started for session {session_id}")
 		try:
 			# 1. Check memory cache first
 			cache = get_session_cache()
@@ -587,6 +588,12 @@ High-level tools provide better error handling, formatted output, and business l
 						iteration_content = chunk["content"]
 						tool_calls = chunk["tool_calls"]
 
+						# Filter out invalid tool calls with empty names (LLM sometimes returns these)
+						original_count = len(tool_calls)
+						tool_calls = [tc for tc in tool_calls if tc.get("name", "").strip()]
+						if original_count != len(tool_calls):
+							logger.warning(f"Filtered out {original_count - len(tool_calls)} tool calls with empty names")
+
 				# Accumulate content across iterations
 				if iteration_content:
 					assistant_content = iteration_content
@@ -649,23 +656,10 @@ High-level tools provide better error handling, formatted output, and business l
 					return
 
 				# 5e. Check for execution errors
-				# NOTE: Jiekou API has issues with ToolMessage in conversation history,
-				# especially when tools fail. So we stop here instead of continuing.
+				# Let LLM see all tool results (including failures) so it can handle errors appropriately
 				failed_tools = [r for r in tool_results if not r["success"]]
 				if failed_tools:
-					logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, terminating loop (Jiekou API limitation)")
-					termination_reason = "tool_execution_error"
-
-					# Build error summary for user
-					error_summary = "\n\nSome tool calls failed:\n"
-					for failed in failed_tools:
-						error_summary += f"- {failed.get('tool_name', 'unknown')}: {failed.get('result', 'Unknown error')}\n"
-					assistant_content = (assistant_content or "") + error_summary
-
-					# Break out of loop - don't add ToolMessage to avoid Jiekou API 400 error
-					all_tool_calls.extend(tool_calls)
-					all_tool_results.extend(tool_results)
-					break
+					logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, but letting LLM handle the errors")
 
 				# 5f. Add assistant message with tool calls to context
 				llm_messages.append({
@@ -673,7 +667,8 @@ High-level tools provide better error handling, formatted output, and business l
 					"content": assistant_content if assistant_content else ""
 				})
 
-				# 5g. Add tool results to context as ToolMessage
+				# 5g. Add ALL tool results to context as ToolMessage (including failures)
+				# This allows LLM to understand what failed and potentially recover
 				for result in tool_results:
 					call_id = result.get("call_id") or result.get("tool_name", "unknown")
 					llm_messages.append({

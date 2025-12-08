@@ -187,12 +187,15 @@ class LangChainLLMClient:
 
 			# Extract tool calls if present
 			if hasattr(response, "tool_calls") and response.tool_calls:
+				logger.info(f"Raw LLM tool_calls: {response.tool_calls}")
 				for tool_call in response.tool_calls:
-					result["tool_calls"].append({
-						"name": tool_call["name"],
-						"args": tool_call["args"],
+					parsed_call = {
+						"name": tool_call.get("name", ""),
+						"args": tool_call.get("args", {}),
 						"id": tool_call.get("id", "")
-					})
+					}
+					result["tool_calls"].append(parsed_call)
+					logger.info(f"Parsed tool call: name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}")
 				logger.info(f"LLM requested {len(result['tool_calls'])} tool calls")
 
 			return result
@@ -222,6 +225,8 @@ class LangChainLLMClient:
 				- 'tool_call': Tool call info (for type='tool_call')
 				- 'complete_message': Full message (for type='done')
 		"""
+		logger.info(f"chat_with_tools_stream called with {len(tools)} tools, {len(messages)} messages")
+
 		# Convert dict messages to LangChain message objects
 		langchain_messages = []
 		for msg in messages:
@@ -271,8 +276,12 @@ class LangChainLLMClient:
 		try:
 			full_content = ""
 			tool_calls = []
+			chunk_count = 0
 
 			async for chunk in chat_model_with_tools.astream(langchain_messages):
+				chunk_count += 1
+				logger.info(f"Stream chunk #{chunk_count}: has content={bool(chunk.content)}, has tool_calls={hasattr(chunk, 'tool_calls') and bool(chunk.tool_calls)}")
+
 				# Handle content chunks
 				if chunk.content:
 					full_content += chunk.content
@@ -283,14 +292,20 @@ class LangChainLLMClient:
 
 				# Handle tool calls (accumulated in final chunk)
 				if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+					logger.info(f"Raw LLM tool_calls (stream): {chunk.tool_calls}")
 					for tool_call in chunk.tool_calls:
-						tool_calls.append({
-							"name": tool_call["name"],
-							"args": tool_call["args"],
+						parsed_call = {
+							"name": tool_call.get("name", ""),
+							"args": tool_call.get("args", {}),
 							"id": tool_call.get("id", "")
-						})
+						}
+						tool_calls.append(parsed_call)
+						logger.info(f"Parsed tool call (stream): name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}")
 
 			# Send complete message at end
+			logger.info(f"Stream complete: {chunk_count} chunks, {len(tool_calls)} tool calls")
+			if tool_calls:
+				logger.info(f"Total tool calls collected in stream: {len(tool_calls)}")
 			yield {
 				"type": "done",
 				"content": full_content,
