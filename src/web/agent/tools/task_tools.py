@@ -365,3 +365,234 @@ async def update_task_description(
         "message": f"Task {task_id} description updated",
         "task": task.to_dict(include_full_config=True)
     }, indent=2)
+
+
+# ============================================================================
+# QUERY TOOLS - Read-only operations for task information
+# ============================================================================
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def list_tasks(
+    skip: int = 0,
+    limit: int = 20,
+    status_filter: Optional[str] = None,
+    db: AsyncSession = None
+) -> str:
+    """
+    List all autotuning tasks with optional status filtering.
+
+    Use this instead of query_records(table_name="tasks") for better formatting and error handling.
+
+    Args:
+        skip: Number of records to skip (default: 0)
+        limit: Maximum number of records to return (default: 20, max: 100)
+        status_filter: Optional status filter - one of: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+
+    Returns:
+        JSON string with list of tasks including ID, name, status, created time, and brief config summary
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Validate and cap limit
+    if limit > 100:
+        limit = 100
+
+    # Validate status filter if provided
+    if status_filter:
+        valid_statuses = ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
+        status_upper = status_filter.upper()
+        if status_upper not in valid_statuses:
+            return json.dumps({
+                "error": f"Invalid status '{status_filter}'. Must be one of: {', '.join(valid_statuses)}"
+            })
+        status_filter = status_upper
+
+    # Use TaskService for consistency
+    tasks = await TaskService.list_tasks(db, status=status_filter, skip=skip, limit=limit)
+
+    # Format tasks for agent display
+    task_list = []
+    for task in tasks:
+        task_info = {
+            "id": task.id,
+            "name": task.task_name,
+            "status": task.status.value if hasattr(task.status, 'value') else task.status,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "description": task.description,
+            "model": task.model_config.get("id_or_path") if task.model_config else None,
+            "runtime": task.base_runtime,
+            "optimization_strategy": task.optimization_config.get("strategy") if task.optimization_config else None,
+        }
+        task_list.append(task_info)
+
+    return json.dumps({
+        "success": True,
+        "count": len(task_list),
+        "skip": skip,
+        "limit": limit,
+        "status_filter": status_filter,
+        "tasks": task_list
+    }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def get_task_by_id(
+    task_id: int,
+    db: AsyncSession = None
+) -> str:
+    """
+    Get detailed information about a specific task by ID.
+
+    Use this instead of query_records() when you need full task configuration and status.
+
+    Args:
+        task_id: Task ID to retrieve
+
+    Returns:
+        JSON string with complete task details including full configuration, status, timing, and experiment count
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    task = await TaskService.get_task_by_id(db, task_id)
+
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Get experiment count for this task
+    from web.services import ExperimentService
+    experiments = await ExperimentService.list_experiments(db, task_id=task_id)
+
+    return json.dumps({
+        "success": True,
+        "task": task.to_dict(include_full_config=True),
+        "experiment_count": len(experiments)
+    }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def get_task_by_name(
+    task_name: str,
+    db: AsyncSession = None
+) -> str:
+    """
+    Get detailed information about a specific task by name.
+
+    Useful when user refers to task by its name instead of ID.
+
+    Args:
+        task_name: Unique task name to retrieve
+
+    Returns:
+        JSON string with complete task details including full configuration, status, timing, and experiment count
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    task = await TaskService.get_task_by_name(db, task_name)
+
+    if not task:
+        return json.dumps({"error": f"Task '{task_name}' not found"})
+
+    # Get experiment count for this task
+    from web.services import ExperimentService
+    experiments = await ExperimentService.list_experiments(db, task_id=task.id)
+
+    return json.dumps({
+        "success": True,
+        "task": task.to_dict(include_full_config=True),
+        "experiment_count": len(experiments)
+    }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def list_task_experiments(
+    task_id: int,
+    skip: int = 0,
+    limit: int = 50,
+    status_filter: Optional[str] = None,
+    db: AsyncSession = None
+) -> str:
+    """
+    List all experiments for a specific task.
+
+    Shows parameter combinations tested and their results (metrics, scores).
+    Use this to analyze task progress and find best configurations.
+
+    Args:
+        task_id: Task ID to get experiments for
+        skip: Number of records to skip (default: 0)
+        limit: Maximum number of records to return (default: 50, max: 200)
+        status_filter: Optional status filter - one of: PENDING, DEPLOYING, RUNNING, SUCCESS, FAILED
+
+    Returns:
+        JSON string with list of experiments including parameters, metrics, and scores
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Verify task exists
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Validate and cap limit
+    if limit > 200:
+        limit = 200
+
+    # Validate status filter if provided
+    if status_filter:
+        valid_statuses = ["PENDING", "DEPLOYING", "RUNNING", "SUCCESS", "FAILED"]
+        status_upper = status_filter.upper()
+        if status_upper not in valid_statuses:
+            return json.dumps({
+                "error": f"Invalid status '{status_filter}'. Must be one of: {', '.join(valid_statuses)}"
+            })
+        status_filter = status_upper
+
+    # Use ExperimentService for consistency
+    from web.services import ExperimentService
+    experiments = await ExperimentService.list_experiments(
+        db,
+        task_id=task_id,
+        status=status_filter,
+        skip=skip,
+        limit=limit
+    )
+
+    # Format experiments for agent display
+    exp_list = []
+    for exp in experiments:
+        exp_info = {
+            "id": exp.id,
+            "status": exp.status.value if hasattr(exp.status, 'value') else exp.status,
+            "parameters": exp.parameters,
+            "metrics": exp.metrics,
+            "objective_score": exp.objective_score,
+            "is_best": exp.is_best,
+            "created_at": exp.created_at.isoformat() if exp.created_at else None,
+            "completed_at": exp.completed_at.isoformat() if exp.completed_at else None,
+        }
+        exp_list.append(exp_info)
+
+    # Find best experiment
+    best_exp = next((e for e in exp_list if e.get("is_best")), None)
+
+    return json.dumps({
+        "success": True,
+        "task_id": task_id,
+        "task_name": task.task_name,
+        "count": len(exp_list),
+        "skip": skip,
+        "limit": limit,
+        "status_filter": status_filter,
+        "best_experiment": best_exp,
+        "experiments": exp_list
+    }, indent=2)
