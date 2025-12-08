@@ -576,7 +576,7 @@ async def list_task_experiments(
             "parameters": exp.parameters,
             "metrics": exp.metrics,
             "objective_score": exp.objective_score,
-            "is_best": exp.is_best,
+            "is_best": (exp.id == task.best_experiment_id),
             "created_at": exp.created_at.isoformat() if exp.created_at else None,
             "completed_at": exp.completed_at.isoformat() if exp.completed_at else None,
         }
@@ -595,4 +595,212 @@ async def list_task_experiments(
         "status_filter": status_filter,
         "best_experiment": best_exp,
         "experiments": exp_list
+    }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def get_task_results(
+    task_id: int,
+    include_all_experiments: bool = False,
+    db: AsyncSession = None
+) -> str:
+    """
+    Get comprehensive results for a completed task.
+
+    Returns the best experiment and optionally all experiments with detailed metrics.
+    Use this to analyze task outcomes and compare parameter configurations.
+
+    Args:
+        task_id: Task ID to get results for
+        include_all_experiments: If True, include all experiments (default: False, only returns best)
+
+    Returns:
+        JSON string with task status, best experiment, and optionally all experiments with full metrics
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Get task
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Get experiments
+    from web.services import ExperimentService
+    experiments = await ExperimentService.list_experiments(db, task_id=task_id)
+
+    # Find best experiment (task.best_experiment_id)
+    best_exp = next((exp for exp in experiments if exp.id == task.best_experiment_id), None)
+
+    result = {
+        "success": True,
+        "task_id": task_id,
+        "task_name": task.task_name,
+        "task_status": task.status.value if hasattr(task.status, 'value') else task.status,
+        "total_experiments": task.total_experiments,
+        "successful_experiments": task.successful_experiments,
+        "optimization_strategy": task.optimization_config.get("strategy") if task.optimization_config else None,
+        "optimization_objective": task.optimization_config.get("objective") if task.optimization_config else None,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "elapsed_time": task.elapsed_time,
+    }
+
+    # Add best experiment details
+    if best_exp:
+        result["best_experiment"] = {
+            "id": best_exp.id,
+            "parameters": best_exp.parameters,
+            "metrics": best_exp.metrics,
+            "objective_score": best_exp.objective_score,
+            "completed_at": best_exp.completed_at.isoformat() if best_exp.completed_at else None,
+        }
+    else:
+        result["best_experiment"] = None
+
+    # Add all experiments if requested
+    if include_all_experiments:
+        exp_list = []
+        for exp in experiments:
+            exp_list.append({
+                "id": exp.id,
+                "status": exp.status.value if hasattr(exp.status, 'value') else exp.status,
+                "parameters": exp.parameters,
+                "metrics": exp.metrics,
+                "objective_score": exp.objective_score,
+                "is_best": (exp.id == task.best_experiment_id),
+                "created_at": exp.created_at.isoformat() if exp.created_at else None,
+                "completed_at": exp.completed_at.isoformat() if exp.completed_at else None,
+            })
+        result["all_experiments"] = exp_list
+        result["experiment_count"] = len(exp_list)
+
+    return json.dumps(result, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def get_task_logs(
+    task_id: int,
+    tail_lines: Optional[int] = None,
+    db: AsyncSession = None
+) -> str:
+    """
+    Retrieve execution logs for a task.
+
+    Returns the log file content for debugging and monitoring task execution.
+    Useful for diagnosing failures or understanding task progress.
+
+    Args:
+        task_id: Task ID to get logs for
+        tail_lines: If specified, only return last N lines (default: None, returns all)
+
+    Returns:
+        JSON string with log content and metadata
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Verify task exists
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Locate log file
+    from pathlib import Path
+    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_file = log_dir / f"task_{task_id}.log"
+
+    if not log_file.exists():
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "task_name": task.task_name,
+            "log_exists": False,
+            "message": "No log file found for this task",
+            "log_path": str(log_file)
+        })
+
+    try:
+        # Read log file
+        log_content = log_file.read_text()
+
+        # Get tail if requested
+        if tail_lines and tail_lines > 0:
+            lines = log_content.splitlines()
+            log_content = "\n".join(lines[-tail_lines:])
+
+        # Get file size
+        file_size = log_file.stat().st_size
+        file_size_mb = file_size / (1024 * 1024)
+
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "task_name": task.task_name,
+            "log_exists": True,
+            "log_path": str(log_file),
+            "file_size_mb": round(file_size_mb, 2),
+            "tail_lines": tail_lines,
+            "log_content": log_content
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to read log file: {str(e)}",
+            "task_id": task_id,
+            "log_path": str(log_file)
+        })
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def get_experiment_details(
+    experiment_id: int,
+    db: AsyncSession = None
+) -> str:
+    """
+    Get detailed information about a specific experiment.
+
+    Returns full experiment configuration, metrics, and status.
+    Use this to deep-dive into a specific parameter combination.
+
+    Args:
+        experiment_id: Experiment ID to retrieve
+
+    Returns:
+        JSON string with complete experiment details including parameters, metrics, and timing
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Get experiment
+    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = result.scalar_one_or_none()
+
+    if not experiment:
+        return json.dumps({"error": f"Experiment {experiment_id} not found"})
+
+    # Get parent task
+    task = await TaskService.get_task_by_id(db, experiment.task_id)
+
+    return json.dumps({
+        "success": True,
+        "experiment": {
+            "id": experiment.id,
+            "task_id": experiment.task_id,
+            "task_name": task.task_name if task else None,
+            "status": experiment.status.value if hasattr(experiment.status, 'value') else experiment.status,
+            "parameters": experiment.parameters,
+            "metrics": experiment.metrics,
+            "objective_score": experiment.objective_score,
+            "is_best": (experiment.id == task.best_experiment_id) if task else False,
+            "created_at": experiment.created_at.isoformat() if experiment.created_at else None,
+            "started_at": experiment.started_at.isoformat() if experiment.started_at else None,
+            "completed_at": experiment.completed_at.isoformat() if experiment.completed_at else None,
+            "elapsed_time": experiment.elapsed_time,
+            "error_message": experiment.error_message,
+        }
     }, indent=2)
