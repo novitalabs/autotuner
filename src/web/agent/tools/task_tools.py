@@ -804,3 +804,306 @@ async def get_experiment_details(
             "error_message": experiment.error_message,
         }
     }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def analyze_slo_violations(
+    task_id: int,
+    db: AsyncSession = None
+) -> str:
+    """
+    Analyze SLO (Service Level Objective) violations for all experiments in a task.
+
+    Returns detailed analysis of which experiments violated SLO constraints,
+    which metrics were violated most frequently, and violation statistics.
+
+    Args:
+        task_id: Task ID to analyze
+
+    Returns:
+        JSON string with SLO violation analysis including:
+        - Total violations count
+        - Hard fail vs soft penalty breakdown
+        - Most violated metrics
+        - List of violating experiments with details
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Get task
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Get SLO config from task
+    slo_config = task.task_config.get("slo", {})
+    if not slo_config:
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "has_slo": False,
+            "message": "This task does not have SLO constraints configured"
+        })
+
+    # Get all experiments
+    from web.services import ExperimentService
+    experiments = await ExperimentService.list_experiments(db, task_id=task_id)
+
+    if not experiments:
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "has_slo": True,
+            "message": "No experiments found for this task"
+        })
+
+    # Analyze violations
+    violation_stats = {
+        "total_experiments": len(experiments),
+        "successful_experiments": 0,
+        "failed_experiments": 0,
+        "experiments_with_violations": 0,
+        "hard_fail_count": 0,
+        "soft_penalty_count": 0,
+        "metric_violations": {},  # metric_name -> count
+        "violating_experiments": []
+    }
+
+    for exp in experiments:
+        if exp.status and hasattr(exp.status, 'value'):
+            status = exp.status.value
+        else:
+            status = exp.status
+
+        if status == "SUCCESS":
+            violation_stats["successful_experiments"] += 1
+        elif status == "FAILED":
+            violation_stats["failed_experiments"] += 1
+
+        metrics = exp.metrics or {}
+        has_violation = False
+        violated_metrics = []
+
+        # Check TTFT violations
+        if "ttft" in slo_config:
+            ttft_slo = slo_config["ttft"]
+            threshold = ttft_slo.get("threshold")
+            if threshold and metrics.get("ttft") is not None:
+                actual = metrics["ttft"]
+                if actual > threshold:
+                    has_violation = True
+                    violation_ratio = (actual - threshold) / threshold
+                    violated_metrics.append({
+                        "metric": "ttft",
+                        "threshold": threshold,
+                        "actual": actual,
+                        "violation_ratio": violation_ratio,
+                        "hard_fail": ttft_slo.get("hard_fail", False)
+                    })
+                    violation_stats["metric_violations"]["ttft"] = violation_stats["metric_violations"].get("ttft", 0) + 1
+
+        # Check TPOT violations
+        if "tpot" in slo_config:
+            tpot_slo = slo_config["tpot"]
+            threshold = tpot_slo.get("threshold")
+            if threshold and metrics.get("tpot") is not None:
+                actual = metrics["tpot"]
+                if actual > threshold:
+                    has_violation = True
+                    violation_ratio = (actual - threshold) / threshold
+                    violated_metrics.append({
+                        "metric": "tpot",
+                        "threshold": threshold,
+                        "actual": actual,
+                        "violation_ratio": violation_ratio,
+                        "hard_fail": tpot_slo.get("hard_fail", False)
+                    })
+                    violation_stats["metric_violations"]["tpot"] = violation_stats["metric_violations"].get("tpot", 0) + 1
+
+        # Check latency violations (p50, p90, p99)
+        if "latency" in slo_config:
+            for percentile in ["p50", "p90", "p99"]:
+                if percentile in slo_config["latency"]:
+                    latency_slo = slo_config["latency"][percentile]
+                    threshold = latency_slo.get("threshold")
+                    metric_key = f"latency_{percentile}"
+                    if threshold and metrics.get(metric_key) is not None:
+                        actual = metrics[metric_key]
+                        if actual > threshold:
+                            has_violation = True
+                            violation_ratio = (actual - threshold) / threshold
+                            violated_metrics.append({
+                                "metric": metric_key,
+                                "threshold": threshold,
+                                "actual": actual,
+                                "violation_ratio": violation_ratio,
+                                "hard_fail": latency_slo.get("hard_fail", False)
+                            })
+                            violation_stats["metric_violations"][metric_key] = violation_stats["metric_violations"].get(metric_key, 0) + 1
+
+        # Check throughput violations
+        if "throughput" in slo_config:
+            throughput_slo = slo_config["throughput"]
+            threshold = throughput_slo.get("threshold")
+            if threshold and metrics.get("throughput") is not None:
+                actual = metrics["throughput"]
+                # Throughput is "higher is better", so violation is actual < threshold
+                if actual < threshold:
+                    has_violation = True
+                    violation_ratio = (threshold - actual) / threshold
+                    violated_metrics.append({
+                        "metric": "throughput",
+                        "threshold": threshold,
+                        "actual": actual,
+                        "violation_ratio": violation_ratio,
+                        "hard_fail": throughput_slo.get("hard_fail", False)
+                    })
+                    violation_stats["metric_violations"]["throughput"] = violation_stats["metric_violations"].get("throughput", 0) + 1
+
+        if has_violation:
+            violation_stats["experiments_with_violations"] += 1
+
+            # Classify as hard fail or soft penalty
+            is_hard_fail = any(v.get("hard_fail") for v in violated_metrics)
+            if is_hard_fail:
+                violation_stats["hard_fail_count"] += 1
+            else:
+                violation_stats["soft_penalty_count"] += 1
+
+            violation_stats["violating_experiments"].append({
+                "experiment_id": exp.id,
+                "status": status,
+                "parameters": exp.parameters,
+                "objective_score": exp.objective_score,
+                "violated_metrics": violated_metrics,
+                "is_hard_fail": is_hard_fail
+            })
+
+    # Sort violated metrics by frequency
+    most_violated = sorted(
+        violation_stats["metric_violations"].items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    return json.dumps({
+        "success": True,
+        "task_id": task_id,
+        "task_name": task.task_name,
+        "has_slo": True,
+        "slo_config": slo_config,
+        "statistics": {
+            "total_experiments": violation_stats["total_experiments"],
+            "successful_experiments": violation_stats["successful_experiments"],
+            "failed_experiments": violation_stats["failed_experiments"],
+            "experiments_with_violations": violation_stats["experiments_with_violations"],
+            "violation_rate": f"{violation_stats['experiments_with_violations'] / max(1, violation_stats['total_experiments']) * 100:.1f}%",
+            "hard_fail_count": violation_stats["hard_fail_count"],
+            "soft_penalty_count": violation_stats["soft_penalty_count"]
+        },
+        "most_violated_metrics": [{"metric": m, "count": c} for m, c in most_violated],
+        "violating_experiments": violation_stats["violating_experiments"][:10]  # Limit to first 10
+    }, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.TASK)
+async def search_experiment_logs(
+    task_id: int,
+    experiment_id: int,
+    context_lines: int = 10,
+    db: AsyncSession = None
+) -> str:
+    """
+    Search task logs for entries related to a specific experiment.
+
+    This is useful for debugging why a particular experiment failed.
+    Returns log entries surrounding the experiment's execution.
+
+    Args:
+        task_id: Task ID the experiment belongs to
+        experiment_id: Experiment ID to search for in logs
+        context_lines: Number of lines to show before/after matches (default: 10)
+
+    Returns:
+        JSON string with log entries related to this experiment
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Verify experiment exists and belongs to task
+    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = result.scalar_one_or_none()
+
+    if not experiment:
+        return json.dumps({"error": f"Experiment {experiment_id} not found"})
+
+    if experiment.task_id != task_id:
+        return json.dumps({
+            "error": f"Experiment {experiment_id} belongs to task {experiment.task_id}, not task {task_id}"
+        })
+
+    # Get log file
+    from pathlib import Path
+    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_file = log_dir / f"task_{task_id}.log"
+
+    if not log_file.exists():
+        return json.dumps({
+            "success": True,
+            "log_exists": False,
+            "message": f"No log file found for task {task_id}"
+        })
+
+    try:
+        log_content = log_file.read_text()
+        lines = log_content.splitlines()
+
+        # Search for lines mentioning this experiment ID
+        matching_sections = []
+        search_patterns = [
+            f"experiment {experiment_id}",
+            f"experiment_id={experiment_id}",
+            f"exp_id: {experiment_id}",
+            f"Experiment {experiment_id}"
+        ]
+
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            if any(pattern.lower() in line_lower for pattern in search_patterns):
+                # Found a match, extract context
+                start = max(0, i - context_lines)
+                end = min(len(lines), i + context_lines + 1)
+
+                matching_sections.append({
+                    "line_number": i + 1,
+                    "matching_line": line,
+                    "context": {
+                        "before": lines[start:i],
+                        "after": lines[i+1:end]
+                    }
+                })
+
+        # Get experiment error message if exists
+        error_message = experiment.error_message if experiment.error_message else None
+
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "experiment_id": experiment_id,
+            "experiment_status": experiment.status.value if hasattr(experiment.status, 'value') else experiment.status,
+            "experiment_error": error_message,
+            "log_exists": True,
+            "matches_found": len(matching_sections),
+            "matching_sections": matching_sections[:5],  # Limit to first 5 matches
+            "note": "Use get_task_logs() to see the full log file if needed"
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to search log file: {str(e)}",
+            "task_id": task_id,
+            "experiment_id": experiment_id
+        })

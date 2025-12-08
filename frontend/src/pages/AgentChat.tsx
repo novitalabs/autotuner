@@ -193,7 +193,7 @@ export default function AgentChat() {
 							setStreamingContent(prev => prev + newContent);
 						} else if (chunk.type === "tool_start") {
 							// Tool execution started
-							const toolNames = chunk.tool_calls?.map(tc => tc.name).join(", ") || "";
+							const toolNames = chunk.tool_calls?.map(tc => tc.tool_name).join(", ") || "";
 							setToolCallStatus(`Calling tools: ${toolNames}...`);
 						} else if (chunk.type === "tool_results") {
 							setToolCallStatus("Processing tool results...");

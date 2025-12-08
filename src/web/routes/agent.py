@@ -303,6 +303,77 @@ You have access to various tools for managing and querying the autotuner system.
 - User asks "show experiment 87": Call get_experiment_details(experiment_id=87)
 - User asks "list experiments for task 5": Call list_task_experiments(task_id=5)
 
+## Common Scenario Workflows
+
+**Scenario 1: Create new task based on existing task**
+User: "参照task 5创建新任务，修改模型为llama-3-8b"
+Step 1: get_task_by_id(task_id=5) - Get existing task configuration
+Step 2: create_task(
+  task_name="new-task-name",
+  description="Based on task 5 with modified model",
+  model_id="llama-3-8b-instruct",
+  model_namespace=<from task 5>,
+  base_runtime=<from task 5>,
+  parameters=<from task 5>,
+  ...other params from task 5
+)
+
+**Scenario 2: Analyze task failure through logs**
+User: "分析task 8为什么失败了"
+Step 1: get_task_by_id(task_id=8) - Check task status and error summary
+Step 2: list_task_experiments(task_id=8, status_filter="FAILED") - Get failed experiments
+Step 3: get_task_logs(task_id=8, tail_lines=100) - Get recent log entries
+Step 4: For each failed experiment: get_experiment_details(experiment_id=X) - Get error details
+Analysis: Look for common error patterns in logs (OOM, timeout, connection errors, etc.)
+
+**Scenario 3: Analyze tuning results and parameter impact**
+User: "分析task 10的调参结果，哪些参数最重要"
+Step 1: get_task_results(task_id=10, include_all_experiments=True) - Get all experiments
+Step 2: Analyze returned data:
+   - Compare experiments with different parameter values
+   - Identify which parameter changes correlate with performance improvements
+   - Look at best_experiment parameters vs average experiments
+Step 3: list_task_experiments(task_id=10, status_filter="SUCCESS") - Get successful experiments
+Step 4: Compare top 3-5 experiments to identify key parameter patterns
+Key metrics to analyze: objective_score, latency (p50/p90/p99), throughput, TTFT, TPOT
+
+**Scenario 4: Monitor running task progress**
+User: "task 15现在运行到哪了？"
+Step 1: get_task_by_id(task_id=15) - Get task status, timing, and progress
+Step 2: list_task_experiments(task_id=15) - Check completed experiments
+Analysis:
+   - Calculate progress: successful_experiments / total_experiments (if total known)
+   - Show task status (PENDING/RUNNING/COMPLETED/FAILED)
+   - Display elapsed time and estimated completion (if applicable)
+   - Show latest experiment results if available
+
+**Scenario 5: SLO violation analysis**
+User: "task 10哪些实验违反了SLO约束？"
+Step 1: analyze_slo_violations(task_id=10) - Get comprehensive SLO violation analysis
+Step 2: Analyze the results:
+   - Total violation count and rate
+   - Hard fail vs soft penalty breakdown
+   - Most frequently violated metrics
+   - Parameter patterns in violating experiments
+Step 3: Provide recommendations:
+   - If ttft/tpot violations are high: Adjust memory fraction or scheduling policy
+   - If latency violations: Consider lower concurrency or different tp-size
+   - If throughput violations: Increase tp-size or adjust batch scheduling
+Alternative: Use get_task_results(task_id=10, include_all_experiments=True) for manual analysis
+
+**Scenario 6: Quick locate experiment failure cause**
+User: "experiment 156为什么失败了？"
+Step 1: get_experiment_details(experiment_id=156) - Get experiment details and error_message
+Step 2: search_experiment_logs(task_id=<from step 1>, experiment_id=156, context_lines=15) - Find log entries
+Analysis:
+   - Check error_message for key patterns:
+     * "OOM" / "out of memory" → Memory issues, try lower mem-fraction-static
+     * "timeout" / "timed out" → Benchmark timeout, check model size vs GPU
+     * "connection refused" / "failed to connect" → Inference service not ready
+     * "CUDA error" → GPU resource issues
+   - Review log context for detailed stack traces
+   - Compare parameters with successful experiments to identify problematic values
+
 High-level tools provide better error handling, formatted output, and business logic."""
 		})
 
@@ -617,6 +688,77 @@ You have access to various tools for managing and querying the autotuner system.
 - User asks "分析task 10": Call get_task_results(task_id=10)
 - User asks "show experiment 87": Call get_experiment_details(experiment_id=87)
 - User asks "list experiments for task 5": Call list_task_experiments(task_id=5)
+
+## Common Scenario Workflows
+
+**Scenario 1: Create new task based on existing task**
+User: "参照task 5创建新任务，修改模型为llama-3-8b"
+Step 1: get_task_by_id(task_id=5) - Get existing task configuration
+Step 2: create_task(
+  task_name="new-task-name",
+  description="Based on task 5 with modified model",
+  model_id="llama-3-8b-instruct",
+  model_namespace=<from task 5>,
+  base_runtime=<from task 5>,
+  parameters=<from task 5>,
+  ...other params from task 5
+)
+
+**Scenario 2: Analyze task failure through logs**
+User: "分析task 8为什么失败了"
+Step 1: get_task_by_id(task_id=8) - Check task status and error summary
+Step 2: list_task_experiments(task_id=8, status_filter="FAILED") - Get failed experiments
+Step 3: get_task_logs(task_id=8, tail_lines=100) - Get recent log entries
+Step 4: For each failed experiment: get_experiment_details(experiment_id=X) - Get error details
+Analysis: Look for common error patterns in logs (OOM, timeout, connection errors, etc.)
+
+**Scenario 3: Analyze tuning results and parameter impact**
+User: "分析task 10的调参结果，哪些参数最重要"
+Step 1: get_task_results(task_id=10, include_all_experiments=True) - Get all experiments
+Step 2: Analyze returned data:
+   - Compare experiments with different parameter values
+   - Identify which parameter changes correlate with performance improvements
+   - Look at best_experiment parameters vs average experiments
+Step 3: list_task_experiments(task_id=10, status_filter="SUCCESS") - Get successful experiments
+Step 4: Compare top 3-5 experiments to identify key parameter patterns
+Key metrics to analyze: objective_score, latency (p50/p90/p99), throughput, TTFT, TPOT
+
+**Scenario 4: Monitor running task progress**
+User: "task 15现在运行到哪了？"
+Step 1: get_task_by_id(task_id=15) - Get task status, timing, and progress
+Step 2: list_task_experiments(task_id=15) - Check completed experiments
+Analysis:
+   - Calculate progress: successful_experiments / total_experiments (if total known)
+   - Show task status (PENDING/RUNNING/COMPLETED/FAILED)
+   - Display elapsed time and estimated completion (if applicable)
+   - Show latest experiment results if available
+
+**Scenario 5: SLO violation analysis**
+User: "task 10哪些实验违反了SLO约束？"
+Step 1: analyze_slo_violations(task_id=10) - Get comprehensive SLO violation analysis
+Step 2: Analyze the results:
+   - Total violation count and rate
+   - Hard fail vs soft penalty breakdown
+   - Most frequently violated metrics
+   - Parameter patterns in violating experiments
+Step 3: Provide recommendations:
+   - If ttft/tpot violations are high: Adjust memory fraction or scheduling policy
+   - If latency violations: Consider lower concurrency or different tp-size
+   - If throughput violations: Increase tp-size or adjust batch scheduling
+Alternative: Use get_task_results(task_id=10, include_all_experiments=True) for manual analysis
+
+**Scenario 6: Quick locate experiment failure cause**
+User: "experiment 156为什么失败了？"
+Step 1: get_experiment_details(experiment_id=156) - Get experiment details and error_message
+Step 2: search_experiment_logs(task_id=<from step 1>, experiment_id=156, context_lines=15) - Find log entries
+Analysis:
+   - Check error_message for key patterns:
+     * "OOM" / "out of memory" → Memory issues, try lower mem-fraction-static
+     * "timeout" / "timed out" → Benchmark timeout, check model size vs GPU
+     * "connection refused" / "failed to connect" → Inference service not ready
+     * "CUDA error" → GPU resource issues
+   - Review log context for detailed stack traces
+   - Compare parameters with successful experiments to identify problematic values
 
 High-level tools provide better error handling, formatted output, and business logic."""
 			}]
