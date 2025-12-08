@@ -562,6 +562,7 @@ High-level tools provide better error handling, formatted output, and business l
 			assistant_content = ""
 			all_tool_calls = []  # Track all tool calls across iterations
 			all_tool_results = []  # Track all tool results across iterations
+			iteration_data = []  # Track content and tool calls for each iteration
 			termination_reason = "natural"
 
 			logger.info(f"Starting multi-turn stream with {len(available_tools)} tools available")
@@ -601,6 +602,14 @@ High-level tools provide better error handling, formatted output, and business l
 				# 5b. Check if LLM wants to stop (no tool calls)
 				if not tool_calls:
 					logger.info(f"LLM returned no tool calls - natural termination at iteration {iteration}")
+
+					# Store final iteration data without tool calls
+					iteration_data.append({
+						"iteration": iteration,
+						"content": iteration_content,
+						"tool_calls": []
+					})
+
 					# Send iteration complete event
 					yield f"data: {json.dumps({'type': 'iteration_complete', 'iteration': iteration, 'tool_calls_count': 0})}\n\n"
 					break
@@ -615,6 +624,17 @@ High-level tools provide better error handling, formatted output, and business l
 
 				# Send tool results
 				yield f"data: {json.dumps({'type': 'tool_results', 'results': tool_results})}\n\n"
+
+				# Store iteration data (before any early exits)
+				iteration_data.append({
+					"iteration": iteration,
+					"content": iteration_content,
+					"tool_calls": [{
+						"tool_name": tc["name"],
+						"args": {k: v for k, v in tc["args"].items() if k != "db"},
+						"id": tc["id"]
+					} for tc in tool_calls]
+				})
 
 				# 5d. Check for authorization errors
 				auth_required = []
@@ -644,7 +664,8 @@ High-level tools provide better error handling, formatted output, and business l
 						message_metadata={
 							"auth_required": auth_required,
 							"iterations": iteration,
-							"termination_reason": termination_reason
+							"termination_reason": termination_reason,
+							"iteration_data": iteration_data
 						}
 					)
 					db.add(assistant_message)
@@ -716,7 +737,8 @@ High-level tools provide better error handling, formatted output, and business l
 					} for tc in all_tool_calls],
 					message_metadata={
 						"iterations": iteration,
-						"termination_reason": termination_reason
+						"termination_reason": termination_reason,
+						"iteration_data": iteration_data
 					}
 				)
 			else:
@@ -740,8 +762,8 @@ High-level tools provide better error handling, formatted output, and business l
 				cached_entry.messages.append({"role": "assistant", "content": assistant_content})
 				cached_entry.messages = cached_entry.messages[-20:]
 
-			# Send completion
-			yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
+			# Send completion (include metadata for multi-iteration display)
+			yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'metadata': assistant_message.message_metadata, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
 
 		except Exception as e:
 			logger.error(f"Error in stream: {str(e)}", exc_info=True)

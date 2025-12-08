@@ -55,6 +55,15 @@ export interface MessageData {
 	role: 'user' | 'assistant' | 'system';
 	content: string;
 	tool_calls?: ToolCall[];
+	metadata?: {
+		iteration_data?: Array<{
+			iteration: number;
+			content: string;
+			tool_calls: ToolCall[];
+		}>;
+		iterations?: number;
+		termination_reason?: string;
+	};
 	created_at: string;
 	synced_to_backend: boolean;
 }

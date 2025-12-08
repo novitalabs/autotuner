@@ -223,6 +223,7 @@ export default function AgentChat() {
 					role: "assistant",
 					content: response.content,
 					tool_calls: response.tool_calls || undefined,
+					metadata: response.metadata || undefined,
 					created_at: response.created_at,
 					synced_to_backend: true,
 				};
@@ -636,6 +637,10 @@ function MessageBubble({ message }: { message: MessageData }) {
 		alert(`Authorization for ${scope} will be implemented in next step`);
 	};
 
+	// Check if message has iteration_data in metadata
+	const iterationData = message.metadata?.iteration_data;
+	const hasIterations = iterationData && iterationData.length > 0;
+
 	return (
 		<div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
 			<div className="group relative max-w-3xl">
@@ -647,24 +652,75 @@ function MessageBubble({ message }: { message: MessageData }) {
 							: "bg-white border border-gray-200 text-gray-900"
 					}`}
 				>
-					{/* Message content */}
-					{message.content && (
-						<div className="text-sm whitespace-pre-wrap break-words">
-							{message.content}
-						</div>
-					)}
+					{/* For assistant messages with iteration data, display each iteration separately */}
+					{!isUser && hasIterations ? (
+						<>
+							{iterationData.map((iter, idx) => (
+								<div key={`iter-${iter.iteration}-${idx}`}>
+									{/* Iteration content */}
+									{iter.content && (
+										<div className="text-sm whitespace-pre-wrap break-words">
+											{iter.content}
+										</div>
+									)}
 
-					{/* Tool calls - only for assistant messages */}
-					{!isUser && message.tool_calls && message.tool_calls.length > 0 && (
-						<div className="mt-2">
-							{message.tool_calls.map((toolCall: any, index: number) => (
-								<ToolCallCard
-									key={`${toolCall.id}-${index}`}
-									toolCall={toolCall}
-									onAuthorize={handleAuthorize}
-								/>
+									{/* Tool calls for this iteration */}
+									{iter.tool_calls && iter.tool_calls.length > 0 && (
+										<div className="my-2">
+											{iter.tool_calls.map((toolCall: any, tcIdx: number) => (
+												<ToolCallCard
+													key={`${toolCall.id}-${tcIdx}`}
+													toolCall={toolCall}
+													onAuthorize={handleAuthorize}
+												/>
+											))}
+										</div>
+									)}
+
+									{/* Horizontal divider between iterations (except last one) */}
+									{idx < iterationData.length - 1 && (
+										<hr className="my-4 border-gray-300" />
+									)}
+								</div>
 							))}
-						</div>
+						</>
+					) : !isUser && message.tool_calls && message.tool_calls.length > 0 ? (
+						/* Fallback: Old format for backward compatibility */
+						<>
+							{/* Initial thinking/content before tool execution */}
+							{message.content && (
+								<div className="text-sm whitespace-pre-wrap break-words mb-3">
+									{/* Show the first part of content (before tool execution results appear) */}
+									{message.content.split('\n\n').slice(0, 1).join('\n\n')}
+								</div>
+							)}
+
+							{/* Tool calls */}
+							<div className="my-2">
+								{message.tool_calls.map((toolCall: any, index: number) => (
+									<ToolCallCard
+										key={`${toolCall.id}-${index}`}
+										toolCall={toolCall}
+										onAuthorize={handleAuthorize}
+									/>
+								))}
+							</div>
+
+							{/* Final response after tool execution */}
+							{message.content && message.content.split('\n\n').length > 1 && (
+								<div className="text-sm whitespace-pre-wrap break-words mt-3">
+									{/* Show remaining content (after tool execution) */}
+									{message.content.split('\n\n').slice(1).join('\n\n')}
+								</div>
+							)}
+						</>
+					) : (
+						/* Regular message without tool calls */
+						message.content && (
+							<div className="text-sm whitespace-pre-wrap break-words">
+								{message.content}
+							</div>
+						)
 					)}
 				</div>
 				{/* Timestamp - below bubble, only visible on hover */}

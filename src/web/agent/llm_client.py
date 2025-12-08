@@ -37,7 +37,7 @@ class LangChainLLMClient:
 				openai_api_key=self.settings.agent_api_key or "dummy",  # Some providers need a key
 				temperature=0.7,
 				max_tokens=2000,
-				timeout=60.0,
+				timeout=180.0,  # Increased to 3 minutes for slow LLM responses
 			)
 		elif provider == "claude":
 			# Anthropic Claude API
@@ -46,7 +46,7 @@ class LangChainLLMClient:
 				anthropic_api_key=self.settings.agent_api_key,
 				temperature=0.7,
 				max_tokens=2000,
-				timeout=60.0,
+				timeout=180.0,  # Increased to 3 minutes
 			)
 		else:
 			raise ValueError(f"Unsupported provider: {provider}")
@@ -90,7 +90,7 @@ class LangChainLLMClient:
 					openai_api_key=self.settings.agent_api_key or "dummy",
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,  # Increased to 3 minutes
 				)
 			elif provider == "claude":
 				chat_model = ChatAnthropic(
@@ -98,7 +98,7 @@ class LangChainLLMClient:
 					anthropic_api_key=self.settings.agent_api_key,
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,  # Increased to 3 minutes
 				)
 
 		# Invoke the model asynchronously
@@ -160,7 +160,7 @@ class LangChainLLMClient:
 					openai_api_key=self.settings.agent_api_key or "dummy",
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,
 				)
 			elif provider == "claude":
 				chat_model = ChatAnthropic(
@@ -168,7 +168,7 @@ class LangChainLLMClient:
 					anthropic_api_key=self.settings.agent_api_key,
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,
 				)
 
 		# Bind tools to the model
@@ -258,7 +258,7 @@ class LangChainLLMClient:
 					openai_api_key=self.settings.agent_api_key or "dummy",
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,
 				)
 			elif provider == "claude":
 				chat_model = ChatAnthropic(
@@ -266,7 +266,7 @@ class LangChainLLMClient:
 					anthropic_api_key=self.settings.agent_api_key,
 					temperature=temperature,
 					max_tokens=2000,
-					timeout=60.0,
+					timeout=180.0,
 				)
 
 		# Bind tools to the model
