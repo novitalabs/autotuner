@@ -139,12 +139,23 @@ class ChatStorageService {
 		const sessions = await index.getAll();
 		sessions.reverse(); // Most recent first
 
-		// Handle legacy sessions without title field
-		sessions.forEach(session => {
+		// Handle legacy sessions without title field and auto-generate from first user message
+		for (const session of sessions) {
 			if (!('title' in session)) {
 				(session as any).title = '';
 			}
-		});
+
+			// If no title, try to use first user message as fallback
+			if (!(session as any).title) {
+				const messages = await this.getMessages(session.session_id, 10); // Get first 10 messages
+				const firstUserMessage = messages.find(m => m.role === 'user');
+				if (firstUserMessage) {
+					// Use first 50 chars of first user message as temporary title
+					(session as any).title = firstUserMessage.content.substring(0, 50).trim() +
+						(firstUserMessage.content.length > 50 ? '...' : '');
+				}
+			}
+		}
 
 		if (limit) {
 			return sessions.slice(0, limit) as SessionData[];

@@ -216,11 +216,29 @@ async def send_message(
 		)
 		messages_from_db = list(reversed(result.scalars().all()))
 
-		# Convert to cache format
-		recent_messages = [
-			{"role": msg.role.value, "content": msg.content}
-			for msg in messages_from_db
-		]
+		# Convert to cache format (include tool_calls for proper context)
+		recent_messages = []
+		for msg in messages_from_db:
+			if msg.role == MessageRole.ASSISTANT and msg.tool_calls:
+				# Assistant message with tool calls
+				recent_messages.append({
+					"role": "assistant",
+					"content": msg.content
+				})
+				# Add tool results as separate ToolMessage entries
+				for tool_call in msg.tool_calls:
+					if tool_call.get("result"):
+						recent_messages.append({
+							"role": "tool",
+							"content": tool_call["result"],
+							"tool_call_id": tool_call.get("id", tool_call.get("tool_name"))
+						})
+			else:
+				# Regular message (user or simple assistant)
+				recent_messages.append({
+					"role": msg.role.value,
+					"content": msg.content
+				})
 
 		# Populate cache for next time
 		cache.set(session_id, recent_messages)
@@ -544,11 +562,23 @@ High-level tools provide better error handling, formatted output, and business l
 		await db.commit()
 		await db.refresh(assistant_message)
 
-		# 7. Update cache with new messages
+		# 7. Update cache with new messages (include tool results)
 		cached_entry = cache.get(session_id)
 		if cached_entry:
 			cached_entry.messages.append({"role": "user", "content": message_data.content})
 			cached_entry.messages.append({"role": "assistant", "content": assistant_content})
+
+			# Add tool results as ToolMessages if any
+			if all_tool_calls:
+				for tc in all_tool_calls:
+					result = next((r.get("result") for r in all_tool_results if r.get("call_id") == tc["id"]), None)
+					if result:
+						cached_entry.messages.append({
+							"role": "tool",
+							"content": result,
+							"tool_call_id": tc["id"]
+						})
+
 			# Keep only last 20 messages
 			cached_entry.messages = cached_entry.messages[-20:]
 			logger.debug(f"Updated cache for session {session_id} with new messages")
@@ -609,10 +639,31 @@ async def send_message_stream(
 					.limit(20)
 				)
 				messages_from_db = list(reversed(result.scalars().all()))
-				recent_messages = [
-					{"role": msg.role.value, "content": msg.content}
-					for msg in messages_from_db
-				]
+
+				# Convert to cache format (include tool_calls for proper context)
+				recent_messages = []
+				for msg in messages_from_db:
+					if msg.role == MessageRole.ASSISTANT and msg.tool_calls:
+						# Assistant message with tool calls
+						recent_messages.append({
+							"role": "assistant",
+							"content": msg.content
+						})
+						# Add tool results as separate ToolMessage entries
+						for tool_call in msg.tool_calls:
+							if tool_call.get("result"):
+								recent_messages.append({
+									"role": "tool",
+									"content": tool_call["result"],
+									"tool_call_id": tool_call.get("id", tool_call.get("tool_name"))
+								})
+					else:
+						# Regular message (user or simple assistant)
+						recent_messages.append({
+							"role": msg.role.value,
+							"content": msg.content
+						})
+
 				cache.set(session_id, recent_messages)
 
 			# 2. Save user message
@@ -969,11 +1020,23 @@ High-level tools provide better error handling, formatted output, and business l
 			await db.commit()
 			await db.refresh(assistant_message)
 
-			# 7. Update cache
+			# 7. Update cache (include tool results)
 			cached_entry = cache.get(session_id)
 			if cached_entry:
 				cached_entry.messages.append({"role": "user", "content": message_data.content})
 				cached_entry.messages.append({"role": "assistant", "content": assistant_content})
+
+				# Add tool results as ToolMessages if any
+				if all_tool_calls:
+					for tc in all_tool_calls:
+						result = next((r.get("result") for r in all_tool_results if r.get("call_id") == tc["id"]), None)
+						if result:
+							cached_entry.messages.append({
+								"role": "tool",
+								"content": result,
+								"tool_call_id": tc["id"]
+							})
+
 				cached_entry.messages = cached_entry.messages[-20:]
 
 			# Send completion (include metadata for multi-iteration display)
@@ -981,6 +1044,58 @@ High-level tools provide better error handling, formatted output, and business l
 
 		except Exception as e:
 			logger.error(f"Error in stream: {str(e)}", exc_info=True)
+
+			# Save error message to database before yielding error event
+			# Also ensure user message is saved (in case error happened early)
+			try:
+				# Try to save user message if not already saved
+				try:
+					user_msg_check = await db.execute(
+						select(ChatMessage)
+						.where(ChatMessage.session_id == session_id)
+						.where(ChatMessage.role == MessageRole.USER)
+						.where(ChatMessage.content == message_data.content)
+						.limit(1)
+					)
+					existing_user_msg = user_msg_check.scalar_one_or_none()
+
+					if not existing_user_msg:
+						# User message wasn't saved yet, save it now
+						user_message_recovery = ChatMessage(
+							session_id=session_id,
+							role=MessageRole.USER,
+							content=message_data.content
+						)
+						db.add(user_message_recovery)
+						await db.commit()
+						logger.info(f"Saved user message during error recovery for session {session_id}")
+				except Exception as user_save_error:
+					logger.error(f"Failed to save user message during recovery: {str(user_save_error)}")
+
+				# Save assistant error message
+				error_content = f"Sorry, I encountered an error: {str(e)}"
+				assistant_message = ChatMessage(
+					session_id=session_id,
+					role=MessageRole.ASSISTANT,
+					content=error_content
+				)
+				db.add(assistant_message)
+				await db.commit()
+				await db.refresh(assistant_message)
+				logger.info(f"Saved error message for session {session_id}")
+
+				# Update cache to include this failed conversation
+				# This ensures next message has proper context even after error
+				cached_entry = cache.get(session_id)
+				if cached_entry:
+					cached_entry.messages.append({"role": "user", "content": message_data.content})
+					cached_entry.messages.append({"role": "assistant", "content": error_content})
+					cached_entry.messages = cached_entry.messages[-20:]
+					logger.debug(f"Updated cache after error for session {session_id}")
+
+			except Exception as save_error:
+				logger.error(f"Failed to save error message: {str(save_error)}")
+
 			yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
 	return StreamingResponse(
