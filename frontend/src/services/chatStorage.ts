@@ -265,8 +265,10 @@ class ChatStorageService {
 			// Add 'Z' suffix if not present to ensure correct UTC parsing
 			const normalizeTimestamp = (ts: string): number => {
 				if (!ts) return 0;
-				// If timestamp doesn't end with Z or timezone offset, treat as UTC
-				const normalized = ts.match(/[Z+-]/) ? ts : ts + 'Z';
+				// Check if timestamp already has timezone indicator at the END
+				// Z suffix, or +HH:MM / -HH:MM offset (but not the dashes in date part)
+				const hasTimezone = ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts) || /[+-]\d{4}$/.test(ts);
+				const normalized = hasTimezone ? ts : ts + 'Z';
 				return new Date(normalized).getTime();
 			};
 
