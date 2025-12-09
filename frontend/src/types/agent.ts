@@ -24,7 +24,7 @@ export interface ToolCall {
 	tool_name: string;
 	args: Record<string, any>;
 	id: string;
-	status: "executed" | "requires_auth" | "failed";
+	status: "executing" | "executed" | "requires_auth" | "failed";
 	result?: string;
 	auth_scope?: string;
 	error?: string;
@@ -95,4 +95,12 @@ export interface ToolAuthorizationRequest {
 export interface AuthorizationResponse {
 	status: "granted" | "revoked";
 	scopes: string[];
+}
+
+// Unified iteration display type
+export interface IterationBlock {
+	iteration: number;          // 1-based iteration number
+	content: string;            // Text content for this iteration
+	toolCalls: ToolCall[];      // Tool calls WITH results attached
+	status: 'streaming' | 'complete';
 }

@@ -4,12 +4,13 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit2, ArrowUp, Loader2 } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
-import type { ChatMessage } from "../types/agent";
-import ToolCallCard from "../components/ToolCallCard";
+import type { IterationBlock } from "../types/agent";
+import IterationBlockComponent from "../components/IterationBlock";
+import { enrichIterationData } from "../utils/iterationHelpers";
 
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
@@ -18,14 +19,13 @@ export default function AgentChat() {
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitleValue, setEditTitleValue] = useState("");
 	const [input, setInput] = useState("");
-	const [streamingContent, setStreamingContent] = useState("");
 	const [isStreaming, setIsStreaming] = useState(false);
-	const [toolCallStatus, setToolCallStatus] = useState<string | null>(null);
+	const [streamingIterations, setStreamingIterations] = useState<IterationBlock[]>([]);
+	const streamingIterationsRef = useRef<IterationBlock[]>([]); // Ref to avoid closure trap
 	const [currentIteration, setCurrentIteration] = useState<number>(0);
 	const [maxIterations, setMaxIterations] = useState<number>(0);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
-	const queryClient = useQueryClient();
 	const [loadingFromDb, setLoadingFromDb] = useState(true);
 
 	// Periodically refresh session title from IndexedDB
@@ -164,9 +164,9 @@ export default function AgentChat() {
 			// The backend now uses non-streaming for the final synthesis after tools.
 
 			// Reset streaming state
-			setStreamingContent("");
 			setIsStreaming(true);
-			setToolCallStatus(null);
+			setStreamingIterations([]);
+			streamingIterationsRef.current = []; // Reset ref too
 			setCurrentIteration(0);
 			setMaxIterations(0);
 
@@ -179,43 +179,117 @@ export default function AgentChat() {
 					{ content },
 					(chunk) => {
 						if (chunk.type === "iteration_start") {
-							// New iteration starting - just track iteration number, don't show status
-							// Tool call and thinking are different concepts
+							// New iteration starting - create new IterationBlock
 							setCurrentIteration(chunk.iteration || 0);
 							setMaxIterations(chunk.max_iterations || 0);
+
+							setStreamingIterations(prev => {
+								const newState = [...prev, {
+									iteration: chunk.iteration || prev.length + 1,
+									content: "",
+									toolCalls: [],
+									status: 'streaming' as const
+								}];
+								streamingIterationsRef.current = newState;
+								return newState;
+							});
 						} else if (chunk.type === "iteration_complete") {
-							// Iteration completed - clear any tool status
-							setToolCallStatus(null);
+							// Iteration completed - mark as complete
+							setStreamingIterations(prev => {
+								const updated = [...prev];
+								if (updated.length > 0) {
+									updated[updated.length - 1].status = 'complete';
+								}
+								streamingIterationsRef.current = updated;
+								return updated;
+							});
 						} else if (chunk.type === "content") {
-							// Append streaming content
+							// Append streaming content to current iteration
 							const newContent = chunk.content || "";
 							accumulatedContent += newContent;
-							setStreamingContent(prev => prev + newContent);
+
+							setStreamingIterations(prev => {
+								const updated = [...prev];
+								if (updated.length > 0) {
+									updated[updated.length - 1].content += newContent;
+								}
+								streamingIterationsRef.current = updated;
+								return updated;
+							});
 						} else if (chunk.type === "tool_start") {
-							// Tool execution started
-							const toolNames = chunk.tool_calls?.map(tc => tc.tool_name).join(", ") || "";
-							setToolCallStatus(`Calling tools: ${toolNames}...`);
+							// Tool execution started - add executing tool calls to current iteration
+							if (chunk.tool_calls) {
+								const executingTools = chunk.tool_calls.map(tc => ({
+									tool_name: tc.tool_name || tc.name,
+									args: tc.args,
+									id: tc.id,
+									status: "executing" as const
+								}));
+
+								setStreamingIterations(prev => {
+									const updated = [...prev];
+									if (updated.length > 0) {
+										updated[updated.length - 1].toolCalls = executingTools;
+									}
+									streamingIterationsRef.current = updated;
+									return updated;
+								});
+							}
 						} else if (chunk.type === "tool_results") {
-							setToolCallStatus("Processing tool results...");
+							// Update tool calls to executed status with results
+							if (chunk.results && Array.isArray(chunk.results)) {
+								setStreamingIterations(prev => {
+									const updated = [...prev];
+									if (updated.length > 0) {
+										const currentIter = updated[updated.length - 1];
+										const results = chunk.results!; // We checked it's defined above
+										currentIter.toolCalls = currentIter.toolCalls.map(tc => {
+											const result = results.find(r =>
+												r.call_id === tc.id || r.tool_name === tc.tool_name
+											);
+
+											if (result) {
+												return {
+													...tc,
+													status: result.success ? "executed" as const : "failed" as const,
+													result: result.result,
+													error: result.success ? undefined : result.result
+												};
+											}
+											return tc;
+										});
+									}
+									streamingIterationsRef.current = updated;
+									return updated;
+								});
+							}
 						} else if (chunk.type === "final_response_start") {
-							setToolCallStatus(null);
-							// Don't reset accumulatedContent, but reset display
-							setStreamingContent("");
+							// Start of final response after tool execution
 						} else if (chunk.type === "error") {
 							console.error("Stream error:", chunk.error);
-							setToolCallStatus(null);
 							setIsStreaming(false);
-							setCurrentIteration(0);
-							setMaxIterations(0);
+							// Don't clear streamingIterations here - let catch block handle it
+							// so we can save partial iteration data
 						}
 					}
 				);
 
 				setIsStreaming(false);
-				setStreamingContent("");
-				setToolCallStatus(null);
-				setCurrentIteration(0);
-				setMaxIterations(0);
+
+				// Build metadata from streaming iterations before clearing
+				const metadata = response.metadata || {};
+				if (streamingIterations.length > 0) {
+					metadata.iteration_data = streamingIterations.map(iter => ({
+						iteration: iter.iteration,
+						content: iter.content,
+						tool_calls: iter.toolCalls.map(tc => ({
+							tool_name: tc.tool_name,
+							args: tc.args,
+							id: tc.id
+						}))
+					}));
+					metadata.iterations = streamingIterations.length;
+				}
 
 				// Save assistant response to IndexedDB
 				const assistantMessage: MessageData = {
@@ -223,11 +297,16 @@ export default function AgentChat() {
 					role: "assistant",
 					content: response.content,
 					tool_calls: response.tool_calls || undefined,
-					metadata: response.metadata || undefined,
+					metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 					created_at: response.created_at,
 					synced_to_backend: true,
 				};
 				await storage.saveMessage(sessionId, assistantMessage);
+
+				// Clear streaming state after saving
+				setStreamingIterations([]);
+				setCurrentIteration(0);
+				setMaxIterations(0);
 
 				// Update session timestamp
 				await storage.updateSessionTimestamp(sessionId);
@@ -236,17 +315,33 @@ export default function AgentChat() {
 			} catch (error) {
 				// Error occurred, but save what we got so far
 				setIsStreaming(false);
-				setStreamingContent("");
-				setToolCallStatus(null);
-				setCurrentIteration(0);
-				setMaxIterations(0);
 
-				if (accumulatedContent) {
-					// Save partial response
+				// Build metadata from streaming iterations before clearing (if any)
+				// Use ref to get the latest value (avoid closure trap)
+				const currentIterations = streamingIterationsRef.current;
+				const metadata: any = {};
+				if (currentIterations.length > 0) {
+					metadata.iteration_data = currentIterations.map(iter => ({
+						iteration: iter.iteration,
+						content: iter.content,
+						tool_calls: iter.toolCalls.map(tc => ({
+							tool_name: tc.tool_name,
+							args: tc.args,
+							id: tc.id
+						}))
+					}));
+					metadata.iterations = currentIterations.length;
+				} else {
+					console.warn("No streamingIterations to save!");
+				}
+
+				if (accumulatedContent || currentIterations.length > 0) {
+					// Save partial response with iteration data
 					const partialMessage: MessageData = {
 						session_id: sessionId,
 						role: "assistant",
 						content: accumulatedContent + "\n\n[Error: Response incomplete due to server error]",
+						metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 						created_at: new Date().toISOString(),
 						synced_to_backend: false,
 					};
@@ -255,6 +350,11 @@ export default function AgentChat() {
 					// Update local state
 					setMessages(prev => [...prev, partialMessage]);
 				}
+
+				// Clear streaming state after saving
+				setStreamingIterations([]);
+				setCurrentIteration(0);
+				setMaxIterations(0);
 
 				throw error;
 			}
@@ -303,7 +403,7 @@ export default function AgentChat() {
 	// Auto-scroll to bottom
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages, streamingContent, toolCallStatus]);
+	}, [messages, streamingIterations]);
 
 	const handleSend = () => {
 		if (!input.trim() || !sessionId) return;
@@ -571,26 +671,20 @@ AGENT_MODEL=gpt-4`}
 					))
 				)}
 
-				{/* Streaming message */}
-				{isStreaming && streamingContent && (
+				{/* Streaming iterations (real-time) - unified display */}
+				{streamingIterations.length > 0 && (
 					<div className="flex justify-start">
 						<div className="group relative max-w-3xl">
 							<div className="rounded-lg px-4 py-3 bg-white border border-gray-200 text-gray-900">
-								<div className="text-sm whitespace-pre-wrap break-words">
-									{streamingContent}
-									<span className="inline-block w-2 h-4 ml-1 bg-blue-600 animate-pulse"></span>
-								</div>
+								{streamingIterations.map((iter, idx) => (
+									<IterationBlockComponent
+										key={iter.iteration}
+										iteration={iter}
+										showHeader={streamingIterations.length > 1}
+										isStreaming={idx === streamingIterations.length - 1 && iter.status === 'streaming'}
+									/>
+								))}
 							</div>
-						</div>
-					</div>
-				)}
-
-				{/* Tool calling status */}
-				{toolCallStatus && (
-					<div className="flex justify-start">
-						<div className="rounded-lg px-4 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm flex items-center gap-2">
-							<Loader2 className="w-4 h-4 animate-spin" />
-							{toolCallStatus}
 						</div>
 					</div>
 				)}
@@ -632,103 +726,67 @@ AGENT_MODEL=gpt-4`}
 function MessageBubble({ message }: { message: MessageData }) {
 	const isUser = message.role === "user";
 
-	const handleAuthorize = (scope: string) => {
-		// TODO: Implement authorization flow
-		alert(`Authorization for ${scope} will be implemented in next step`);
-	};
+	// User messages - simple display
+	if (isUser) {
+		return (
+			<div className="flex justify-end">
+				<div className="group relative max-w-3xl">
+					<div className="rounded-lg px-4 py-3 bg-blue-600 text-white">
+						<div className="text-sm whitespace-pre-wrap break-words">
+							{message.content}
+						</div>
+					</div>
+					{/* Timestamp - below bubble, only visible on hover */}
+					<div className="text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity text-right">
+						{new Date(message.created_at).toLocaleTimeString()}
+					</div>
+				</div>
+			</div>
+		);
+	}
 
-	// Check if message has iteration_data in metadata
-	const iterationData = message.metadata?.iteration_data;
-	const hasIterations = iterationData && iterationData.length > 0;
+	// Assistant messages - convert to IterationBlock format
+	let iterations: IterationBlock[];
+
+	if (message.metadata?.iteration_data) {
+		// New format: enrich with results
+		iterations = enrichIterationData(
+			message.metadata.iteration_data,
+			message.tool_calls || []
+		);
+	} else if (message.tool_calls && message.tool_calls.length > 0) {
+		// Old format: single iteration
+		iterations = [{
+			iteration: 1,
+			content: message.content,
+			toolCalls: message.tool_calls,
+			status: 'complete'
+		}];
+	} else {
+		// Plain message
+		iterations = [{
+			iteration: 1,
+			content: message.content,
+			toolCalls: [],
+			status: 'complete'
+		}];
+	}
 
 	return (
-		<div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+		<div className="flex justify-start">
 			<div className="group relative max-w-3xl">
-				{/* Message bubble */}
-				<div
-					className={`rounded-lg px-4 py-3 ${
-						isUser
-							? "bg-blue-600 text-white"
-							: "bg-white border border-gray-200 text-gray-900"
-					}`}
-				>
-					{/* For assistant messages with iteration data, display each iteration separately */}
-					{!isUser && hasIterations ? (
-						<>
-							{iterationData.map((iter, idx) => (
-								<div key={`iter-${iter.iteration}-${idx}`}>
-									{/* Iteration content */}
-									{iter.content && (
-										<div className="text-sm whitespace-pre-wrap break-words">
-											{iter.content}
-										</div>
-									)}
-
-									{/* Tool calls for this iteration */}
-									{iter.tool_calls && iter.tool_calls.length > 0 && (
-										<div className="my-2">
-											{iter.tool_calls.map((toolCall: any, tcIdx: number) => (
-												<ToolCallCard
-													key={`${toolCall.id}-${tcIdx}`}
-													toolCall={toolCall}
-													onAuthorize={handleAuthorize}
-												/>
-											))}
-										</div>
-									)}
-
-									{/* Horizontal divider between iterations (except last one) */}
-									{idx < iterationData.length - 1 && (
-										<hr className="my-4 border-gray-300" />
-									)}
-								</div>
-							))}
-						</>
-					) : !isUser && message.tool_calls && message.tool_calls.length > 0 ? (
-						/* Fallback: Old format for backward compatibility */
-						<>
-							{/* Initial thinking/content before tool execution */}
-							{message.content && (
-								<div className="text-sm whitespace-pre-wrap break-words mb-3">
-									{/* Show the first part of content (before tool execution results appear) */}
-									{message.content.split('\n\n').slice(0, 1).join('\n\n')}
-								</div>
-							)}
-
-							{/* Tool calls */}
-							<div className="my-2">
-								{message.tool_calls.map((toolCall: any, index: number) => (
-									<ToolCallCard
-										key={`${toolCall.id}-${index}`}
-										toolCall={toolCall}
-										onAuthorize={handleAuthorize}
-									/>
-								))}
-							</div>
-
-							{/* Final response after tool execution */}
-							{message.content && message.content.split('\n\n').length > 1 && (
-								<div className="text-sm whitespace-pre-wrap break-words mt-3">
-									{/* Show remaining content (after tool execution) */}
-									{message.content.split('\n\n').slice(1).join('\n\n')}
-								</div>
-							)}
-						</>
-					) : (
-						/* Regular message without tool calls */
-						message.content && (
-							<div className="text-sm whitespace-pre-wrap break-words">
-								{message.content}
-							</div>
-						)
-					)}
+				<div className="rounded-lg px-4 py-3 bg-white border border-gray-200 text-gray-900">
+					{iterations.map((iter) => (
+						<IterationBlockComponent
+							key={iter.iteration}
+							iteration={iter}
+							showHeader={iterations.length > 1}
+							isStreaming={false}
+						/>
+					))}
 				</div>
 				{/* Timestamp - below bubble, only visible on hover */}
-				<div
-					className={`text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity ${
-						isUser ? "text-right" : "text-left"
-					}`}
-				>
+				<div className="text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity text-left">
 					{new Date(message.created_at).toLocaleTimeString()}
 				</div>
 			</div>

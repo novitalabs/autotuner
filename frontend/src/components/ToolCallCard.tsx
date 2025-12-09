@@ -3,7 +3,7 @@
  */
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, CheckCircle, AlertCircle, XCircle, Lock } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle, AlertCircle, XCircle, Lock, Loader2 } from "lucide-react";
 import type { ToolCall } from "../types/agent";
 
 interface ToolCallCardProps {
@@ -16,6 +16,8 @@ export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProp
 
 	const getStatusIcon = () => {
 		switch (toolCall.status) {
+			case "executing":
+				return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />;
 			case "executed":
 				return <CheckCircle className="w-4 h-4 text-green-600" />;
 			case "requires_auth":
@@ -29,6 +31,8 @@ export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProp
 
 	const getStatusColor = () => {
 		switch (toolCall.status) {
+			case "executing":
+				return "border-blue-200 bg-blue-50";
 			case "executed":
 				return "border-green-200 bg-green-50";
 			case "requires_auth":
@@ -42,6 +46,8 @@ export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProp
 
 	const getStatusText = () => {
 		switch (toolCall.status) {
+			case "executing":
+				return "Executing...";
 			case "executed":
 				return "Executed";
 			case "requires_auth":
