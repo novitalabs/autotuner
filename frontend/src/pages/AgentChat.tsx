@@ -198,7 +198,11 @@ export default function AgentChat() {
 							setStreamingIterations(prev => {
 								const updated = [...prev];
 								if (updated.length > 0) {
-									updated[updated.length - 1].status = 'complete';
+									// Deep copy to avoid mutation
+									updated[updated.length - 1] = {
+										...updated[updated.length - 1],
+										status: 'complete'
+									};
 								}
 								streamingIterationsRef.current = updated;
 								return updated;
@@ -211,7 +215,11 @@ export default function AgentChat() {
 							setStreamingIterations(prev => {
 								const updated = [...prev];
 								if (updated.length > 0) {
-									updated[updated.length - 1].content += newContent;
+									// Deep copy the last iteration to avoid mutation issues
+									updated[updated.length - 1] = {
+										...updated[updated.length - 1],
+										content: updated[updated.length - 1].content + newContent
+									};
 								}
 								streamingIterationsRef.current = updated;
 								return updated;
@@ -229,7 +237,11 @@ export default function AgentChat() {
 								setStreamingIterations(prev => {
 									const updated = [...prev];
 									if (updated.length > 0) {
-										updated[updated.length - 1].toolCalls = executingTools;
+										// Deep copy to avoid mutation
+										updated[updated.length - 1] = {
+											...updated[updated.length - 1],
+											toolCalls: executingTools
+										};
 									}
 									streamingIterationsRef.current = updated;
 									return updated;
@@ -243,7 +255,7 @@ export default function AgentChat() {
 									if (updated.length > 0) {
 										const currentIter = updated[updated.length - 1];
 										const results = chunk.results!; // We checked it's defined above
-										currentIter.toolCalls = currentIter.toolCalls.map(tc => {
+										const updatedToolCalls = currentIter.toolCalls.map(tc => {
 											const result = results.find(r =>
 												r.call_id === tc.id || r.tool_name === tc.tool_name
 											);
@@ -258,6 +270,11 @@ export default function AgentChat() {
 											}
 											return tc;
 										});
+										// Deep copy to avoid mutation
+										updated[updated.length - 1] = {
+											...currentIter,
+											toolCalls: updatedToolCalls
+										};
 									}
 									streamingIterationsRef.current = updated;
 									return updated;
