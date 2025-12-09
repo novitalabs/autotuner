@@ -24,8 +24,8 @@ export function UpdateNotification({ githubRepo }: UpdateNotificationProps) {
 
   // Check for updates on mount
   useEffect(() => {
-    if (!githubRepo || githubRepo === 'your-org/inference-autotuner') {
-      // Skip check if repo not configured
+    if (!githubRepo || githubRepo === 'your-org/inference-autotuner' || githubRepo === 'novitalabs/inference-autotuner') {
+      // Skip check if repo not configured or using placeholder
       return;
     }
 
@@ -34,7 +34,7 @@ export function UpdateNotification({ githubRepo }: UpdateNotificationProps) {
 
   // Periodic checking (every 60 minutes)
   useEffect(() => {
-    if (!githubRepo || githubRepo === 'your-org/inference-autotuner') {
+    if (!githubRepo || githubRepo === 'your-org/inference-autotuner' || githubRepo === 'novitalabs/inference-autotuner') {
       return;
     }
 

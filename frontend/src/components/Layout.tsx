@@ -296,8 +296,8 @@ export default function Layout() {
 
 	return (
 		<div className="h-screen flex overflow-hidden bg-gray-100">
-			{/* Update notification banner */}
-			<UpdateNotification githubRepo={import.meta.env.VITE_GITHUB_REPO || "novitalabs/inference-autotuner"} />
+			{/* Update notification banner - disabled by default, set VITE_GITHUB_REPO to enable */}
+			<UpdateNotification githubRepo={import.meta.env.VITE_GITHUB_REPO || ""} />
 
 			{/* Mobile sidebar backdrop */}
 			{sidebarOpen && (
