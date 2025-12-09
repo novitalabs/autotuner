@@ -19,11 +19,11 @@ export default function AgentChat() {
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitleValue, setEditTitleValue] = useState("");
 	const [input, setInput] = useState("");
-	const [isStreaming, setIsStreaming] = useState(false);
+	const [_isStreaming, setIsStreaming] = useState(false);
 	const [streamingIterations, setStreamingIterations] = useState<IterationBlock[]>([]);
 	const streamingIterationsRef = useRef<IterationBlock[]>([]); // Ref to avoid closure trap
-	const [currentIteration, setCurrentIteration] = useState<number>(0);
-	const [maxIterations, setMaxIterations] = useState<number>(0);
+	const [_currentIteration, setCurrentIteration] = useState<number>(0);
+	const [_maxIterations, setMaxIterations] = useState<number>(0);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const [loadingFromDb, setLoadingFromDb] = useState(true);
@@ -183,47 +183,51 @@ export default function AgentChat() {
 							setCurrentIteration(chunk.iteration || 0);
 							setMaxIterations(chunk.max_iterations || 0);
 
-							setStreamingIterations(prev => {
-								const newState = [...prev, {
-									iteration: chunk.iteration || prev.length + 1,
-									content: "",
-									toolCalls: [],
-									status: 'streaming' as const
-								}];
-								streamingIterationsRef.current = newState;
-								return newState;
-							});
+							// Use ref as source of truth
+							const currentIterations = streamingIterationsRef.current;
+							const iterNum = chunk.iteration || currentIterations.length + 1;
+
+							// Prevent duplicate iterations (same iteration number)
+							if (currentIterations.some(iter => iter.iteration === iterNum)) {
+								console.debug(`Skipping duplicate iteration_start for iteration ${iterNum}`);
+								return;
+							}
+
+							const newState = [...currentIterations, {
+								iteration: iterNum,
+								content: "",
+								toolCalls: [],
+								status: 'streaming' as const
+							}];
+							streamingIterationsRef.current = newState;
+							setStreamingIterations(newState);
 						} else if (chunk.type === "iteration_complete") {
 							// Iteration completed - mark as complete
-							setStreamingIterations(prev => {
-								const updated = [...prev];
-								if (updated.length > 0) {
-									// Deep copy to avoid mutation
-									updated[updated.length - 1] = {
-										...updated[updated.length - 1],
-										status: 'complete'
-									};
-								}
+							const currentIterations = streamingIterationsRef.current;
+							if (currentIterations.length > 0) {
+								const updated = [...currentIterations];
+								updated[updated.length - 1] = {
+									...updated[updated.length - 1],
+									status: 'complete'
+								};
 								streamingIterationsRef.current = updated;
-								return updated;
-							});
+								setStreamingIterations(updated);
+							}
 						} else if (chunk.type === "content") {
 							// Append streaming content to current iteration
 							const newContent = chunk.content || "";
 							accumulatedContent += newContent;
 
-							setStreamingIterations(prev => {
-								const updated = [...prev];
-								if (updated.length > 0) {
-									// Deep copy the last iteration to avoid mutation issues
-									updated[updated.length - 1] = {
-										...updated[updated.length - 1],
-										content: updated[updated.length - 1].content + newContent
-									};
-								}
+							const currentIterations = streamingIterationsRef.current;
+							if (currentIterations.length > 0) {
+								const updated = [...currentIterations];
+								updated[updated.length - 1] = {
+									...updated[updated.length - 1],
+									content: updated[updated.length - 1].content + newContent
+								};
 								streamingIterationsRef.current = updated;
-								return updated;
-							});
+								setStreamingIterations(updated);
+							}
 						} else if (chunk.type === "tool_start") {
 							// Tool execution started - add executing tool calls to current iteration
 							if (chunk.tool_calls) {
@@ -234,101 +238,168 @@ export default function AgentChat() {
 									status: "executing" as const
 								}));
 
-								setStreamingIterations(prev => {
-									const updated = [...prev];
-									if (updated.length > 0) {
-										// Deep copy to avoid mutation
-										updated[updated.length - 1] = {
-											...updated[updated.length - 1],
-											toolCalls: executingTools
-										};
+								// Use ref as source of truth to avoid React StrictMode double-invocation issues
+								const currentIterations = streamingIterationsRef.current;
+
+								if (currentIterations.length > 0) {
+									const currentIter = currentIterations[currentIterations.length - 1];
+
+									// Check if we already have tool calls with these IDs (prevent duplicates)
+									const existingIds = new Set(currentIter.toolCalls.map(tc => tc.id));
+									const newTools = executingTools.filter(tc => !existingIds.has(tc.id));
+
+									if (newTools.length === 0 && currentIter.toolCalls.length > 0) {
+										// All tools already exist, skip update
+										return;
 									}
+
+									// Update ref first
+									const updated = [...currentIterations];
+									updated[updated.length - 1] = {
+										...currentIter,
+										toolCalls: [...currentIter.toolCalls, ...newTools]
+									};
 									streamingIterationsRef.current = updated;
-									return updated;
-								});
+
+									// Then sync to state
+									setStreamingIterations(updated);
+								}
 							}
 						} else if (chunk.type === "tool_results") {
 							// Update tool calls to executed status with results
 							if (chunk.results && Array.isArray(chunk.results)) {
-								setStreamingIterations(prev => {
-									const updated = [...prev];
-									if (updated.length > 0) {
-										const currentIter = updated[updated.length - 1];
-										const results = chunk.results!; // We checked it's defined above
-										const updatedToolCalls = currentIter.toolCalls.map(tc => {
-											const result = results.find(r =>
-												r.call_id === tc.id || r.tool_name === tc.tool_name
-											);
+								const results = chunk.results;
 
-											if (result) {
-												return {
-													...tc,
-													status: result.success ? "executed" as const : "failed" as const,
-													result: result.result,
-													error: result.success ? undefined : result.result
-												};
-											}
-											return tc;
-										});
-										// Deep copy to avoid mutation
-										updated[updated.length - 1] = {
-											...currentIter,
-											toolCalls: updatedToolCalls
-										};
+								// Use ref as source of truth
+								const currentIterations = streamingIterationsRef.current;
+								if (currentIterations.length > 0) {
+									const currentIter = currentIterations[currentIterations.length - 1];
+
+									// Skip if all tools are already completed (prevent duplicate updates)
+									const allCompleted = currentIter.toolCalls.every(
+										tc => tc.status === "executed" || tc.status === "failed"
+									);
+									if (allCompleted && currentIter.toolCalls.length > 0) {
+										return;
 									}
+
+									const updatedToolCalls = currentIter.toolCalls.map(tc => {
+										// Don't update already completed tools
+										if (tc.status === "executed" || tc.status === "failed") {
+											return tc;
+										}
+
+										const result = results.find(r =>
+											r.call_id === tc.id || r.tool_name === tc.tool_name
+										);
+
+										if (result) {
+											return {
+												...tc,
+												status: result.success ? "executed" as const : "failed" as const,
+												result: result.result,
+												error: result.success ? undefined : result.result
+											};
+										}
+										return tc;
+									});
+
+									// Update ref first
+									const updated = [...currentIterations];
+									updated[updated.length - 1] = {
+										...currentIter,
+										toolCalls: updatedToolCalls
+									};
 									streamingIterationsRef.current = updated;
-									return updated;
-								});
+
+									// Then sync to state
+									setStreamingIterations(updated);
+								}
 							}
 						} else if (chunk.type === "final_response_start") {
 							// Start of final response after tool execution
 						} else if (chunk.type === "error") {
+							// Error from backend - append error text to current iteration content
+							// Don't save here - let the catch block handle final saving
 							console.error("Stream error:", chunk.error);
-							setIsStreaming(false);
-							// Don't clear streamingIterations here - let catch block handle it
-							// so we can save partial iteration data
+
+							const errorText = `\n\n❌ **Error:** ${chunk.error || "Unknown error occurred"}`;
+
+							// Append error to current iteration's content using ref
+							const currentIterations = streamingIterationsRef.current;
+							let updated: typeof currentIterations;
+
+							if (currentIterations.length > 0) {
+								updated = [...currentIterations];
+								updated[updated.length - 1] = {
+									...updated[updated.length - 1],
+									content: updated[updated.length - 1].content + errorText,
+									status: 'complete' as const
+								};
+							} else {
+								// No iterations yet - create one with error
+								updated = [{
+									iteration: 1,
+									content: errorText.trim(),
+									toolCalls: [],
+									status: 'complete' as const
+								}];
+							}
+							streamingIterationsRef.current = updated;
+							setStreamingIterations(updated);
+
+							// Note: agentApi will reject the promise, catch block will handle saving
 						}
 					}
 				);
 
 				setIsStreaming(false);
 
-				// Build metadata from streaming iterations before clearing
-				// Use ref to get the latest value (avoid closure trap)
+				// Use metadata from backend response if available, otherwise build from streaming state
+				// Backend metadata is more authoritative as it comes from the saved database record
 				const currentIterations = streamingIterationsRef.current;
-				const metadata = response.metadata || {};
-				if (currentIterations.length > 0) {
-					metadata.iteration_data = currentIterations.map(iter => ({
-						iteration: iter.iteration,
-						content: iter.content,
-						tool_calls: iter.toolCalls.map(tc => ({
+				let metadata = response.metadata;
+				let allToolCalls: any[] = [];
+
+				if (metadata?.iteration_data) {
+					// Backend provided iteration_data - use response.tool_calls which has results
+					allToolCalls = response.tool_calls || [];
+				} else if (currentIterations.length > 0) {
+					// No backend metadata - build from streaming state (fallback)
+					metadata = {
+						iteration_data: currentIterations.map(iter => ({
+							iteration: iter.iteration,
+							content: iter.content,
+							tool_calls: iter.toolCalls.map(tc => ({
+								tool_name: tc.tool_name,
+								args: tc.args,
+								id: tc.id
+							}))
+						})),
+						iterations: currentIterations.length
+					};
+					// Extract all tool calls from iterations (with complete result/error/status)
+					allToolCalls = currentIterations.flatMap(iter =>
+						iter.toolCalls.map(tc => ({
 							tool_name: tc.tool_name,
 							args: tc.args,
-							id: tc.id
+							id: tc.id,
+							status: tc.status,
+							result: tc.result,
+							error: tc.error
 						}))
-					}));
-					metadata.iterations = currentIterations.length;
+					);
 				}
 
-				// Extract all tool calls from iterations (with complete result/error/status)
-				const allToolCalls = currentIterations.flatMap(iter =>
-					iter.toolCalls.map(tc => ({
-						tool_name: tc.tool_name,
-						args: tc.args,
-						id: tc.id,
-						status: tc.status,
-						result: tc.result,
-						error: tc.error
-					}))
-				);
-
 				// Save assistant response to IndexedDB
+				// Use backend ID to ensure consistency between IndexedDB and state
 				const assistantMessage: MessageData = {
+					id: response.id ? String(response.id) : undefined,
 					session_id: sessionId,
 					role: "assistant",
 					content: response.content,
 					tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
-					metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+					metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
 					created_at: response.created_at,
 					synced_to_backend: true,
 				};
@@ -344,17 +415,18 @@ export default function AgentChat() {
 
 				return { userMessage, assistantMessage };
 			} catch (error) {
-				// Error occurred, but save what we got so far
+				// Error occurred - streamingIterations contains content + error text (appended by error event handler)
 				setIsStreaming(false);
 
-				// Build metadata from streaming iterations before clearing (if any)
-				// Use ref to get the latest value (avoid closure trap)
+				// Get current iterations (error text already appended by error event handler)
 				const currentIterations = streamingIterationsRef.current;
+
+				// Build metadata with iteration_data (content already includes error text)
 				const metadata: any = {};
 				if (currentIterations.length > 0) {
 					metadata.iteration_data = currentIterations.map(iter => ({
 						iteration: iter.iteration,
-						content: iter.content,
+						content: iter.content,  // Already contains error text from error event handler
 						tool_calls: iter.toolCalls.map(tc => ({
 							tool_name: tc.tool_name,
 							args: tc.args,
@@ -362,50 +434,81 @@ export default function AgentChat() {
 						}))
 					}));
 					metadata.iterations = currentIterations.length;
+				}
+
+				const allToolCalls = currentIterations.flatMap(iter =>
+					iter.toolCalls.map(tc => ({
+						tool_name: tc.tool_name,
+						args: tc.args,
+						id: tc.id,
+						status: tc.status,
+						result: tc.result,
+						error: tc.error
+					}))
+				);
+
+				// Use last iteration's content (which already includes error text)
+				let errorContent = "";
+				if (currentIterations.length > 0) {
+					errorContent = currentIterations[currentIterations.length - 1].content;
+				} else if (accumulatedContent) {
+					// Fallback if no iterations
+					let errorMessage = "Response incomplete due to server error";
+					if (error instanceof Error) {
+						errorMessage = error.message;
+					}
+					errorContent = accumulatedContent + `\n\n❌ **Error:** ${errorMessage}`;
 				} else {
-					console.warn("No streamingIterations to save!");
+					// No content at all
+					let errorMessage = "Response incomplete due to server error";
+					if (error instanceof Error) {
+						errorMessage = error.message;
+					}
+					errorContent = `❌ **Error:** ${errorMessage}`;
 				}
 
-				if (accumulatedContent || currentIterations.length > 0) {
-					// Extract all tool calls from iterations (with complete result/error/status)
-					const allToolCalls = currentIterations.flatMap(iter =>
-						iter.toolCalls.map(tc => ({
-							tool_name: tc.tool_name,
-							args: tc.args,
-							id: tc.id,
-							status: tc.status,
-							result: tc.result,
-							error: tc.error
-						}))
-					);
+				const errorMessageData: MessageData = {
+					session_id: sessionId,
+					role: "assistant",
+					content: errorContent,
+					tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+					metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+					created_at: new Date().toISOString(),
+					synced_to_backend: false,
+				};
 
-					// Save partial response with iteration data
-					const partialMessage: MessageData = {
-						session_id: sessionId,
-						role: "assistant",
-						content: accumulatedContent + "\n\n[Error: Response incomplete due to server error]",
-						tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
-						metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-						created_at: new Date().toISOString(),
-						synced_to_backend: false,
-					};
-					await storage.saveMessage(sessionId, partialMessage);
-
-					// Update local state
-					setMessages(prev => [...prev, partialMessage]);
+				try {
+					await storage.saveMessage(sessionId, errorMessageData);
+				} catch (saveError) {
+					console.error("Failed to save error message to IndexedDB:", saveError);
 				}
 
-				// Clear streaming state after saving
 				setStreamingIterations([]);
+				streamingIterationsRef.current = [];
 				setCurrentIteration(0);
 				setMaxIterations(0);
 
-				throw error;
+				return {
+					userMessage,
+					assistantMessage: errorMessageData as any
+				};
 			}
 		},
 		onSuccess: (data) => {
-			// Update local state with assistant response
-			setMessages(prev => [...prev, data.assistantMessage]);
+			// Add assistant response to local state (works for both success and error cases)
+			// Deduplicate by ID or content+timestamp to prevent duplicate messages
+			setMessages(prev => {
+				const newMsg = data.assistantMessage;
+				const exists = prev.some(msg =>
+					(msg.id && newMsg.id && msg.id === newMsg.id) ||
+					(msg.content === newMsg.content && msg.created_at === newMsg.created_at && msg.role === newMsg.role)
+				);
+				if (exists) {
+					console.debug("Skipping duplicate assistant message");
+					return prev;
+				}
+				return [...prev, newMsg];
+			});
 
 			// Generate title after first user message (message count = 2: 1 user + 1 assistant)
 			// Only generate if no title exists yet (don't override user-edited titles)
@@ -440,7 +543,7 @@ export default function AgentChat() {
 		},
 		onError: (error) => {
 			console.error("Failed to send message:", error);
-			// TODO: Show error toast
+			// Error already handled in catch block - state and IndexedDB already updated
 		},
 	});
 

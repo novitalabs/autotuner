@@ -219,12 +219,13 @@ class ChatStorageService {
 		const db = await this.dbPromise;
 
 		// Generate unique ID if not provided
-		const messageWithId: Required<MessageData> & { id: string } = {
+		const messageWithId = {
 			id: message.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 			session_id: sessionId,
 			role: message.role,
 			content: message.content,
 			tool_calls: message.tool_calls,
+			metadata: message.metadata,
 			created_at: message.created_at,
 			synced_to_backend: message.synced_to_backend,
 		};
@@ -254,15 +255,35 @@ class ChatStorageService {
 		const index = db.transaction('messages').store.index('by-session');
 		const messages = await index.getAll(sessionId);
 
-		// Sort by ID (which contains timestamp) to ensure insertion order
-		// ID format: sessionId-timestamp-random
+		// Sort by created_at timestamp for reliable chronological order
+		// This handles both frontend-generated IDs (sessionId-timestamp-random)
+		// and backend-provided numeric IDs
 		messages.sort((a, b) => {
-			// Extract timestamp from ID
-			const getTimestamp = (id: string) => {
-				const parts = id.split('-');
-				return parseInt(parts[parts.length - 2]) || 0;
+			// Parse timestamps, handling both ISO formats:
+			// - Frontend: "2024-01-15T10:30:00.000Z" (with Z)
+			// - Backend:  "2024-01-15T10:30:00.123456" (without Z, but still UTC)
+			// Add 'Z' suffix if not present to ensure correct UTC parsing
+			const normalizeTimestamp = (ts: string): number => {
+				if (!ts) return 0;
+				// If timestamp doesn't end with Z or timezone offset, treat as UTC
+				const normalized = ts.match(/[Z+-]/) ? ts : ts + 'Z';
+				return new Date(normalized).getTime();
 			};
-			return getTimestamp(a.id) - getTimestamp(b.id);
+
+			const timeA = normalizeTimestamp(a.created_at);
+			const timeB = normalizeTimestamp(b.created_at);
+
+			// If timestamps are the same (or invalid), maintain relative order:
+			// user messages should come before assistant messages
+			if (timeA === timeB || isNaN(timeA) || isNaN(timeB)) {
+				// User messages before assistant messages
+				if (a.role === 'user' && b.role === 'assistant') return -1;
+				if (a.role === 'assistant' && b.role === 'user') return 1;
+				// Fall back to ID comparison for same role (uses insertion order)
+				return (a.id || '').localeCompare(b.id || '');
+			}
+
+			return timeA - timeB;
 		});
 
 		if (limit) {
@@ -273,7 +294,6 @@ class ChatStorageService {
 	}
 
 	async getUnsyncedMessages(sessionId: string): Promise<MessageData[]> {
-		const db = await this.dbPromise;
 		const messages = await this.getMessages(sessionId);
 
 		return messages.filter((msg) => !msg.synced_to_backend);

@@ -21,9 +21,13 @@ export default function IterationBlock({
 }: IterationBlockProps) {
 	return (
 		<div>
-		{/* Iteration header - only show if multiple iterations AND not the first one */}
-		{showHeader && iteration.iteration > 1 && (
-			<hr className="mt-6 mb-3 border-gray-300" />
+		{/* Iteration header - only show if multiple iterations */}
+		{showHeader && (
+			<div className={iteration.iteration > 1 ? "mt-4 pt-3 border-t border-gray-200" : ""}>
+				<span className="text-xs text-gray-400 font-medium">
+					Step {iteration.iteration}
+				</span>
+			</div>
 		)}
 
 			{/* Content section - thinking/reasoning text */}

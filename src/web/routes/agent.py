@@ -521,28 +521,33 @@ High-level tools provide better error handling, formatted output, and business l
 
 		# 6. Save final assistant message with complete tool execution history
 		if all_tool_calls:
-			# Find result for each tool call
+			# Find result and status for each tool call
 			def find_result_for_call(call_id):
 				for r in all_tool_results:
 					if r.get("call_id") == call_id:
-						return r.get("result")
+						return r.get("result"), r.get("success", True)
 				# Fallback: match by tool_name if call_id doesn't match
 				for r in all_tool_results:
 					if r.get("tool_name") == call_id:
-						return r.get("result")
-				return None
+						return r.get("result"), r.get("success", True)
+				return None, True
+
+			def build_tool_call_entry(tc):
+				result, success = find_result_for_call(tc["id"])
+				return {
+					"tool_name": tc["name"],
+					"args": {k: v for k, v in tc["args"].items() if k != "db"},
+					"id": tc["id"],
+					"status": "executed" if success else "failed",
+					"result": result if success else None,
+					"error": result if not success else None
+				}
 
 			assistant_message = ChatMessage(
 				session_id=session_id,
 				role=MessageRole.ASSISTANT,
 				content=assistant_content,
-				tool_calls=[{
-					"tool_name": tc["name"],
-					"args": {k: v for k, v in tc["args"].items() if k != "db"},
-					"id": tc["id"],
-					"status": "executed",
-					"result": find_result_for_call(tc["id"])
-				} for tc in all_tool_calls],
+				tool_calls=[build_tool_call_entry(tc) for tc in all_tool_calls],
 				message_metadata={
 					"iterations": iteration,
 					"termination_reason": termination_reason
@@ -588,7 +593,8 @@ High-level tools provide better error handling, formatted output, and business l
 	except Exception as e:
 		logger.error(f"Error calling LLM: {str(e)}", exc_info=True)
 		# Save error message
-		error_content = f"Sorry, I encountered an error: {str(e)}"
+		error_message = str(e)
+		error_content = f"❌ **Error:** {error_message}"
 		assistant_message = ChatMessage(
 			session_id=session_id,
 			role=MessageRole.ASSISTANT,
@@ -948,20 +954,30 @@ High-level tools provide better error handling, formatted output, and business l
 					logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, but letting LLM handle the errors")
 
 				# 5f. Add assistant message with tool calls to context
+				# Note: For Claude, we don't add tool messages separately (they get skipped)
+				# Instead, we add the tool results as a user message summary
 				llm_messages.append({
 					"role": "assistant",
-					"content": assistant_content if assistant_content else ""
+					"content": iteration_content if iteration_content else "(Called tools)"
 				})
 
-				# 5g. Add ALL tool results to context as ToolMessage (including failures)
-				# This allows LLM to understand what failed and potentially recover
+				# 5g. Add tool results as a user message (Claude-compatible format)
+				# This allows Claude to see what the tools returned without needing tool_use/tool_result pairing
+				tool_results_summary = []
 				for result in tool_results:
-					call_id = result.get("call_id") or result.get("tool_name", "unknown")
-					llm_messages.append({
-						"role": "tool",
-						"content": result["result"],
-						"tool_call_id": call_id
-					})
+					tool_name = result.get("tool_name", "unknown")
+					success = result.get("success", True)
+					result_text = result.get("result", "")
+					# Truncate very long results
+					if len(result_text) > 2000:
+						result_text = result_text[:2000] + "... (truncated)"
+					status = "SUCCESS" if success else "FAILED"
+					tool_results_summary.append(f"[{tool_name}] {status}:\n{result_text}")
+
+				llm_messages.append({
+					"role": "user",
+					"content": "Tool execution results:\n\n" + "\n\n---\n\n".join(tool_results_summary) + "\n\nPlease continue based on these results. If you have enough information, provide your final answer. If you need more information, call additional tools."
+				})
 
 				# 5h. Track all tool calls and results for database storage
 				all_tool_calls.extend(tool_calls)
@@ -978,28 +994,33 @@ High-level tools provide better error handling, formatted output, and business l
 
 			# 6. Save final assistant message with complete tool execution history
 			if all_tool_calls:
-				# Find result for each tool call
+				# Find result and status for each tool call
 				def find_result_for_call(call_id):
 					for r in all_tool_results:
 						if r.get("call_id") == call_id:
-							return r.get("result")
+							return r.get("result"), r.get("success", True)
 					# Fallback: match by tool_name if call_id doesn't match
 					for r in all_tool_results:
 						if r.get("tool_name") == call_id:
-							return r.get("result")
-					return None
+							return r.get("result"), r.get("success", True)
+					return None, True
+
+				def build_tool_call_entry(tc):
+					result, success = find_result_for_call(tc["id"])
+					return {
+						"tool_name": tc["name"],
+						"args": {k: v for k, v in tc["args"].items() if k != "db"},
+						"id": tc["id"],
+						"status": "executed" if success else "failed",
+						"result": result if success else None,
+						"error": result if not success else None
+					}
 
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
 					content=assistant_content,
-					tool_calls=[{
-						"tool_name": tc["name"],
-						"args": {k: v for k, v in tc["args"].items() if k != "db"},
-						"id": tc["id"],
-						"status": "executed",
-						"result": find_result_for_call(tc["id"])
-					} for tc in all_tool_calls],
+					tool_calls=[build_tool_call_entry(tc) for tc in all_tool_calls],
 					message_metadata={
 						"iterations": iteration,
 						"termination_reason": termination_reason,
@@ -1073,7 +1094,8 @@ High-level tools provide better error handling, formatted output, and business l
 					logger.error(f"Failed to save user message during recovery: {str(user_save_error)}")
 
 				# Save assistant error message
-				error_content = f"Sorry, I encountered an error: {str(e)}"
+				error_message = str(e)
+				error_content = f"❌ **Error:** {error_message}"
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
