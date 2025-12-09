@@ -277,9 +277,11 @@ export default function AgentChat() {
 				setIsStreaming(false);
 
 				// Build metadata from streaming iterations before clearing
+				// Use ref to get the latest value (avoid closure trap)
+				const currentIterations = streamingIterationsRef.current;
 				const metadata = response.metadata || {};
-				if (streamingIterations.length > 0) {
-					metadata.iteration_data = streamingIterations.map(iter => ({
+				if (currentIterations.length > 0) {
+					metadata.iteration_data = currentIterations.map(iter => ({
 						iteration: iter.iteration,
 						content: iter.content,
 						tool_calls: iter.toolCalls.map(tc => ({
@@ -288,15 +290,27 @@ export default function AgentChat() {
 							id: tc.id
 						}))
 					}));
-					metadata.iterations = streamingIterations.length;
+					metadata.iterations = currentIterations.length;
 				}
+
+				// Extract all tool calls from iterations (with complete result/error/status)
+				const allToolCalls = currentIterations.flatMap(iter =>
+					iter.toolCalls.map(tc => ({
+						tool_name: tc.tool_name,
+						args: tc.args,
+						id: tc.id,
+						status: tc.status,
+						result: tc.result,
+						error: tc.error
+					}))
+				);
 
 				// Save assistant response to IndexedDB
 				const assistantMessage: MessageData = {
 					session_id: sessionId,
 					role: "assistant",
 					content: response.content,
-					tool_calls: response.tool_calls || undefined,
+					tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
 					metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 					created_at: response.created_at,
 					synced_to_backend: true,
@@ -336,11 +350,24 @@ export default function AgentChat() {
 				}
 
 				if (accumulatedContent || currentIterations.length > 0) {
+					// Extract all tool calls from iterations (with complete result/error/status)
+					const allToolCalls = currentIterations.flatMap(iter =>
+						iter.toolCalls.map(tc => ({
+							tool_name: tc.tool_name,
+							args: tc.args,
+							id: tc.id,
+							status: tc.status,
+							result: tc.result,
+							error: tc.error
+						}))
+					);
+
 					// Save partial response with iteration data
 					const partialMessage: MessageData = {
 						session_id: sessionId,
 						role: "assistant",
 						content: accumulatedContent + "\n\n[Error: Response incomplete due to server error]",
+						tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
 						metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 						created_at: new Date().toISOString(),
 						synced_to_backend: false,
