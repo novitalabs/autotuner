@@ -11,6 +11,21 @@ import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { IterationBlock } from "../types/agent";
 import IterationBlockComponent from "../components/IterationBlock";
 import { enrichIterationData } from "../utils/iterationHelpers";
+import { useTimezone } from "../contexts/TimezoneContext";
+
+/**
+ * Parse timestamp string to Date, treating timestamps without timezone as UTC.
+ * Backend returns UTC timestamps without Z suffix (e.g., "2025-12-09T11:58:53.762000").
+ * Frontend generates UTC timestamps with Z suffix (e.g., "2025-12-09T12:00:00.000Z").
+ */
+function parseTimestamp(timestamp: string): Date {
+	if (!timestamp) return new Date();
+	// Check if timestamp already has timezone indicator at the END
+	// Z suffix, or +HH:MM / -HH:MM offset (but not the dashes in date part)
+	const hasTimezone = timestamp.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(timestamp) || /[+-]\d{4}$/.test(timestamp);
+	const normalized = hasTimezone ? timestamp : timestamp + "Z";
+	return new Date(normalized);
+}
 
 export default function AgentChat() {
 	const [sessionId, setSessionId] = useState<string | null>(null);
@@ -871,7 +886,19 @@ AGENT_MODEL=gpt-4`}
 }
 
 function MessageBubble({ message }: { message: MessageData }) {
+	const { timezone } = useTimezone();
 	const isUser = message.role === "user";
+
+	// Format time using the timezone from context
+	const displayTime = (ts: string) => {
+		const date = parseTimestamp(ts);
+		return date.toLocaleTimeString('en-US', {
+			timeZone: timezone,
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false
+		});
+	};
 
 	// User messages - simple display
 	if (isUser) {
@@ -885,7 +912,7 @@ function MessageBubble({ message }: { message: MessageData }) {
 					</div>
 					{/* Timestamp - below bubble, only visible on hover */}
 					<div className="text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity text-right">
-						{new Date(message.created_at).toLocaleTimeString()}
+						{displayTime(message.created_at)}
 					</div>
 				</div>
 			</div>
@@ -934,7 +961,7 @@ function MessageBubble({ message }: { message: MessageData }) {
 				</div>
 				{/* Timestamp - below bubble, only visible on hover */}
 				<div className="text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity text-left">
-					{new Date(message.created_at).toLocaleTimeString()}
+					{displayTime(message.created_at)}
 				</div>
 			</div>
 		</div>
