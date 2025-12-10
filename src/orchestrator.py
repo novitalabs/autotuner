@@ -97,7 +97,7 @@ class AutotunerOrchestrator:
 		namespace = task["model"]["namespace"]
 		model_name = task["model"]["id_or_path"]
 		runtime_name = task["base_runtime"]
-		timeout = task["optimization"]["timeout_per_iteration"]
+		timeout = task["optimization"].get("timeout_per_iteration", 1800)  # Default 30 minutes
 
 		# Dynamically adjust timeout for torch-compile + multi-GPU scenarios
 		# Triton kernel autotuning can take 10-20 minutes with TP > 1

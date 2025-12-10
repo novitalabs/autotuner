@@ -28,9 +28,6 @@ export default function IterationBlock({
 		{/* Iteration header - only show if multiple iterations */}
 		{showHeader && (
 			<div className={iteration.iteration > 1 ? "mt-4 pt-3 border-t border-gray-200" : ""}>
-				<span className="text-xs text-gray-400 font-medium">
-					Step {iteration.iteration}
-				</span>
 			</div>
 		)}
 

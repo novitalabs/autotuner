@@ -15,6 +15,15 @@ source env/bin/activate
 # Add src directory to PYTHONPATH so imports work
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
+# Stop any existing ARQ worker
+echo "🔍 Checking for existing ARQ worker..."
+EXISTING_WORKER=$(pgrep -f "arq.*autotuner_worker" 2>/dev/null)
+if [ -n "$EXISTING_WORKER" ]; then
+    echo "   Killing existing worker PIDs: $EXISTING_WORKER"
+    kill $EXISTING_WORKER 2>/dev/null
+    sleep 2
+fi
+
 # Load environment variables from .env if it exists
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loading environment variables from .env..."
@@ -50,10 +59,12 @@ unset HF_HUB_OFFLINE
 
 # Start ARQ worker with nohup to survive session end
 # Worker settings are in src/web/workers/autotuner_worker.py
-# Use sg docker to ensure Docker socket access for Docker mode
+# Run from src directory for proper imports
 echo "Starting ARQ worker with nohup..."
-sg docker -c "nohup arq web.workers.autotuner_worker.WorkerSettings --verbose > logs/worker.log 2>&1 &"
-sleep 1  # Give worker time to start
+cd "$PROJECT_ROOT/src"
+nohup arq web.workers.autotuner_worker.WorkerSettings --verbose > ../logs/worker.log 2>&1 &
+cd "$PROJECT_ROOT"
+sleep 1
 WORKER_PID=$(pgrep -f "arq web.workers.autotuner_worker.WorkerSettings")
 echo "ARQ worker started with PID: $WORKER_PID"
 echo $WORKER_PID > logs/worker.pid

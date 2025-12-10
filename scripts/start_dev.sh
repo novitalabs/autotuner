@@ -15,19 +15,46 @@ source env/bin/activate
 # Set PYTHONPATH
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
-# Configure proxy settings for HuggingFace downloads
-# These will be read from .env file or environment variables
-# Set HTTP_PROXY, HTTPS_PROXY, NO_PROXY in .env or export them before running this script
-# Example in .env:
-#   HTTP_PROXY=http://your-proxy:port
-#   HTTPS_PROXY=http://your-proxy:port
-#   NO_PROXY=localhost,127.0.0.1
-#
-# Load from .env if it exists
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    export $(grep -v '^#' "$PROJECT_ROOT/.env" | grep -E '^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY)=' | xargs)
+# Stop any existing server on port 8000
+echo "🔍 Checking for existing server on port 8000..."
+if fuser 8000/tcp > /dev/null 2>&1; then
+    echo "   Killing existing server on port 8000..."
+    fuser -k 8000/tcp > /dev/null 2>&1
+    sleep 2
 fi
 
+# Stop any existing ARQ worker
+echo "🔍 Checking for existing ARQ worker..."
+EXISTING_WORKER=$(pgrep -f "arq.*autotuner_worker" 2>/dev/null)
+if [ -n "$EXISTING_WORKER" ]; then
+    echo "   Killing existing worker PIDs: $EXISTING_WORKER"
+    kill $EXISTING_WORKER 2>/dev/null
+    sleep 2
+fi
+
+# Load environment variables from .env if it exists
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    echo "📋 Loading environment variables from .env..."
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
+# Load environment variables from .env.local if it exists (overrides .env)
+if [ -f "$PROJECT_ROOT/.env.local" ]; then
+    echo "📋 Loading environment variables from .env.local..."
+    set -a
+    source "$PROJECT_ROOT/.env.local"
+    set +a
+fi
+
+# Verify proxy configuration
+if [ -n "$HTTP_PROXY" ]; then
+    echo "   HTTP_PROXY configured: $HTTP_PROXY"
+fi
+if [ -n "$HTTPS_PROXY" ]; then
+    echo "   HTTPS_PROXY configured: $HTTPS_PROXY"
+fi
 
 # Unset HF_HUB_OFFLINE to allow genai-bench to fetch tokenizer info from HuggingFace
 unset HF_HUB_OFFLINE
@@ -38,8 +65,11 @@ echo ""
 
 # Start ARQ worker in background with nohup
 echo "📋 Starting ARQ worker with nohup..."
-nohup arq web.workers.autotuner_worker.WorkerSettings --verbose > logs/worker.log 2>&1 &
-WORKER_PID=$!
+cd "$PROJECT_ROOT/src"
+nohup arq web.workers.autotuner_worker.WorkerSettings --verbose > ../logs/worker.log 2>&1 &
+cd "$PROJECT_ROOT"
+sleep 1
+WORKER_PID=$(pgrep -f "arq web.workers.autotuner_worker.WorkerSettings")
 echo $WORKER_PID > logs/worker.pid
 echo "   Worker PID: $WORKER_PID"
 echo "   Logs: logs/worker.log"
@@ -60,8 +90,9 @@ echo "---"
 # Trap Ctrl+C to only kill web server (worker survives)
 trap "echo ''; echo '🛑 Stopping web server...'; echo '   Worker still running with PID: $WORKER_PID'; exit" INT TERM
 
-# Start web server in foreground
-python src/web/server.py
+# Start web server in foreground (from src directory for proper imports)
+cd "$PROJECT_ROOT/src"
+python web/server.py
 
 echo ""
 echo "Web server stopped. Worker still running with PID: $WORKER_PID"

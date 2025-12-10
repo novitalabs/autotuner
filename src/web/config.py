@@ -65,6 +65,10 @@ class Settings(BaseSettings):
 	agent_max_context_messages: int = Field(default=20, description="Recent messages to keep in memory")
 	agent_context_summary_threshold: int = Field(default=30, description="Summarize context after N messages")
 
+	# GitHub configuration for issue tracking
+	gh_token: str = Field(default="", description="GitHub token for creating issues")
+	gh_repo: str = Field(default="", description="GitHub repo in format 'owner/repo'")
+
 
 @lru_cache()
 def get_settings() -> Settings:
