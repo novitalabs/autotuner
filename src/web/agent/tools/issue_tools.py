@@ -408,6 +408,101 @@ async def refresh_issues_cache() -> str:
 
 @tool
 @register_tool(ToolCategory.API)
+async def add_issue_comment(issue_number: int, body: str) -> str:
+	"""Add a comment to an existing GitHub issue.
+
+	Use this to provide additional information, updates, or follow-up
+	on an existing issue. Requires GH_TOKEN and GH_REPO to be configured.
+
+	Args:
+		issue_number: The issue number to comment on
+		body: Comment body in markdown format
+
+	Returns:
+		JSON with created comment URL or error message
+	"""
+	settings = get_settings()
+
+	# Validate configuration
+	if not settings.gh_token:
+		return json.dumps({
+			"success": False,
+			"error": "GH_TOKEN not configured",
+			"message": "Set GH_TOKEN environment variable with a GitHub personal access token that has 'repo' scope."
+		}, indent=2)
+
+	if not settings.gh_repo:
+		return json.dumps({
+			"success": False,
+			"error": "GH_REPO not configured",
+			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/inference-autotuner')."
+		}, indent=2)
+
+	if not body or not body.strip():
+		return json.dumps({
+			"success": False,
+			"error": "Empty comment body",
+			"message": "Comment body cannot be empty."
+		}, indent=2)
+
+	try:
+		proxy = settings.https_proxy or settings.http_proxy or None
+
+		async with httpx.AsyncClient(proxy=proxy, timeout=30.0) as client:
+			comment_url = f"https://api.github.com/repos/{settings.gh_repo}/issues/{issue_number}/comments"
+			payload = {"body": body}
+
+			response = await client.post(
+				comment_url,
+				headers=_get_github_headers(settings.gh_token),
+				json=payload
+			)
+
+			if response.status_code == 201:
+				data = response.json()
+				return json.dumps({
+					"success": True,
+					"comment_id": data.get("id"),
+					"url": data.get("html_url"),
+					"issue_number": issue_number,
+					"created_at": data.get("created_at"),
+					"message": f"Comment added to issue #{issue_number} successfully"
+				}, indent=2)
+			elif response.status_code == 401:
+				return json.dumps({
+					"success": False,
+					"error": "Authentication failed",
+					"message": "GH_TOKEN is invalid or expired. Generate a new token with 'repo' scope."
+				}, indent=2)
+			elif response.status_code == 403:
+				return json.dumps({
+					"success": False,
+					"error": "Permission denied or rate limited",
+					"message": "Check that GH_TOKEN has write access to the repository."
+				}, indent=2)
+			elif response.status_code == 404:
+				return json.dumps({
+					"success": False,
+					"error": f"Issue #{issue_number} not found",
+					"message": f"No issue with number {issue_number} exists in {settings.gh_repo}"
+				}, indent=2)
+			else:
+				return json.dumps({
+					"success": False,
+					"error": f"GitHub API error: {response.status_code}",
+					"message": response.text[:300]
+				}, indent=2)
+
+	except httpx.RequestError as e:
+		return json.dumps({
+			"success": False,
+			"error": f"Network error: {str(e)}",
+			"message": "Could not connect to GitHub API"
+		}, indent=2)
+
+
+@tool
+@register_tool(ToolCategory.API)
 async def get_issue_by_number(issue_number: int) -> str:
 	"""Get details of a specific GitHub issue by its number.
 

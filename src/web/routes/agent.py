@@ -85,6 +85,7 @@ You have access to various tools for managing and querying the autotuner system.
 5. **ISSUE tools** (GitHub issue management):
    - search_known_issues(query) - Search local cache and GitHub for existing issues
    - create_issue(title, body, labels) - Create new GitHub issue (requires GH_TOKEN)
+   - add_issue_comment(issue_number, body) - Add comment to existing issue (requires GH_TOKEN)
    - refresh_issues_cache() - Refresh local cache from GitHub
    - get_issue_by_number(number) - Get specific issue details
 

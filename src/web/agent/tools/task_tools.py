@@ -831,11 +831,29 @@ async def get_experiment_logs(
     try:
         # Read log file
         log_content = found_log.read_text()
+        total_lines = len(log_content.splitlines())
 
         # Get tail if requested
         if tail_lines and tail_lines > 0:
             lines = log_content.splitlines()
             log_content = "\n".join(lines[-tail_lines:])
+        else:
+            # Auto-truncate if too large (default max 500 lines or 50KB)
+            MAX_LINES = 500
+            MAX_CHARS = 50000
+            lines = log_content.splitlines()
+            truncated = False
+
+            if len(lines) > MAX_LINES:
+                # Keep first 100 lines + last 400 lines
+                head_lines = lines[:100]
+                tail_lines_content = lines[-400:]
+                log_content = "\n".join(head_lines) + f"\n\n... [{len(lines) - 500} lines truncated] ...\n\n" + "\n".join(tail_lines_content)
+                truncated = True
+            elif len(log_content) > MAX_CHARS:
+                # Truncate by characters if still too long
+                log_content = log_content[:MAX_CHARS] + f"\n\n... [truncated, {len(log_content) - MAX_CHARS} chars remaining] ..."
+                truncated = True
 
         # Get file size
         file_size = found_log.stat().st_size
@@ -849,6 +867,7 @@ async def get_experiment_logs(
             "log_exists": True,
             "log_path": str(found_log),
             "file_size_kb": round(file_size_kb, 2),
+            "total_lines": total_lines,
             "tail_lines": tail_lines,
             "log_content": log_content
         }, indent=2)
