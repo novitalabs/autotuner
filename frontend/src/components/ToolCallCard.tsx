@@ -10,20 +10,11 @@ import type { ToolCall } from "../types/agent";
 interface ToolCallCardProps {
 	toolCall: ToolCall;
 	onAuthorize?: (scope: string) => void;
+	isAuthorizing?: boolean;  // Whether an authorization request is in progress
 }
 
-export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProps) {
+export default function ToolCallCard({ toolCall, onAuthorize, isAuthorizing }: ToolCallCardProps) {
 	const [isExpanded, setIsExpanded] = useState(false);
-
-	// Debug: Check if authorization button should show
-	if (toolCall.status === "requires_auth") {
-		console.log('[ToolCallCard Auth Debug]', {
-			status: toolCall.status,
-			auth_scope: toolCall.auth_scope,
-			hasOnAuthorize: !!onAuthorize,
-			shouldShowButton: toolCall.status === "requires_auth" && toolCall.auth_scope && !!onAuthorize
-		});
-	}
 
 	const getStatusIcon = () => {
 		switch (toolCall.status) {
@@ -124,9 +115,21 @@ export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProp
 					{toolCall.status === "requires_auth" && onAuthorize && (
 						<button
 							onClick={() => onAuthorize(toolCall.auth_scope || "unknown")}
-							className="mt-2 px-3 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700 transition-colors"
+							disabled={isAuthorizing}
+							className={`mt-2 px-3 py-1 text-white text-xs rounded transition-colors flex items-center gap-1 ${
+								isAuthorizing
+									? "bg-yellow-400 cursor-not-allowed"
+									: "bg-yellow-600 hover:bg-yellow-700"
+							}`}
 						>
-							Grant {toolCall.auth_scope || "Required"} Permission
+							{isAuthorizing ? (
+								<>
+									<Loader2 className="w-3 h-3 animate-spin" />
+									Authorizing...
+								</>
+							) : (
+								<>Grant {toolCall.auth_scope || "Required"} Permission</>
+							)}
 						</button>
 					)}
 

@@ -13,13 +13,15 @@ interface IterationBlockProps {
 	showHeader: boolean;     // true if multiple iterations exist
 	isStreaming: boolean;    // true for active streaming iteration
 	onAuthorize?: (scope: string) => void;  // callback for authorization requests
+	isAuthorizing?: boolean;  // whether authorization is in progress
 }
 
 export default function IterationBlock({
 	iteration,
 	showHeader,
 	isStreaming,
-	onAuthorize
+	onAuthorize,
+	isAuthorizing
 }: IterationBlockProps) {
 	return (
 		<div>
@@ -51,6 +53,7 @@ export default function IterationBlock({
 							key={toolCall.id || idx}
 							toolCall={toolCall}
 							onAuthorize={onAuthorize}
+							isAuthorizing={isAuthorizing}
 						/>
 					))}
 				</div>
