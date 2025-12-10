@@ -52,6 +52,7 @@ You have access to various tools for managing and querying the autotuner system.
 **Common Required Parameters:**
 - get_task_by_id(task_id=<int>) - MUST provide task_id as integer
 - get_experiment_details(experiment_id=<int>) - MUST provide experiment_id as integer
+- get_experiment_logs(task_id=<int>, experiment_id=<int>) - MUST provide both task_id and experiment_id
 - list_task_experiments(task_id=<int>) - MUST provide task_id as integer
 - get_task_results(task_id=<int>, include_all_experiments=<bool>) - task_id is required
 - get_task_logs(task_id=<int>, tail_lines=<int optional>) - task_id is required
@@ -65,6 +66,7 @@ You have access to various tools for managing and querying the autotuner system.
    - list_task_experiments(task_id) - List experiments for a task [REQUIRES: task_id as int]
    - get_task_results(task_id) - Get comprehensive task results [REQUIRES: task_id as int]
    - get_task_logs(task_id) - Get task execution logs [REQUIRES: task_id as int]
+   - get_experiment_logs(task_id, experiment_id) - Get detailed logs for specific experiment [REQUIRES: both task_id and experiment_id as int]
    - get_experiment_details(experiment_id) - Get experiment details [REQUIRES: experiment_id as int]
    - create_task, start_task, cancel_task, restart_task: Manage task lifecycle
    - delete_task, clear_task_data, update_task_description: Task operations
@@ -125,8 +127,9 @@ Step 2: create_task(
 User: "分析task 8为什么失败了"
 Step 1: get_task_by_id(task_id=8) - Check task status and error summary
 Step 2: list_task_experiments(task_id=8, status_filter="FAILED") - Get failed experiments
-Step 3: get_task_logs(task_id=8, tail_lines=100) - Get recent log entries
+Step 3: get_task_logs(task_id=8, tail_lines=100) - Get task-level log entries
 Step 4: For each failed experiment: get_experiment_details(experiment_id=X) - Get error details
+Step 5: get_experiment_logs(task_id=8, experiment_id=X, tail_lines=200) - Get detailed container/benchmark logs for failed experiment
 Analysis: Look for common error patterns in logs (OOM, timeout, connection errors, etc.)
 **Important**: If the error appears to be an autotuner implementation bug (e.g., KeyError, AttributeError in autotuner code), use search_known_issues() to check for existing reports, then create_issue() to report the bug if not already reported.
 
@@ -167,15 +170,17 @@ Alternative: Use get_task_results(task_id=10, include_all_experiments=True) for 
 
 **Scenario 6: Quick locate experiment failure cause**
 User: "experiment 156为什么失败了？"
-Step 1: get_experiment_details(experiment_id=156) - Get experiment details and error_message
-Step 2: search_experiment_logs(task_id=<from step 1>, experiment_id=156, context_lines=15) - Find log entries
+Step 1: get_experiment_details(experiment_id=156) - Get experiment details, task_id, and error_message
+Step 2: get_experiment_logs(task_id=<from step 1>, experiment_id=<experiment sequence number>, tail_lines=100) - Get detailed container logs
+   Note: experiment_id in get_experiment_logs is the sequence number (1, 2, 3...), not the database ID
+Step 3: search_experiment_logs(task_id=<from step 1>, experiment_id=156, context_lines=15) - Find related entries in task log
 Analysis:
    - Check error_message for key patterns:
      * "OOM" / "out of memory" → Memory issues, try lower mem-fraction-static
      * "timeout" / "timed out" → Benchmark timeout, check model size vs GPU
      * "connection refused" / "failed to connect" → Inference service not ready
      * "CUDA error" → GPU resource issues
-   - Review log context for detailed stack traces
+   - Review experiment log for detailed stack traces and container output
    - Compare parameters with successful experiments to identify problematic values
 
 **Scenario 7: Report autotuner bug to GitHub**

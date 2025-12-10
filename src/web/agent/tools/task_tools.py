@@ -757,6 +757,114 @@ async def get_task_logs(
 
 @tool
 @register_tool(ToolCategory.TASK)
+async def get_experiment_logs(
+    task_id: int,
+    experiment_id: int,
+    tail_lines: Optional[int] = None,
+    db: AsyncSession = None
+) -> str:
+    """
+    Retrieve detailed logs for a specific experiment.
+
+    Each experiment has its own log file with detailed execution output including:
+    - Container startup logs
+    - Model loading progress
+    - Benchmark execution details
+    - Error messages and stack traces
+
+    Args:
+        task_id: Task ID the experiment belongs to
+        experiment_id: Experiment ID (the number in the experiment sequence, e.g., 1, 2, 3...)
+        tail_lines: If specified, only return last N lines (default: None, returns all)
+
+    Returns:
+        JSON string with experiment log content
+    """
+    if db is None:
+        return json.dumps({"error": "Database session not provided"})
+
+    # Verify task exists
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        return json.dumps({"error": f"Task {task_id} not found"})
+
+    # Locate experiment log file
+    from pathlib import Path
+    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_file = log_dir / f"task_{task_id}_exp_{experiment_id}.log"
+
+    # Also check for alternative naming patterns
+    alt_patterns = [
+        log_dir / f"task_{task_id}_exp_{experiment_id}.log",
+        log_dir / f"task{task_id}_exp{experiment_id}.log",
+    ]
+
+    found_log = None
+    for pattern in alt_patterns:
+        if pattern.exists():
+            found_log = pattern
+            break
+
+    if not found_log:
+        # List available experiment logs for this task
+        available_logs = list(log_dir.glob(f"task_{task_id}_exp_*.log"))
+        available_exp_ids = []
+        for log in available_logs:
+            # Extract experiment ID from filename
+            import re
+            match = re.search(r'exp_(\d+)\.log$', log.name)
+            if match:
+                available_exp_ids.append(int(match.group(1)))
+        available_exp_ids.sort()
+
+        return json.dumps({
+            "success": False,
+            "task_id": task_id,
+            "experiment_id": experiment_id,
+            "log_exists": False,
+            "message": f"No log file found for experiment {experiment_id}",
+            "tried_paths": [str(p) for p in alt_patterns],
+            "available_experiment_ids": available_exp_ids,
+            "hint": f"Available experiment IDs for task {task_id}: {available_exp_ids}" if available_exp_ids else "No experiment logs found for this task"
+        }, indent=2)
+
+    try:
+        # Read log file
+        log_content = found_log.read_text()
+
+        # Get tail if requested
+        if tail_lines and tail_lines > 0:
+            lines = log_content.splitlines()
+            log_content = "\n".join(lines[-tail_lines:])
+
+        # Get file size
+        file_size = found_log.stat().st_size
+        file_size_kb = file_size / 1024
+
+        return json.dumps({
+            "success": True,
+            "task_id": task_id,
+            "task_name": task.task_name,
+            "experiment_id": experiment_id,
+            "log_exists": True,
+            "log_path": str(found_log),
+            "file_size_kb": round(file_size_kb, 2),
+            "tail_lines": tail_lines,
+            "log_content": log_content
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to read log file: {str(e)}",
+            "task_id": task_id,
+            "experiment_id": experiment_id,
+            "log_path": str(found_log)
+        })
+
+
+@tool
+@register_tool(ToolCategory.TASK)
 async def get_experiment_details(
     experiment_id: int,
     db: AsyncSession = None
