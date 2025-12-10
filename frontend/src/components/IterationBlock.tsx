@@ -12,12 +12,14 @@ interface IterationBlockProps {
 	iteration: IterationBlockType;
 	showHeader: boolean;     // true if multiple iterations exist
 	isStreaming: boolean;    // true for active streaming iteration
+	onAuthorize?: (scope: string) => void;  // callback for authorization requests
 }
 
 export default function IterationBlock({
 	iteration,
 	showHeader,
-	isStreaming
+	isStreaming,
+	onAuthorize
 }: IterationBlockProps) {
 	return (
 		<div>
@@ -45,7 +47,11 @@ export default function IterationBlock({
 			{iteration.toolCalls.length > 0 && (
 				<div className={iteration.content ? "mt-3 space-y-2" : "space-y-2"}>
 					{iteration.toolCalls.map((toolCall, idx) => (
-						<ToolCallCard key={toolCall.id || idx} toolCall={toolCall} />
+						<ToolCallCard
+							key={toolCall.id || idx}
+							toolCall={toolCall}
+							onAuthorize={onAuthorize}
+						/>
 					))}
 				</div>
 			)}

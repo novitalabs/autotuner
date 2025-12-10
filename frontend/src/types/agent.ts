@@ -92,9 +92,20 @@ export interface ToolAuthorizationRequest {
 	expires_at?: string;
 }
 
+export interface ToolExecutionResult {
+	success: boolean;
+	result: string;
+	tool_name: string;
+	call_id?: string;
+	requires_auth?: boolean;
+	auth_scope?: string;
+	authorized?: boolean;
+}
+
 export interface AuthorizationResponse {
 	status: "granted" | "revoked";
 	scopes: string[];
+	tool_results?: ToolExecutionResult[];  // Results of pending tool calls executed after authorization
 }
 
 // Unified iteration display type

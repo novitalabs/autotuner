@@ -13,6 +13,7 @@ import type {
 	AgentEventSubscriptionCreateRequest,
 	SessionSyncRequest,
 	SessionListItem,
+	AuthorizationResponse,
 } from "../types/agent";
 
 export const agentApi = {
@@ -95,7 +96,7 @@ export const agentApi = {
 					let buffer = "";
 
 					function processChunk(): any {
-						return reader.read().then(({ done, value }) => {
+						return reader!.read().then(({ done, value }) => {
 							if (done) {
 								return;
 							}
@@ -152,6 +153,23 @@ export const agentApi = {
 
 	getSubscriptions: (sessionId: string): Promise<AgentEventSubscription[]> =>
 		apiClient.get(`/agent/sessions/${sessionId}/subscriptions`),
+
+	// Authorization
+	grantAuthorization: (
+		sessionId: string,
+		scopes: string[],
+		expiresAt?: string
+	): Promise<AuthorizationResponse> =>
+		apiClient.post(`/agent/sessions/${sessionId}/authorize`, {
+			scopes,
+			expires_at: expiresAt,
+		}),
+
+	revokeAuthorization: (
+		sessionId: string,
+		scopes: string[]
+	): Promise<AuthorizationResponse> =>
+		apiClient.post(`/agent/sessions/${sessionId}/revoke`, { scopes }),
 };
 
 export default agentApi;

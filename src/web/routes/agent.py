@@ -406,7 +406,7 @@ High-level tools provide better error handling, formatted output, and business l
 
 		# 4. Get tools for this session
 		executor = ToolExecutor(session_id, db)
-		available_tools = executor.get_available_tools(include_privileged=False)  # Only safe tools for now
+		available_tools = executor.get_available_tools(include_privileged=True)  # Include all tools, auth checked at execution time
 
 		# 5. Multi-turn tool calling loop
 		llm_client = get_llm_client()
@@ -450,6 +450,19 @@ High-level tools provide better error handling, formatted output, and business l
 			if auth_required:
 				logger.info(f"Authorization required in iteration {iteration}, stopping multi-turn loop")
 				termination_reason = "auth_required"
+
+				# Save pending tool calls to session metadata for later retry
+				session_result = await db.execute(
+					select(ChatSession).where(ChatSession.session_id == session_id)
+				)
+				chat_session = session_result.scalar_one_or_none()
+				if chat_session:
+					if not chat_session.session_metadata:
+						chat_session.session_metadata = {}
+					chat_session.session_metadata["pending_tool_calls"] = tool_calls
+					chat_session.session_metadata["pending_llm_messages"] = llm_messages
+					flag_modified(chat_session, "session_metadata")
+					await db.commit()
 
 				assistant_message = ChatMessage(
 					session_id=session_id,
@@ -824,7 +837,7 @@ High-level tools provide better error handling, formatted output, and business l
 
 			# 4. Get tools
 			executor = ToolExecutor(session_id, db)
-			available_tools = executor.get_available_tools(include_privileged=False)
+			available_tools = executor.get_available_tools(include_privileged=True)  # Include all tools, auth checked at execution time
 
 			# 5. Multi-turn tool calling loop with streaming
 			llm_client = get_llm_client()
@@ -893,6 +906,9 @@ High-level tools provide better error handling, formatted output, and business l
 				# 5c. Execute all tool calls
 				tool_results = await executor.execute_tool_calls(tool_calls)
 
+				# Debug: Log tool results being sent
+				logger.info(f"Sending tool_results via SSE: {tool_results}")
+
 				# Send tool results
 				yield f"data: {json.dumps({'type': 'tool_results', 'results': tool_results})}\n\n"
 
@@ -921,6 +937,23 @@ High-level tools provide better error handling, formatted output, and business l
 					logger.info(f"Authorization required in iteration {iteration}, stopping multi-turn loop")
 					termination_reason = "auth_required"
 
+					# Save pending tool calls to session metadata for later retry
+					session_result = await db.execute(
+						select(ChatSession).where(ChatSession.session_id == session_id)
+					)
+					chat_session = session_result.scalar_one_or_none()
+					if chat_session:
+						if not chat_session.session_metadata:
+							chat_session.session_metadata = {}
+						chat_session.session_metadata["pending_tool_calls"] = tool_calls
+						chat_session.session_metadata["pending_llm_messages"] = llm_messages
+						flag_modified(chat_session, "session_metadata")
+						await db.commit()
+
+					# Debug: Log tool_results and tool_calls for auth_scope matching
+					logger.info(f"Auth required - tool_calls: {[tc['name'] for tc in tool_calls]}")
+					logger.info(f"Auth required - tool_results: {[(r.get('tool_name'), r.get('auth_scope')) for r in tool_results]}")
+
 					assistant_message = ChatMessage(
 						session_id=session_id,
 						role=MessageRole.ASSISTANT,
@@ -943,8 +976,8 @@ High-level tools provide better error handling, formatted output, and business l
 					await db.commit()
 					await db.refresh(assistant_message)
 
-					# Send completion
-					yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
+					# Send completion (include metadata for multi-iteration display)
+					yield f"data: {json.dumps({'type': 'complete', 'message': {'id': assistant_message.id, 'content': assistant_message.content, 'tool_calls': assistant_message.tool_calls, 'metadata': assistant_message.message_metadata, 'created_at': assistant_message.created_at.isoformat()}})}\n\n"
 					return
 
 				# 5e. Check for execution errors
@@ -1359,7 +1392,13 @@ async def grant_tool_authorization(
 	This allows the agent to execute privileged operations (bash commands, file operations, etc.)
 	within this chat session. Authorizations can have an expiration time or be permanent
 	for the session duration.
+
+	If there are pending tool calls waiting for authorization, they will be executed
+	automatically and the results returned.
 	"""
+	# Use fresh query with no caching to ensure we get latest data
+	# expire_all() clears the session cache first
+	db.expire_all()
 	result = await db.execute(
 		select(ChatSession).where(ChatSession.session_id == session_id)
 	)
@@ -1382,11 +1421,45 @@ async def grant_tool_authorization(
 		}
 		logger.info(f"Granted authorization for scope '{scope}' in session {session_id}")
 
+	# Check for pending tool calls
+	pending_tool_calls = metadata.get("pending_tool_calls")
+	tool_results = None
+
+	if pending_tool_calls:
+		logger.info(f"Found {len(pending_tool_calls)} pending tool calls, executing after authorization")
+
+		# Execute pending tool calls
+		executor = ToolExecutor(session_id, db)
+
+		# First save the authorization so executor can see it
+		session.session_metadata = metadata
+		flag_modified(session, "session_metadata")
+		await db.commit()
+
+		try:
+			tool_results = await executor.execute_tool_calls(pending_tool_calls)
+			logger.info(f"Tool execution completed: {len(tool_results)} results")
+		except Exception as e:
+			logger.error(f"Exception during tool execution: {e}", exc_info=True)
+
+		# Clear pending tool calls
+		metadata.pop("pending_tool_calls", None)
+		metadata.pop("pending_llm_messages", None)
+
 	session.session_metadata = metadata
 	flag_modified(session, "session_metadata")  # Tell SQLAlchemy the JSON field changed
 	await db.commit()
 
-	return AuthorizationResponse(status="granted", scopes=auth_data.scopes)
+	response_data = {
+		"status": "granted",
+		"scopes": auth_data.scopes
+	}
+
+	# Include tool results if any were executed
+	if tool_results:
+		response_data["tool_results"] = tool_results
+
+	return response_data
 
 
 @router.get("/sessions/{session_id}/authorizations")

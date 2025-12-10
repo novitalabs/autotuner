@@ -36,7 +36,8 @@ export function enrichIterationData(
 				id: tc.id,
 				status: withResult?.status || ("executed" as const),
 				result: withResult?.result,
-				error: withResult?.error
+				error: withResult?.error,
+				auth_scope: withResult?.auth_scope  // Include auth_scope for authorization UI
 			};
 		});
 

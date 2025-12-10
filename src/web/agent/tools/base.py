@@ -20,6 +20,7 @@ class AuthorizationScope(str, enum.Enum):
     DOCKER_CONTROL = "docker_control"
     KUBECTL_OPERATIONS = "kubectl_operations"
     DATABASE_WRITE = "database_write"
+    ARQ_CONTROL = "arq_control"  # Managing ARQ workers
 
 
 class ToolCategory(str, enum.Enum):

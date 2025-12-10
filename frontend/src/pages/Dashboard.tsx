@@ -8,7 +8,6 @@ import {
 	ServerIcon,
 	CircleStackIcon,
 	ClockIcon,
-	ViewColumnsIcon,
 } from '@heroicons/react/24/outline';
 
 function formatBytes(mb: number): string {

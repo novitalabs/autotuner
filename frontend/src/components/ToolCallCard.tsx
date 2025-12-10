@@ -15,6 +15,16 @@ interface ToolCallCardProps {
 export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProps) {
 	const [isExpanded, setIsExpanded] = useState(false);
 
+	// Debug: Check if authorization button should show
+	if (toolCall.status === "requires_auth") {
+		console.log('[ToolCallCard Auth Debug]', {
+			status: toolCall.status,
+			auth_scope: toolCall.auth_scope,
+			hasOnAuthorize: !!onAuthorize,
+			shouldShowButton: toolCall.status === "requires_auth" && toolCall.auth_scope && !!onAuthorize
+		});
+	}
+
 	const getStatusIcon = () => {
 		switch (toolCall.status) {
 			case "executing":
@@ -111,12 +121,12 @@ export default function ToolCallCard({ toolCall, onAuthorize }: ToolCallCardProp
 					</div>
 
 					{/* Authorization button for requires_auth status */}
-					{toolCall.status === "requires_auth" && toolCall.auth_scope && onAuthorize && (
+					{toolCall.status === "requires_auth" && onAuthorize && (
 						<button
-							onClick={() => onAuthorize(toolCall.auth_scope!)}
+							onClick={() => onAuthorize(toolCall.auth_scope || "unknown")}
 							className="mt-2 px-3 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700 transition-colors"
 						>
-							Grant {toolCall.auth_scope} Permission
+							Grant {toolCall.auth_scope || "Required"} Permission
 						</button>
 					)}
 

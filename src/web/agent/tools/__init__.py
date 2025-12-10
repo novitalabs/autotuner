@@ -22,13 +22,13 @@ class ToolsRegistry:
         """Load all tools from modules."""
         # Import tool modules
         try:
-            from . import database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools
+            from . import database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools
         except ImportError as e:
             logger.warning(f"Failed to import tool modules: {e}")
             return
 
         # Auto-discover tools with @tool decorator and metadata
-        for module in [database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools]:
+        for module in [database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools]:
             for name in dir(module):
                 # Skip private attributes
                 if name.startswith('_'):

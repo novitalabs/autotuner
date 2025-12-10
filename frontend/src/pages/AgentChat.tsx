@@ -8,7 +8,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit2, ArrowUp, Loader2 } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
-import type { IterationBlock } from "../types/agent";
+import type { IterationBlock, ToolExecutionResult } from "../types/agent";
 import IterationBlockComponent from "../components/IterationBlock";
 import { enrichIterationData } from "../utils/iterationHelpers";
 import { useTimezone } from "../contexts/TimezoneContext";
@@ -193,6 +193,9 @@ export default function AgentChat() {
 					sessionId,
 					{ content },
 					(chunk) => {
+						// Debug: Log all incoming chunks
+						console.log('[SSE Debug] Received chunk:', chunk.type, chunk);
+
 						if (chunk.type === "iteration_start") {
 							// New iteration starting - create new IterationBlock
 							setCurrentIteration(chunk.iteration || 0);
@@ -284,15 +287,17 @@ export default function AgentChat() {
 							// Update tool calls to executed status with results
 							if (chunk.results && Array.isArray(chunk.results)) {
 								const results = chunk.results;
+								console.log('[Auth Debug] Received tool_results (raw):', JSON.stringify(results, null, 2));
 
 								// Use ref as source of truth
 								const currentIterations = streamingIterationsRef.current;
+								console.log('[Auth Debug] Current iterations toolCalls:', currentIterations.map(i => i.toolCalls));
 								if (currentIterations.length > 0) {
 									const currentIter = currentIterations[currentIterations.length - 1];
 
 									// Skip if all tools are already completed (prevent duplicate updates)
 									const allCompleted = currentIter.toolCalls.every(
-										tc => tc.status === "executed" || tc.status === "failed"
+										tc => tc.status === "executed" || tc.status === "failed" || tc.status === "requires_auth"
 									);
 									if (allCompleted && currentIter.toolCalls.length > 0) {
 										return;
@@ -300,7 +305,7 @@ export default function AgentChat() {
 
 									const updatedToolCalls = currentIter.toolCalls.map(tc => {
 										// Don't update already completed tools
-										if (tc.status === "executed" || tc.status === "failed") {
+										if (tc.status === "executed" || tc.status === "failed" || tc.status === "requires_auth") {
 											return tc;
 										}
 
@@ -309,6 +314,18 @@ export default function AgentChat() {
 										);
 
 										if (result) {
+											// Check if this is an authorization requirement
+											console.log('[Auth Debug] Processing result for tool:', tc.tool_name, 'result:', result);
+											if (result.requires_auth && !result.authorized) {
+												console.log('[Auth Debug] Tool requires auth:', result);
+												console.log('[Auth Debug] Setting auth_scope to:', result.auth_scope);
+												return {
+													...tc,
+													status: "requires_auth" as const,
+													auth_scope: result.auth_scope,
+													result: result.result
+												};
+											}
 											return {
 												...tc,
 												status: result.success ? "executed" as const : "failed" as const,
@@ -318,6 +335,8 @@ export default function AgentChat() {
 										}
 										return tc;
 									});
+
+									console.log('[Auth Debug] Updated tool calls:', updatedToolCalls);
 
 									// Update ref first
 									const updated = [...currentIterations];
@@ -376,9 +395,14 @@ export default function AgentChat() {
 				let metadata = response.metadata;
 				let allToolCalls: any[] = [];
 
-				if (metadata?.iteration_data) {
-					// Backend provided iteration_data - use response.tool_calls which has results
-					allToolCalls = response.tool_calls || [];
+				console.log('[Save Debug] response:', response);
+				console.log('[Save Debug] response.metadata:', response.metadata);
+				console.log('[Save Debug] response.tool_calls:', response.tool_calls);
+
+				// Prefer backend tool_calls if available (they have complete status/result/auth_scope)
+				if (response.tool_calls && response.tool_calls.length > 0) {
+					console.log('[Save Debug] Using backend tool_calls');
+					allToolCalls = response.tool_calls;
 				} else if (currentIterations.length > 0) {
 					// No backend metadata - build from streaming state (fallback)
 					metadata = {
@@ -401,7 +425,8 @@ export default function AgentChat() {
 							id: tc.id,
 							status: tc.status,
 							result: tc.result,
-							error: tc.error
+							error: tc.error,
+							auth_scope: tc.auth_scope  // Include auth_scope!
 						}))
 					);
 				}
@@ -572,6 +597,108 @@ export default function AgentChat() {
 		const content = input;
 		setInput("");  // Clear input immediately when sending
 		sendMessageMutation.mutate(content);
+	};
+
+	// Handle authorization request from tool calls
+	const handleAuthorize = async (scope: string) => {
+		if (!sessionId) return;
+
+		try {
+			const result = await agentApi.grantAuthorization(sessionId, [scope]);
+			console.log(`Authorization granted for scope: ${scope}`);
+
+			// If there were pending tool calls, they were executed automatically
+			// Update the last message's tool call status to show results
+			if (result.tool_results && result.tool_results.length > 0) {
+				console.log("Tool results received after authorization:", result.tool_results);
+
+				// Update streaming iterations if currently streaming
+				if (streamingIterationsRef.current.length > 0) {
+					const currentIterations = streamingIterationsRef.current;
+					const updated = currentIterations.map(iter => ({
+						...iter,
+						toolCalls: iter.toolCalls.map(tc => {
+							if (tc.status !== "requires_auth") return tc;
+							const matchingResult = result.tool_results?.find(
+								(r: ToolExecutionResult) => r.tool_name === tc.tool_name || r.call_id === tc.id
+							);
+							if (matchingResult) {
+								return {
+									...tc,
+									status: matchingResult.success ? "executed" as const : "failed" as const,
+									result: matchingResult.result,
+									error: matchingResult.success ? undefined : matchingResult.result
+								};
+							}
+							return tc;
+						})
+					}));
+					streamingIterationsRef.current = updated;
+					setStreamingIterations(updated);
+				}
+
+				// Update the messages to reflect the executed tool calls
+				setMessages(prevMessages => {
+					const updated = [...prevMessages];
+					// Find the last assistant message with requires_auth tool calls
+					for (let i = updated.length - 1; i >= 0; i--) {
+						const msg = updated[i];
+						if (msg.role === "assistant" && msg.tool_calls) {
+							const hasAuthRequired = msg.tool_calls.some(tc => tc.status === "requires_auth");
+							if (hasAuthRequired) {
+								// Update tool call statuses with results
+								msg.tool_calls = msg.tool_calls.map(tc => {
+									const matchingResult = result.tool_results?.find(
+										(r: ToolExecutionResult) => r.tool_name === tc.tool_name || r.call_id === tc.id
+									);
+									if (matchingResult) {
+										return {
+											...tc,
+											status: matchingResult.success ? "executed" as const : "failed" as const,
+											result: matchingResult.result,
+											error: matchingResult.success ? undefined : matchingResult.result
+										};
+									}
+									return tc;
+								});
+								break;
+							}
+						}
+					}
+					return updated;
+				});
+
+				// Also update IndexedDB
+				const storage = getChatStorage();
+				const storedMessages = await storage.getMessages(sessionId);
+				for (let i = storedMessages.length - 1; i >= 0; i--) {
+					const msg = storedMessages[i];
+					if (msg.role === "assistant" && msg.tool_calls) {
+						const hasAuthRequired = msg.tool_calls.some(tc => tc.status === "requires_auth");
+						if (hasAuthRequired) {
+							msg.tool_calls = msg.tool_calls.map(tc => {
+								const matchingResult = result.tool_results?.find(
+									(r: ToolExecutionResult) => r.tool_name === tc.tool_name || r.call_id === tc.id
+								);
+								if (matchingResult) {
+									return {
+										...tc,
+										status: matchingResult.success ? "executed" as const : "failed" as const,
+										result: matchingResult.result,
+										error: matchingResult.success ? undefined : matchingResult.result
+									};
+								}
+								return tc;
+							});
+							await storage.saveMessage(sessionId, msg);
+							break;
+						}
+					}
+				}
+			}
+		} catch (error) {
+			console.error("Failed to grant authorization:", error);
+		}
 	};
 
 	const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -829,7 +956,7 @@ AGENT_MODEL=gpt-4`}
 					</div>
 				) : (
 					messages.map((message, idx) => (
-						<MessageBubble key={message.id || idx} message={message} />
+						<MessageBubble key={message.id || idx} message={message} onAuthorize={handleAuthorize} />
 					))
 				)}
 
@@ -844,6 +971,7 @@ AGENT_MODEL=gpt-4`}
 										iteration={iter}
 										showHeader={streamingIterations.length > 1}
 										isStreaming={idx === streamingIterations.length - 1 && iter.status === 'streaming'}
+										onAuthorize={handleAuthorize}
 									/>
 								))}
 							</div>
@@ -885,7 +1013,7 @@ AGENT_MODEL=gpt-4`}
 	);
 }
 
-function MessageBubble({ message }: { message: MessageData }) {
+function MessageBubble({ message, onAuthorize }: { message: MessageData; onAuthorize?: (scope: string) => void }) {
 	const { timezone } = useTimezone();
 	const isUser = message.role === "user";
 
@@ -956,6 +1084,7 @@ function MessageBubble({ message }: { message: MessageData }) {
 							iteration={iter}
 							showHeader={iterations.length > 1}
 							isStreaming={false}
+							onAuthorize={onAuthorize}
 						/>
 					))}
 				</div>

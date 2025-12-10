@@ -49,6 +49,10 @@ class ToolExecutor:
 		"""
 		from sqlalchemy import select
 
+		# Clear SQLAlchemy cache to ensure we get fresh data
+		# This is important when called right after authorization is granted
+		self.db.expire_all()
+
 		# Get session with metadata
 		result = await self.db.execute(
 			select(ChatSession).where(ChatSession.session_id == self.session_id)

@@ -3,7 +3,7 @@ Pydantic schemas for tool authorization and execution.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 
 
@@ -25,6 +25,10 @@ class AuthorizationResponse(BaseModel):
 
     status: str = Field(..., description="Operation status (granted, revoked, etc.)")
     scopes: List[str] = Field(..., description="Affected authorization scopes")
+    tool_results: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Results from executing pending tool calls after authorization was granted"
+    )
 
 
 class ToolExecutionResult(BaseModel):
