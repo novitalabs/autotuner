@@ -123,12 +123,34 @@ async def restart_arq_worker() -> str:
 
     try:
         # Step 1: Find and kill existing workers
+        # First try without sudo (for same-user processes)
         kill_result = subprocess.run(
             ["pkill", "-f", "arq.*autotuner_worker"],
             capture_output=True,
             text=True,
             timeout=10
         )
+
+        # Check if any workers are still running (might be owned by different user)
+        check_result = subprocess.run(
+            ["pgrep", "-f", "arq.*autotuner_worker"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if check_result.returncode == 0 and check_result.stdout.strip():
+            # Workers still running, try with sudo using SIGKILL
+            # Use sudo with NOPASSWD configured for this specific command
+            pids = check_result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid.strip():
+                    subprocess.run(
+                        ["sudo", "-n", "kill", "-9", pid.strip()],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
 
         # Wait for processes to terminate
         await asyncio.sleep(2)

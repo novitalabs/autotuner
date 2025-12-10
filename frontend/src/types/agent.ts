@@ -106,6 +106,7 @@ export interface AuthorizationResponse {
 	status: "granted" | "revoked";
 	scopes: string[];
 	tool_results?: ToolExecutionResult[];  // Results of pending tool calls executed after authorization
+	llm_continuation?: string;  // LLM's response after seeing tool results
 }
 
 // Unified iteration display type

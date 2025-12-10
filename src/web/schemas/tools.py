@@ -29,6 +29,10 @@ class AuthorizationResponse(BaseModel):
         None,
         description="Results from executing pending tool calls after authorization was granted"
     )
+    llm_continuation: Optional[str] = Field(
+        None,
+        description="LLM's response after seeing the tool execution results"
+    )
 
 
 class ToolExecutionResult(BaseModel):

@@ -1394,7 +1394,7 @@ async def grant_tool_authorization(
 	for the session duration.
 
 	If there are pending tool calls waiting for authorization, they will be executed
-	automatically and the results returned.
+	automatically and then the LLM will be called to continue the conversation with the results.
 	"""
 	# Use fresh query with no caching to ensure we get latest data
 	# expire_all() clears the session cache first
@@ -1423,7 +1423,9 @@ async def grant_tool_authorization(
 
 	# Check for pending tool calls
 	pending_tool_calls = metadata.get("pending_tool_calls")
+	pending_llm_messages = metadata.get("pending_llm_messages")
 	tool_results = None
+	llm_continuation = None
 
 	if pending_tool_calls:
 		logger.info(f"Found {len(pending_tool_calls)} pending tool calls, executing after authorization")
@@ -1439,6 +1441,78 @@ async def grant_tool_authorization(
 		try:
 			tool_results = await executor.execute_tool_calls(pending_tool_calls)
 			logger.info(f"Tool execution completed: {len(tool_results)} results")
+
+			# Continue LLM conversation with tool results
+			if pending_llm_messages and tool_results:
+				logger.info("Continuing LLM conversation with tool results")
+
+				# Build tool results summary for LLM
+				tool_results_summary = []
+				for result in tool_results:
+					tool_name = result.get("tool_name", "unknown")
+					success = result.get("success", True)
+					result_text = result.get("result", "")
+					# Truncate very long results
+					if len(result_text) > 2000:
+						result_text = result_text[:2000] + "... (truncated)"
+					status = "SUCCESS" if success else "FAILED"
+					tool_results_summary.append(f"[{tool_name}] {status}:\n{result_text}")
+
+				# Add tool results to LLM messages
+				llm_messages = pending_llm_messages.copy()
+				llm_messages.append({
+					"role": "user",
+					"content": "Tool execution results:\n\n" + "\n\n---\n\n".join(tool_results_summary) + "\n\nPlease provide your response based on these results."
+				})
+
+				# Call LLM to continue conversation
+				llm_client = get_llm_client()
+				try:
+					llm_response = await llm_client.chat(llm_messages, temperature=0.7)
+					llm_continuation = llm_response
+					logger.info(f"LLM continuation generated: {len(llm_continuation)} chars")
+
+					# Save the continuation as a new assistant message
+					assistant_message = ChatMessage(
+						session_id=session_id,
+						role=MessageRole.ASSISTANT,
+						content=llm_continuation,
+						tool_calls=[{
+							"tool_name": tc["name"],
+							"args": {k: v for k, v in tc["args"].items() if k != "db"},
+							"id": tc["id"],
+							"status": "executed" if next((r.get("success", True) for r in tool_results if r.get("tool_name") == tc["name"]), True) else "failed",
+							"result": next((r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None)
+						} for tc in pending_tool_calls],
+						message_metadata={
+							"post_authorization": True,
+							"tool_count": len(pending_tool_calls)
+						}
+					)
+					db.add(assistant_message)
+					await db.commit()
+					await db.refresh(assistant_message)
+
+					# Update cache with new messages
+					cache = get_session_cache()
+					cached_entry = cache.get(session_id)
+					if cached_entry:
+						cached_entry.messages.append({"role": "assistant", "content": llm_continuation})
+						# Add tool results
+						for tc in pending_tool_calls:
+							result = next((r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None)
+							if result:
+								cached_entry.messages.append({
+									"role": "tool",
+									"content": result,
+									"tool_call_id": tc["id"]
+								})
+						cached_entry.messages = cached_entry.messages[-20:]
+
+				except Exception as llm_error:
+					logger.error(f"Failed to continue LLM conversation: {llm_error}", exc_info=True)
+					# Tool results still executed, just no continuation
+
 		except Exception as e:
 			logger.error(f"Exception during tool execution: {e}", exc_info=True)
 
@@ -1458,6 +1532,10 @@ async def grant_tool_authorization(
 	# Include tool results if any were executed
 	if tool_results:
 		response_data["tool_results"] = tool_results
+
+	# Include LLM continuation if generated
+	if llm_continuation:
+		response_data["llm_continuation"] = llm_continuation
 
 	return response_data
 

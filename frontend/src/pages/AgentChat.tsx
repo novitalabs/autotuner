@@ -714,6 +714,36 @@ export default function AgentChat() {
 				streamingIterationsRef.current = [];
 				setStreamingIterations([]);
 			}
+
+			// If LLM provided a continuation response, add it as a new message
+			if (result.llm_continuation) {
+				console.log("LLM continuation received:", result.llm_continuation);
+
+				const storage = getChatStorage();
+
+				// Create the continuation message with tool call results
+				const continuationMessage: MessageData = {
+					session_id: sessionId,
+					role: "assistant",
+					content: result.llm_continuation,
+					tool_calls: result.tool_results?.map(r => ({
+						tool_name: r.tool_name,
+						args: {},
+						id: r.call_id || r.tool_name,
+						status: r.success ? "executed" as const : "failed" as const,
+						result: r.success ? r.result : undefined,
+						error: r.success ? undefined : r.result
+					})),
+					created_at: new Date().toISOString(),
+					synced_to_backend: true,
+				};
+
+				// Add to local state
+				setMessages(prev => [...prev, continuationMessage]);
+
+				// Save to IndexedDB
+				await storage.saveMessage(sessionId, continuationMessage);
+			}
 		} catch (error) {
 			console.error("Failed to grant authorization:", error);
 		}
