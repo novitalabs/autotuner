@@ -639,33 +639,46 @@ export default function AgentChat() {
 
 				// Update the messages to reflect the executed tool calls
 				setMessages(prevMessages => {
-					const updated = [...prevMessages];
 					// Find the last assistant message with requires_auth tool calls
-					for (let i = updated.length - 1; i >= 0; i--) {
-						const msg = updated[i];
+					let foundIndex = -1;
+					for (let i = prevMessages.length - 1; i >= 0; i--) {
+						const msg = prevMessages[i];
 						if (msg.role === "assistant" && msg.tool_calls) {
 							const hasAuthRequired = msg.tool_calls.some(tc => tc.status === "requires_auth");
 							if (hasAuthRequired) {
-								// Update tool call statuses with results
-								msg.tool_calls = msg.tool_calls.map(tc => {
-									const matchingResult = result.tool_results?.find(
-										(r: ToolExecutionResult) => r.tool_name === tc.tool_name || r.call_id === tc.id
-									);
-									if (matchingResult) {
-										return {
-											...tc,
-											status: matchingResult.success ? "executed" as const : "failed" as const,
-											result: matchingResult.result,
-											error: matchingResult.success ? undefined : matchingResult.result
-										};
-									}
-									return tc;
-								});
+								foundIndex = i;
 								break;
 							}
 						}
 					}
-					return updated;
+
+					if (foundIndex === -1) {
+						return prevMessages; // No message to update
+					}
+
+					// Create a new array with the updated message (immutable update)
+					return prevMessages.map((msg, idx) => {
+						if (idx !== foundIndex) return msg;
+
+						// Create a new message object with updated tool_calls
+						return {
+							...msg,
+							tool_calls: msg.tool_calls?.map(tc => {
+								const matchingResult = result.tool_results?.find(
+									(r: ToolExecutionResult) => r.tool_name === tc.tool_name || r.call_id === tc.id
+								);
+								if (matchingResult) {
+									return {
+										...tc,
+										status: matchingResult.success ? "executed" as const : "failed" as const,
+										result: matchingResult.result,
+										error: matchingResult.success ? undefined : matchingResult.result
+									};
+								}
+								return tc;
+							})
+						};
+					});
 				});
 
 				// Also update IndexedDB
@@ -695,6 +708,11 @@ export default function AgentChat() {
 						}
 					}
 				}
+
+				// Clear streaming iterations after authorization completes to avoid duplicate rendering
+				// The tool call is now in messages state, so streamingIterations should be cleared
+				streamingIterationsRef.current = [];
+				setStreamingIterations([]);
 			}
 		} catch (error) {
 			console.error("Failed to grant authorization:", error);

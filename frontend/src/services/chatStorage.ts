@@ -219,8 +219,14 @@ class ChatStorageService {
 		const db = await this.dbPromise;
 
 		// Generate unique ID if not provided
+		const messageId = message.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+		// Check if this is an update (message with existing ID) or new insert
+		const existingMessage = message.id ? await db.get('messages', message.id) : null;
+		const isUpdate = !!existingMessage;
+
 		const messageWithId = {
-			id: message.id || `${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			id: messageId,
 			session_id: sessionId,
 			role: message.role,
 			content: message.content,
@@ -230,20 +236,23 @@ class ChatStorageService {
 			synced_to_backend: message.synced_to_backend,
 		};
 
-		await db.add('messages', messageWithId);
+		// Use put() to support both insert and update
+		await db.put('messages', messageWithId);
 
-		// Update session metadata
-		const session = await db.get('sessions', sessionId);
-		if (session) {
-			session.updated_at = message.created_at;
-			session.message_count++;
+		// Only update session metadata for NEW messages (not updates)
+		if (!isUpdate) {
+			const session = await db.get('sessions', sessionId);
+			if (session) {
+				session.updated_at = message.created_at;
+				session.message_count++;
 
-			// Update last message preview (first 100 chars) - only use user messages
-			if (message.role === 'user') {
-				session.last_message_preview = message.content.substring(0, 100);
+				// Update last message preview (first 100 chars) - only use user messages
+				if (message.role === 'user') {
+					session.last_message_preview = message.content.substring(0, 100);
+				}
+
+				await db.put('sessions', session);
 			}
-
-			await db.put('sessions', session);
 		}
 	}
 
