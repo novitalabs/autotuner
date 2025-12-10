@@ -22,13 +22,13 @@ class ToolsRegistry:
         """Load all tools from modules."""
         # Import tool modules
         try:
-            from . import database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools, issue_tools
+            from . import database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools, issue_tools, hf_tools
         except ImportError as e:
             logger.warning(f"Failed to import tool modules: {e}")
             return
 
         # Auto-discover tools with @tool decorator and metadata
-        for module in [database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools, issue_tools]:
+        for module in [database_tools, system_tools, file_tools, api_tools, task_tools, preset_tools, worker_tools, issue_tools, hf_tools]:
             for name in dir(module):
                 # Skip private attributes
                 if name.startswith('_'):
@@ -37,16 +37,22 @@ class ToolsRegistry:
                 obj = getattr(module, name)
 
                 # Check if it's a LangChain StructuredTool
+                # Try to find the original function with metadata
+                original_func = None
                 if hasattr(obj, 'coroutine') and callable(obj.coroutine):
-                    # The original function is in the coroutine attribute
+                    # Async tool: original function is in coroutine attribute
                     original_func = obj.coroutine
-                    if hasattr(original_func, '_tool_category'):
-                        # Copy metadata from original function to tool object
-                        obj._tool_category = original_func._tool_category
-                        obj._requires_authorization = original_func._requires_authorization
-                        obj._authorization_scope = getattr(original_func, '_authorization_scope', None)
-                        self._tools[name] = obj
-                        logger.info(f"Registered tool: {name} (category: {obj._tool_category})")
+                elif hasattr(obj, 'func') and callable(obj.func):
+                    # Sync tool: original function is in func attribute
+                    original_func = obj.func
+
+                if original_func and hasattr(original_func, '_tool_category'):
+                    # Copy metadata from original function to tool object
+                    obj._tool_category = original_func._tool_category
+                    obj._requires_authorization = original_func._requires_authorization
+                    obj._authorization_scope = getattr(original_func, '_authorization_scope', None)
+                    self._tools[name] = obj
+                    logger.info(f"Registered tool: {name} (category: {obj._tool_category})")
                 elif hasattr(obj, '_tool_category'):
                     # Direct function with metadata (fallback)
                     self._tools[name] = obj

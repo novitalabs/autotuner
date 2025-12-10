@@ -243,9 +243,11 @@ class ToolExecutor:
 		from typing import get_type_hints
 		import inspect
 
-		# Get the original function (coroutine for async tools)
-		if hasattr(tool, 'coroutine'):
+		# Get the original function (coroutine for async tools, func for sync tools)
+		if hasattr(tool, 'coroutine') and tool.coroutine is not None:
 			original_func = tool.coroutine
+		elif hasattr(tool, 'func') and tool.func is not None:
+			original_func = tool.func
 		else:
 			return tool  # Not a StructuredTool, return as-is
 

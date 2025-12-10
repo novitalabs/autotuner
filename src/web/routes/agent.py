@@ -431,7 +431,7 @@ async def send_message(
 
 		# 5. Multi-turn tool calling loop
 		llm_client = get_llm_client()
-		max_iterations = 10
+		max_iterations = 100
 		iteration = 0
 		assistant_content = ""
 		all_tool_calls = []  # Track all tool calls across iterations
@@ -728,7 +728,7 @@ async def send_message_stream(
 
 			# 5. Multi-turn tool calling loop with streaming
 			llm_client = get_llm_client()
-			max_iterations = 10
+			max_iterations = 100
 			iteration = 0
 			assistant_content = ""
 			all_tool_calls = []  # Track all tool calls across iterations
