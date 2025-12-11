@@ -15,23 +15,6 @@ source env/bin/activate
 # Set PYTHONPATH
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
-# Stop any existing server on port 8000
-echo "🔍 Checking for existing server on port 8000..."
-if fuser 8000/tcp > /dev/null 2>&1; then
-    echo "   Killing existing server on port 8000..."
-    fuser -k 8000/tcp > /dev/null 2>&1
-    sleep 2
-fi
-
-# Stop any existing ARQ worker
-echo "🔍 Checking for existing ARQ worker..."
-EXISTING_WORKER=$(pgrep -f "arq.*autotuner_worker" 2>/dev/null)
-if [ -n "$EXISTING_WORKER" ]; then
-    echo "   Killing existing worker PIDs: $EXISTING_WORKER"
-    kill $EXISTING_WORKER 2>/dev/null
-    sleep 2
-fi
-
 # Load environment variables from .env if it exists
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "📋 Loading environment variables from .env..."
@@ -46,6 +29,32 @@ if [ -f "$PROJECT_ROOT/.env.local" ]; then
     set -a
     source "$PROJECT_ROOT/.env.local"
     set +a
+fi
+
+# Port configuration with defaults
+# Can be overridden via environment variables or .env files
+SERVER_PORT="${SERVER_PORT:-8000}"
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+
+echo "📋 Port configuration:"
+echo "   Backend API port: $SERVER_PORT"
+echo "   Frontend port: $FRONTEND_PORT"
+
+# Stop any existing server on the configured port
+echo "🔍 Checking for existing server on port $SERVER_PORT..."
+if fuser $SERVER_PORT/tcp > /dev/null 2>&1; then
+    echo "   Killing existing server on port $SERVER_PORT..."
+    fuser -k $SERVER_PORT/tcp > /dev/null 2>&1
+    sleep 2
+fi
+
+# Stop any existing ARQ worker
+echo "🔍 Checking for existing ARQ worker..."
+EXISTING_WORKER=$(pgrep -f "arq.*autotuner_worker" 2>/dev/null)
+if [ -n "$EXISTING_WORKER" ]; then
+    echo "   Killing existing worker PIDs: $EXISTING_WORKER"
+    kill $EXISTING_WORKER 2>/dev/null
+    sleep 2
 fi
 
 # Verify proxy configuration
@@ -80,8 +89,8 @@ sleep 2
 
 # Start web server (foreground)
 echo "🌐 Starting web server..."
-echo "   API: http://localhost:8000"
-echo "   Docs: http://localhost:8000/docs"
+echo "   API: http://localhost:$SERVER_PORT"
+echo "   Docs: http://localhost:$SERVER_PORT/docs"
 echo ""
 echo "Press Ctrl+C to stop web server (worker will continue running)"
 echo "To stop worker: kill \$(cat logs/worker.pid)"

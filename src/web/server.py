@@ -11,10 +11,14 @@ if __name__ == "__main__":
 	src_dir = Path(__file__).parent.parent
 	sys.path.insert(0, str(src_dir))
 
+	# Import settings after path is configured
+	from web.config import get_settings
+	settings = get_settings()
+
 	uvicorn.run(
 		"web.app:app",
-		host="0.0.0.0",
-		port=8000,
+		host=settings.server_host,
+		port=settings.server_port,
 		reload=True,  # Enable hot reload for development
 		reload_dirs=[str(src_dir)],  # Watch src/ directory
 		log_level="info",

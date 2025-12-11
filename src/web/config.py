@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 	app_version: str = "0.1.0"
 	debug: bool = True
 
+	# Server configuration
+	# These can be overridden via environment variables SERVER_HOST, SERVER_PORT, FRONTEND_PORT
+	server_host: str = Field(default="0.0.0.0", description="Server bind host")
+	server_port: int = Field(default=8000, description="Backend API server port")
+	frontend_port: int = Field(default=5173, description="Frontend dev server port (Vite)")
+
 	# Database
 	# Store database in user's home directory by default
 	# Use environment variable DATABASE_URL to override

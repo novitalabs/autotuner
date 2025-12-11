@@ -464,6 +464,11 @@ inference-autotuner/
 Configuration via `.env` file or environment (see `src/web/config.py`):
 
 ```bash
+# Server ports (optional, defaults work out of the box)
+SERVER_HOST=0.0.0.0              # Server bind host (default: 0.0.0.0)
+SERVER_PORT=8000                 # Backend API server port (default: 8000)
+FRONTEND_PORT=5173               # Frontend dev server port (default: 5173)
+
 # Database
 DATABASE_URL=sqlite+aiosqlite:////home/user/.local/share/inference-autotuner/autotuner.db
 
