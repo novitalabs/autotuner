@@ -114,6 +114,13 @@ export default function NewTask() {
           setMaxTimePerIteration(duplicateConfig.benchmark.max_time_per_iteration || 10);
           setMaxRequestsPerIteration(duplicateConfig.benchmark.max_requests_per_iteration || 50);
           setTemperature(duplicateConfig.benchmark.additional_params?.temperature?.toString() || '0.0');
+          // Dataset URL
+          if (duplicateConfig.benchmark.dataset_url) {
+            setDatasetUrl(duplicateConfig.benchmark.dataset_url);
+          }
+          if (duplicateConfig.benchmark.dataset_deduplicate !== undefined) {
+            setDatasetDeduplicate(duplicateConfig.benchmark.dataset_deduplicate);
+          }
         }
 
         // SLO Configuration
@@ -242,6 +249,13 @@ export default function NewTask() {
         setMaxTimePerIteration(taskToEdit.benchmark.max_time_per_iteration || 10);
         setMaxRequestsPerIteration(taskToEdit.benchmark.max_requests_per_iteration || 50);
         setTemperature(taskToEdit.benchmark.additional_params?.temperature?.toString() || '0.0');
+        // Dataset URL
+        if (taskToEdit.benchmark.dataset_url) {
+          setDatasetUrl(taskToEdit.benchmark.dataset_url);
+        }
+        if (taskToEdit.benchmark.dataset_deduplicate !== undefined) {
+          setDatasetDeduplicate(taskToEdit.benchmark.dataset_deduplicate);
+        }
       }
 
       // Quantization Configuration
@@ -339,6 +353,8 @@ export default function NewTask() {
   const [benchmarkTask, setBenchmarkTask] = useState('text-to-text');
   const [benchmarkModelName, setBenchmarkModelName] = useState('');
   const [modelTokenizer, setModelTokenizer] = useState('');
+  const [datasetUrl, setDatasetUrl] = useState('');
+  const [datasetDeduplicate, setDatasetDeduplicate] = useState(true);
   const [trafficScenarios, setTrafficScenarios] = useState('D(100,100)');
   const [numConcurrency, setNumConcurrency] = useState('1, 4');
   const [maxTimePerIteration, setMaxTimePerIteration] = useState(10);
@@ -527,6 +543,13 @@ export default function NewTask() {
         if (config.benchmark.additional_params?.temperature !== undefined) {
           setTemperature(config.benchmark.additional_params.temperature.toString());
         }
+        // Dataset URL
+        if (config.benchmark.dataset_url) {
+          setDatasetUrl(config.benchmark.dataset_url);
+        }
+        if (config.benchmark.dataset_deduplicate !== undefined) {
+          setDatasetDeduplicate(config.benchmark.dataset_deduplicate);
+        }
       }
 
       // SLO Configuration
@@ -672,6 +695,9 @@ export default function NewTask() {
         additional_params: {
           temperature: parseFloat(temperature),
         },
+        // Include dataset URL if provided
+        ...(datasetUrl && { dataset_url: datasetUrl }),
+        ...(datasetUrl && { dataset_deduplicate: datasetDeduplicate }),
       },
       // Include SLO configuration if enabled
       ...(enableSLO && {
@@ -1273,6 +1299,42 @@ export default function NewTask() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.0"
               />
+            </div>
+
+            {/* Dataset URL Section */}
+            <div className="md:col-span-2 border-t pt-4 mt-2">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Custom Dataset (Optional)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Dataset URL
+                  </label>
+                  <input
+                    type="text"
+                    value={datasetUrl}
+                    onChange={(e) => setDatasetUrl(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://example.com/api_logs.csv.gz"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    URL to a dataset file (CSV, JSONL, or compressed archive). Supports API logs with request_body column.
+                  </p>
+                </div>
+                <div>
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={datasetDeduplicate}
+                      onChange={(e) => setDatasetDeduplicate(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Deduplicate prompts</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1 ml-6">
+                    Remove duplicate prompts from the dataset
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
