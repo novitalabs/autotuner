@@ -1,0 +1,34 @@
+{
+  "task_name": "docker-tune-with-dataset",
+  "description": "Docker deployment test using custom dataset from URL",
+  "deployment_mode": "docker",
+  "model": {
+    "id_or_path": "llama-3-2-1b-instruct",
+    "namespace": "autotuner"
+  },
+  "base_runtime": "sglang",
+  "parameters": {
+    "tp-size": [1],
+    "mem-fraction-static": [0.85]
+  },
+  "optimization": {
+    "strategy": "grid_search",
+    "objective": "minimize_latency",
+    "max_iterations": 1,
+    "timeout_per_iteration": 600
+  },
+  "benchmark": {
+    "task": "text-to-text",
+    "model_name": "llama-3-2-1b-instruct",
+    "model_tokenizer": "meta-llama/Llama-3.2-1B-Instruct",
+    "dataset_url": "https://example.com/api_logs.csv.gz",
+    "dataset_deduplicate": true,
+    "traffic_scenarios": ["D(3800,200)"],
+    "num_concurrency": [1, 4],
+    "max_time_per_iteration": 10,
+    "max_requests_per_iteration": 50,
+    "additional_params": {
+      "temperature": 0.0
+    }
+  }
+}

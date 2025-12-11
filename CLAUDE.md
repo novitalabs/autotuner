@@ -193,6 +193,8 @@ Task JSON defines experiments. Critical fields:
     "task": "text-to-text",
     "model_name": "Llama-3.2-1B-Instruct",   // Display name (auto-filled in UI)
     "model_tokenizer": "meta-llama/Llama-3.2-1B-Instruct",  // HF tokenizer ID
+    "dataset_url": "https://example.com/logs.csv.gz",  // Optional: Remote dataset URL
+    "dataset_deduplicate": true,             // Optional: Deduplicate prompts (default: true)
     "traffic_scenarios": ["D(100,100)"],     // genai-bench traffic pattern
     "num_concurrency": [1, 4, 8],
     "additional_params": {"temperature": 0.0}  // Must be correct types (float not string)
@@ -205,6 +207,13 @@ Task JSON defines experiments. Critical fields:
 - The `--` prefix is added automatically
 - Simple format: `"param-name": [val1, val2]` (recommended)
 - Legacy format: `"param_name": {"type": "choice", "values": [...]}` (backward compatible)
+
+**Dataset URL Configuration:**
+- `dataset_url`: Remote URL to dataset file (CSV, JSONL, or compressed archive)
+- Supported formats: `.csv`, `.jsonl`, `.gz`, `.zip`, `.tar.gz`
+- CSV must have `request_body` column with JSON containing `prompt` field (API log format)
+- Datasets are cached by URL hash in `~/.local/share/inference-autotuner/datasets/`
+- `dataset_deduplicate`: Remove duplicate prompts (default: true)
 
 **SLO Configuration Notes:**
 - All SLO fields are optional (can omit metrics, weights, etc.)

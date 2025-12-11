@@ -450,6 +450,23 @@ class DirectBenchmarkController:
 			params_json = json.dumps(additional_params)
 			cmd.extend(["--additional-request-params", params_json])
 
+		# Handle custom dataset from URL
+		dataset_path = None
+		if "dataset_url" in benchmark_config:
+			from utils.dataset_manager import DatasetManager
+			dm = DatasetManager()
+			try:
+				dataset_path = dm.get_dataset(
+					url=benchmark_config["dataset_url"],
+					deduplicate=benchmark_config.get("dataset_deduplicate", True),
+				)
+				print(f"[Benchmark] Using custom dataset: {dataset_path}")
+				cmd.extend(["--dataset-path", str(dataset_path)])
+				cmd.extend(["--dataset-prompt-column", "prompt"])
+			except Exception as e:
+				print(f"[Benchmark] Failed to load dataset from URL: {e}")
+				return None
+
 		print(f"[Benchmark] Command: {' '.join(cmd)}")
 
 		# Setup environment with proxy settings for HuggingFace downloads
