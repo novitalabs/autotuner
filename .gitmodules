@@ -3,4 +3,5 @@
 	url = https://github.com/k-l-lambda/ome.git
 [submodule "third_party/genai-bench"]
 	path = third_party/genai-bench
-	url = https://github.com/sgl-project/genai-bench.git
+	url = https://github.com/k-l-lambda/genai-bench.git
+	branch = develop

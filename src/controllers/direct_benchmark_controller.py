@@ -107,14 +107,16 @@ class DirectBenchmarkController:
 		print(f"[GPU Monitor] Collected {len(snapshots)} snapshots over {time.time() - start_time:.1f}s")
 		return snapshots
 
-	def _ensure_tokenizer_cached(self, model_tokenizer: str) -> bool:
+	def _ensure_tokenizer_cached(self, model_tokenizer: str) -> tuple:
 		"""Ensure tokenizer is cached locally, downloading with proxy if needed.
 
 		Args:
 		    model_tokenizer: HuggingFace tokenizer ID (e.g., "meta-llama/Llama-3.2-3B-Instruct")
 
 		Returns:
-		    True if tokenizer is cached or successfully downloaded, False otherwise
+		    Tuple of (success: bool, is_fully_cached: bool)
+		    - success: True if tokenizer is cached or successfully downloaded
+		    - is_fully_cached: True if tokenizer was already fully cached (can use offline mode)
 		"""
 		import os
 		from pathlib import Path
@@ -126,8 +128,24 @@ class DirectBenchmarkController:
 		cached_path = cache_dir / cache_name
 
 		if cached_path.exists():
-			print(f"[Tokenizer] Already cached: {model_tokenizer}")
-			return True
+			# Check if tokenizer_config.json exists (indicates complete tokenizer cache)
+			# Look for tokenizer files in snapshots directory
+			snapshots_dir = cached_path / "snapshots"
+			has_tokenizer_config = False
+			if snapshots_dir.exists():
+				for snapshot_dir in snapshots_dir.iterdir():
+					if snapshot_dir.is_dir():
+						tokenizer_config = snapshot_dir / "tokenizer_config.json"
+						if tokenizer_config.exists():
+							has_tokenizer_config = True
+							break
+
+			if has_tokenizer_config:
+				print(f"[Tokenizer] Fully cached (offline mode OK): {model_tokenizer}")
+				return True, True
+			else:
+				print(f"[Tokenizer] Partially cached (needs online access): {model_tokenizer}")
+				return True, False
 
 		print(f"[Tokenizer] Not cached, downloading: {model_tokenizer}")
 
@@ -161,17 +179,17 @@ class DirectBenchmarkController:
 
 			if result.returncode != 0:
 				print(f"[Tokenizer] Download failed: {result.stderr}")
-				return False
+				return False, False
 
 			print(f"[Tokenizer] Successfully downloaded and cached: {model_tokenizer}")
-			return True
+			return True, True
 
 		except subprocess.TimeoutExpired:
 			print(f"[Tokenizer] Download timeout after 120s")
-			return False
+			return False, False
 		except Exception as e:
 			print(f"[Tokenizer] Error downloading tokenizer: {e}")
-			return False
+			return False, False
 
 	def setup_port_forward(
 		self, service_name: str, namespace: str, remote_port: int = 8080, local_port: int = 8080
@@ -353,9 +371,13 @@ class DirectBenchmarkController:
 
 		# Ensure tokenizer is cached before running benchmark
 		model_tokenizer = benchmark_config.get("model_tokenizer", "gpt2")
-		if not self._ensure_tokenizer_cached(model_tokenizer):
+		tokenizer_success, is_fully_cached = self._ensure_tokenizer_cached(model_tokenizer)
+		if not tokenizer_success:
 			print(f"[Benchmark] Failed to ensure tokenizer is cached: {model_tokenizer}")
 			print(f"[Benchmark] Continuing anyway, offline mode may fail if tokenizer not cached")
+		
+		# Track offline mode for later use
+		use_offline_mode = is_fully_cached
 
 		# Setup endpoint URL
 		if endpoint_url:
@@ -434,18 +456,21 @@ class DirectBenchmarkController:
 		import os
 		env = os.environ.copy()
 
-		# Check if proxy is configured in environment or use default
-		proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
+		# Check if proxy is configured in environment or use default from config
+		from web.config import get_settings
+		settings = get_settings()
+		proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy') or settings.https_proxy
 		if proxy_url:
 			# Only set proxy env vars if proxy is configured (env vars must be strings, not None)
 			env['HTTP_PROXY'] = proxy_url
 			env['http_proxy'] = proxy_url
 			env['HTTPS_PROXY'] = proxy_url
 			env['https_proxy'] = proxy_url
+			print(f"[Benchmark] Using proxy: {proxy_url}")
+		else:
+			print(f"[Benchmark] No proxy configured")
 		env['NO_PROXY'] = 'localhost,127.0.0.1,.local'
 		env['no_proxy'] = 'localhost,127.0.0.1,.local'
-
-		print(f"[Benchmark] Using proxy: {proxy_url}")
 
 		# Pass through HF_TOKEN if set (for gated models like Llama)
 		if 'HF_TOKEN' in os.environ:
@@ -454,10 +479,13 @@ class DirectBenchmarkController:
 		else:
 			print(f"[Benchmark] HF_TOKEN not set (only public models accessible)")
 
-		# Note: HF_HUB_OFFLINE is intentionally NOT set here
-		# genai-bench needs to fetch tokenizer metadata from HuggingFace even when using cached models
-		# The proxy configuration above will be used if accessing HuggingFace is needed
-		print(f"[Benchmark] HuggingFace online mode enabled (allows fetching tokenizer metadata)")
+		# Set HF_HUB_OFFLINE=1 if tokenizer is fully cached to avoid network access
+		# This fixes the "Network is unreachable" error when HuggingFace API is not accessible
+		if use_offline_mode:
+			env['HF_HUB_OFFLINE'] = '1'
+			print(f"[Benchmark] HF_HUB_OFFLINE=1 (tokenizer fully cached, skipping HuggingFace API)")
+		else:
+			print(f"[Benchmark] HuggingFace online mode (tokenizer needs metadata from API)")
 
 		# Filter out None values from environment (subprocess requires all values to be strings)
 		env = {k: v for k, v in env.items() if v is not None}
