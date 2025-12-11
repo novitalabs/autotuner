@@ -8,6 +8,7 @@ on:
     branches: ["develop"]
     paths:
       - agentlog/buildCalendar.js
+  workflow_dispatch:
 
 jobs:
   build:
