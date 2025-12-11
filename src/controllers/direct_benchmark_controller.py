@@ -452,7 +452,10 @@ class DirectBenchmarkController:
 
 		# Handle custom dataset from URL
 		dataset_path = None
+		print(f"[Benchmark] DEBUG: benchmark_config keys = {list(benchmark_config.keys())}")
+		print(f"[Benchmark] DEBUG: 'dataset_url' in benchmark_config = {'dataset_url' in benchmark_config}")
 		if "dataset_url" in benchmark_config:
+			print(f"[Benchmark] DEBUG: dataset_url = {benchmark_config['dataset_url'][:100]}...")
 			from utils.dataset_manager import DatasetManager
 			dm = DatasetManager()
 			try:
