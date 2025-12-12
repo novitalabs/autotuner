@@ -69,8 +69,8 @@ export const agentApi = {
 			tool_calls_count?: number;
 		}) => void
 	) => {
-		// Use native EventSource for SSE
-		const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+		// Use relative URL to go through vite proxy
+		const baseURL = import.meta.env.VITE_API_BASE_URL || "";
 		const url = `${baseURL}/api/agent/sessions/${sessionId}/messages/stream`;
 
 		return new Promise<ChatMessage>((resolve, reject) => {
