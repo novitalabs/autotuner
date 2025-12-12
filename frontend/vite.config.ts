@@ -34,6 +34,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: frontendPort,
+      allowedHosts: ['.ppinfra.com', '.gpu-instance.ppinfra.com', 'localhost'],
       proxy: {
         '/api': {
           target: `http://localhost:${backendPort}`,
