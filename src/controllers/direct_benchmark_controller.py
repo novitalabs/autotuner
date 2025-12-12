@@ -499,11 +499,12 @@ class DirectBenchmarkController:
 		else:
 			print(f"[Benchmark] HF_TOKEN not set (only public models accessible)")
 
-		# Set HF_HUB_OFFLINE=1 if tokenizer is fully cached to avoid network access
-		# This fixes the "Network is unreachable" error when HuggingFace API is not accessible
+		# Don't set HF_HUB_OFFLINE anymore - it causes issues with transformers' mistral detection
+		# which always tries to call model_info() API even in offline mode.
+		# Instead, rely on proxy settings to access HuggingFace API when needed.
+		# The tokenizer files will be cached after first access.
 		if use_offline_mode:
-			env['HF_HUB_OFFLINE'] = '1'
-			print(f"[Benchmark] HF_HUB_OFFLINE=1 (tokenizer fully cached, skipping HuggingFace API)")
+			print(f"[Benchmark] Tokenizer fully cached, but NOT setting HF_HUB_OFFLINE (transformers compatibility)")
 		else:
 			print(f"[Benchmark] HuggingFace online mode (tokenizer needs metadata from API)")
 
