@@ -13,10 +13,27 @@ from typing import Dict, Any, List
 # Add src to path for relative imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from controllers.ome_controller import OMEController
-from controllers.docker_controller import DockerController
-from controllers.benchmark_controller import BenchmarkController
-from controllers.direct_benchmark_controller import DirectBenchmarkController
+# Lazy imports - only import controllers when needed to avoid dependency issues
+# This allows running in local mode without docker/kubernetes dependencies
+def _import_ome_controller():
+	from controllers.ome_controller import OMEController
+	return OMEController
+
+def _import_docker_controller():
+	from controllers.docker_controller import DockerController
+	return DockerController
+
+def _import_local_controller():
+	from controllers.local_controller import LocalController
+	return LocalController
+
+def _import_benchmark_controller():
+	from controllers.benchmark_controller import BenchmarkController
+	return BenchmarkController
+
+def _import_direct_benchmark_controller():
+	from controllers.direct_benchmark_controller import DirectBenchmarkController
+	return DirectBenchmarkController
 from utils.optimizer import generate_parameter_grid, calculate_objective_score, create_optimization_strategy
 from utils.quantization_integration import prepare_runtime_parameters
 from config import clusterbasemodel_presets, clusterservingruntime_presets
@@ -40,10 +57,10 @@ class AutotunerOrchestrator:
 		"""Initialize the orchestrator.
 
 		Args:
-		    deployment_mode: Deployment mode - 'ome' (Kubernetes) or 'docker' (standalone)
+		    deployment_mode: Deployment mode - 'ome' (Kubernetes), 'docker' (standalone), or 'local' (subprocess)
 		    kubeconfig_path: Path to kubeconfig file (for OME mode)
 		    use_direct_benchmark: If True, use direct genai-bench CLI instead of K8s BenchmarkJob
-		    docker_model_path: Base path for models in Docker mode
+		    docker_model_path: Base path for models in Docker/Local mode
 		    verbose: If True, stream genai-bench output in real-time
 		    http_proxy: HTTP proxy URL for containers (optional)
 		    https_proxy: HTTPS proxy URL for containers (optional)
@@ -53,8 +70,32 @@ class AutotunerOrchestrator:
 		self.use_direct_benchmark = use_direct_benchmark
 
 		# Initialize model deployment controller based on mode
-		if self.deployment_mode == "docker":
+		if self.deployment_mode == "local":
+			print("[Config] Deployment mode: Local subprocess")
+			# Use .venv-sglang python if available, otherwise fall back to system python
+			sglang_python = Path(__file__).parent.parent / ".venv-sglang" / "bin" / "python"
+			if sglang_python.exists():
+				python_path = str(sglang_python)
+			else:
+				python_path = "python3"
+			LocalController = _import_local_controller()
+			DirectBenchmarkController = _import_direct_benchmark_controller()
+			self.model_controller = LocalController(
+				model_base_path=docker_model_path,
+				python_path=python_path,
+				http_proxy=http_proxy,
+				https_proxy=https_proxy,
+				no_proxy=no_proxy,
+				hf_token=hf_token
+			)
+			# Local mode always uses direct benchmark
+			self.use_direct_benchmark = True
+			self.benchmark_controller = DirectBenchmarkController(verbose=verbose)
+			print("[Config] Benchmark mode: Direct CLI (automatic for Local mode)")
+		elif self.deployment_mode == "docker":
 			print("[Config] Deployment mode: Standalone Docker")
+			DockerController = _import_docker_controller()
+			DirectBenchmarkController = _import_direct_benchmark_controller()
 			self.model_controller = DockerController(
 				model_base_path=docker_model_path,
 				http_proxy=http_proxy,
@@ -69,15 +110,18 @@ class AutotunerOrchestrator:
 			print("[Config] Containers will be auto-removed after stop")
 		elif self.deployment_mode == "ome":
 			print("[Config] Deployment mode: OME (Kubernetes)")
+			OMEController = _import_ome_controller()
 			self.model_controller = OMEController(kubeconfig_path)
 			if use_direct_benchmark:
+				DirectBenchmarkController = _import_direct_benchmark_controller()
 				self.benchmark_controller = DirectBenchmarkController(verbose=verbose)
 				print("[Config] Benchmark mode: Direct genai-bench CLI")
 			else:
+				BenchmarkController = _import_benchmark_controller()
 				self.benchmark_controller = BenchmarkController(kubeconfig_path)
 				print("[Config] Benchmark mode: Kubernetes BenchmarkJob CRD")
 		else:
-			raise ValueError(f"Unknown deployment mode: {deployment_mode}. Use 'ome' or 'docker'")
+			raise ValueError(f"Unknown deployment mode: {deployment_mode}. Use 'ome', 'docker', or 'local'")
 
 		self.results = []
 
@@ -185,27 +229,39 @@ class AutotunerOrchestrator:
 		# Extract storage configuration if present (for PVC support)
 		storage_config = task.get("storage")
 
-		# Pass image_tag if deploying with DockerController
-		if hasattr(self.model_controller, "client"):  # DockerController has 'client' attribute
+		# Call deploy based on deployment mode
+		if self.deployment_mode == "docker":
+			# DockerController
 			isvc_name = self.model_controller.deploy_inference_service(
 				task_name=task_name,
 				experiment_id=experiment_id,
 				namespace=namespace,
 				model_name=model_name,
 				runtime_name=runtime_name,
-				parameters=runtime_parameters,  # Use converted parameters
+				parameters=runtime_parameters,
 				image_tag=image_tag,
 			)
-		else:  # OMEController
+		elif self.deployment_mode == "local":
+			# LocalController
 			isvc_name = self.model_controller.deploy_inference_service(
 				task_name=task_name,
 				experiment_id=experiment_id,
 				namespace=namespace,
 				model_name=model_name,
 				runtime_name=runtime_name,
-				parameters=runtime_parameters,  # Use converted parameters
-				storage=storage_config,  # Pass storage config for PVC support
-				enable_gpu_selection=False,  # Temporarily disable GPU selection due to allocation detection issues
+				parameters=runtime_parameters,
+			)
+		else:
+			# OMEController
+			isvc_name = self.model_controller.deploy_inference_service(
+				task_name=task_name,
+				experiment_id=experiment_id,
+				namespace=namespace,
+				model_name=model_name,
+				runtime_name=runtime_name,
+				parameters=runtime_parameters,
+				storage=storage_config,
+				enable_gpu_selection=False,
 			)
 
 		if not isvc_name:
@@ -248,7 +304,7 @@ class AutotunerOrchestrator:
 			on_benchmark_start()
 
 		if self.use_direct_benchmark:
-			# Get endpoint URL (differs between Docker and OME modes)
+			# Get endpoint URL (differs between Docker, Local and OME modes)
 			endpoint_url = None
 			gpu_indices = None
 
@@ -265,6 +321,22 @@ class AutotunerOrchestrator:
 				# Extract GPU indices from gpu_info for monitoring
 				if gpu_info and "indices" in gpu_info.get("gpu_info", {}):
 					gpu_indices = gpu_info["gpu_info"]["indices"]
+					print(f"[GPU Monitor] Will monitor GPUs: {gpu_indices} during benchmark")
+
+			elif self.deployment_mode == "local":
+				# Local mode: Get direct URL from controller
+				endpoint_url = self.model_controller.get_service_url(isvc_name, namespace)
+				if not endpoint_url:
+					error_msg = "Failed to get service URL from Local controller"
+					print(error_msg)
+					experiment_result["error_message"] = error_msg
+					self.cleanup_experiment(isvc_name, None, namespace, experiment_id)
+					return experiment_result
+
+				# Extract GPU indices from controller's process info for monitoring
+				local_gpu_info = self.model_controller.get_gpu_info(isvc_name, namespace)
+				if local_gpu_info and local_gpu_info.get("device_ids"):
+					gpu_indices = [int(idx) for idx in local_gpu_info["device_ids"]]
 					print(f"[GPU Monitor] Will monitor GPUs: {gpu_indices} during benchmark")
 
 			# Direct CLI execution with automatic port forwarding (OME) or direct URL (Docker)
@@ -554,7 +626,7 @@ class AutotunerOrchestrator:
 		Returns:
 		    Tuple of (resource_name, was_created)
 		"""
-		if not isinstance(self.model_controller, OMEController):
+		if self.deployment_mode != "ome":
 			print("Warning: ClusterBaseModel creation only supported in OME mode")
 			return (fallback_name, False)
 
@@ -607,7 +679,7 @@ class AutotunerOrchestrator:
 		Returns:
 		    Tuple of (resource_name, was_created)
 		"""
-		if not isinstance(self.model_controller, OMEController):
+		if self.deployment_mode != "ome":
 			print("Warning: ClusterServingRuntime creation only supported in OME mode")
 			return (fallback_name, False)
 

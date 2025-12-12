@@ -1,0 +1,32 @@
+{
+  "task_name": "local-test",
+  "description": "Local subprocess deployment test",
+  "deployment_mode": "local",
+  "model": {
+    "id_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
+    "namespace": "autotuner"
+  },
+  "base_runtime": "sglang",
+  "parameters": {
+    "tp-size": [1],
+    "mem-fraction-static": [0.8]
+  },
+  "optimization": {
+    "strategy": "grid_search",
+    "objective": "minimize_latency",
+    "max_iterations": 1,
+    "timeout_per_iteration": 300
+  },
+  "benchmark": {
+    "task": "text-to-text",
+    "model_name": "qwen2.5-0.5b",
+    "model_tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "traffic_scenarios": ["D(50,50)"],
+    "num_concurrency": [1],
+    "max_time_per_iteration": 10,
+    "max_requests_per_iteration": 20,
+    "additional_params": {
+      "temperature": 0.0
+    }
+  }
+}
