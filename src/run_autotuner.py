@@ -46,6 +46,9 @@ Examples:
   # Standalone Docker mode (--direct is automatic)
   python run_autotuner.py examples/simple_task.json --mode docker
 
+  # Local subprocess mode (no Docker required)
+  python run_autotuner.py examples/local_task.json --mode local
+
   # Docker mode with custom model path and verbose output
   python run_autotuner.py examples/docker_task.json --mode docker --model-path /data/models --verbose
         """,
@@ -54,9 +57,9 @@ Examples:
 	parser.add_argument("task_file", type=Path, help="Path to task JSON configuration file")
 	parser.add_argument(
 		"--mode",
-		choices=["ome", "docker"],
+		choices=["ome", "docker", "local"],
 		default="ome",
-		help="Deployment mode: ome (Kubernetes) or docker (standalone)",
+		help="Deployment mode: ome (Kubernetes), docker (standalone), or local (subprocess)",
 	)
 	parser.add_argument("--kubeconfig", type=str, default=None, help="Path to kubeconfig file (for OME mode)")
 	parser.add_argument(
@@ -68,7 +71,7 @@ Examples:
 		"--model-path",
 		type=str,
 		default="/mnt/data/models",
-		help="Base path for models on host (Docker mode only)",
+		help="Base path for models on host (Docker/Local mode)",
 	)
 	parser.add_argument(
 		"--verbose",
@@ -79,8 +82,8 @@ Examples:
 
 	args = parser.parse_args()
 
-	# Docker mode always uses direct benchmark
-	if args.mode == "docker":
+	# Docker and Local modes always use direct benchmark
+	if args.mode in ["docker", "local"]:
 		args.direct = True
 
 	if not args.task_file.exists():
