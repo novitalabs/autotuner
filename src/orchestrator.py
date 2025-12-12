@@ -138,7 +138,7 @@ class AutotunerOrchestrator:
 		    Experiment results dictionary
 		"""
 		task_name = task["task_name"]
-		namespace = task["model"]["namespace"]
+		namespace = task["model"].get("namespace", "default")  # namespace is optional, default to "default"
 		model_name = task["model"]["id_or_path"]
 		runtime_name = task["base_runtime"]
 		timeout = task["optimization"].get("timeout_per_iteration", 1800)  # Default 30 minutes
