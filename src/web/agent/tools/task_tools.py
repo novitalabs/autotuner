@@ -964,7 +964,7 @@ async def analyze_slo_violations(
         return json.dumps({"error": f"Task {task_id} not found"})
 
     # Get SLO config from task
-    slo_config = task.task_config.get("slo", {})
+    slo_config = task.slo_config or {}
     if not slo_config:
         return json.dumps({
             "success": True,
