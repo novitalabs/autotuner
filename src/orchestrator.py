@@ -72,17 +72,21 @@ class AutotunerOrchestrator:
 		# Initialize model deployment controller based on mode
 		if self.deployment_mode == "local":
 			print("[Config] Deployment mode: Local subprocess")
-			# Use .venv-sglang python if available, otherwise fall back to system python
-			sglang_python = Path(__file__).parent.parent / ".venv-sglang" / "bin" / "python"
-			if sglang_python.exists():
-				python_path = str(sglang_python)
-			else:
-				python_path = "python3"
+			# Python path will be set dynamically based on runtime in run_experiment
+			# Store paths for different runtimes
+			self._runtime_python_paths = {
+				"sglang": str(Path(__file__).parent.parent / ".venv-sglang" / "bin" / "python"),
+				"vllm": "/root/work/vllm/env/bin/python",
+			}
+			# Default to sglang python for initial controller setup
+			default_python = self._runtime_python_paths.get("sglang", "python3")
+			if not Path(default_python).exists():
+				default_python = "python3"
 			LocalController = _import_local_controller()
 			DirectBenchmarkController = _import_direct_benchmark_controller()
 			self.model_controller = LocalController(
 				model_base_path=docker_model_path,
-				python_path=python_path,
+				python_path=default_python,
 				http_proxy=http_proxy,
 				https_proxy=https_proxy,
 				no_proxy=no_proxy,
@@ -142,6 +146,17 @@ class AutotunerOrchestrator:
 		model_name = task["model"]["id_or_path"]
 		runtime_name = task["base_runtime"]
 		timeout = task["optimization"].get("timeout_per_iteration", 1800)  # Default 30 minutes
+
+		# Dynamically switch python path based on runtime (for local mode)
+		if self.deployment_mode == "local" and hasattr(self, '_runtime_python_paths'):
+			runtime_key = runtime_name.lower()
+			if runtime_key in self._runtime_python_paths:
+				new_python_path = self._runtime_python_paths[runtime_key]
+				if Path(new_python_path).exists():
+					self.model_controller.python_path = new_python_path
+					print(f"[Config] Using {runtime_key} python: {new_python_path}")
+				else:
+					print(f"[Config] Warning: {runtime_key} python not found at {new_python_path}, using default")
 
 		# Dynamically adjust timeout for torch-compile + multi-GPU scenarios
 		# Triton kernel autotuning can take 10-20 minutes with TP > 1
@@ -225,6 +240,13 @@ class AutotunerOrchestrator:
 
 		# Step 1: Deploy InferenceService
 		print(f"[Step 1/4] Deploying InferenceService...")
+
+		# For local mode, ensure model is pre-downloaded before starting
+		# This prevents download time from counting against experiment timeout
+		if self.deployment_mode == "local" and "/" in model_name:
+			print(f"[Pre-download] Ensuring model weights are cached: {model_name}")
+			if not self.model_controller.ensure_model_downloaded(model_name):
+				print(f"[Pre-download] WARNING: Model download may have failed, continuing anyway...")
 
 		# Extract storage configuration if present (for PVC support)
 		storage_config = task.get("storage")

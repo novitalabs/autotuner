@@ -115,10 +115,10 @@ class LocalController(BaseModelController):
 			print(f"[Local] ERROR: Could not resolve model path for '{model_name}'")
 			return None
 
-		# Find available port
-		host_port = self._find_available_port(8000, 8100)
+		# Find available port (use 30000-30100 to avoid conflict with autotuner web server ports 8000, 9000-9010)
+		host_port = self._find_available_port(30000, 30100)
 		if not host_port:
-			print(f"[Local] Could not find available port in range 8000-8100")
+			print(f"[Local] Could not find available port in range 30000-30100")
 			return None
 
 		# Calculate GPU requirements
@@ -415,6 +415,109 @@ class LocalController(BaseModelController):
 		# Not found locally, return as-is (might be a HuggingFace model)
 		print(f"[Local] Model '{model_name}' not found locally, treating as HuggingFace ID")
 		return model_name
+
+	def ensure_model_downloaded(self, model_name: str, timeout: int = 3600) -> bool:
+		"""Pre-download model weights before starting experiments.
+
+		This ensures large models are fully downloaded before the experiment
+		timeout starts counting. Uses huggingface-cli for efficient downloading.
+
+		Args:
+		    model_name: HuggingFace model ID (e.g., 'openai/gpt-oss-120b')
+		    timeout: Maximum time to wait for download (default: 1 hour)
+
+		Returns:
+		    True if model is ready, False if download failed
+		"""
+		# Skip if it's a local path
+		if model_name.startswith("/") or not "/" in model_name:
+			local_path = self.model_base_path / model_name
+			if local_path.exists():
+				print(f"[Local] Model already exists locally: {local_path}")
+				return True
+
+		# Check if already cached in HuggingFace cache
+		cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+		cache_name = "models--" + model_name.replace("/", "--")
+		cached_path = cache_dir / cache_name
+
+		if cached_path.exists():
+			# Check for model files (safetensors or bin files)
+			snapshots_dir = cached_path / "snapshots"
+			if snapshots_dir.exists():
+				for snapshot_dir in snapshots_dir.iterdir():
+					if snapshot_dir.is_dir():
+						model_files = list(snapshot_dir.glob("*.safetensors")) + list(snapshot_dir.glob("*.bin"))
+						if model_files:
+							print(f"[Local] Model already cached: {model_name} ({len(model_files)} weight files)")
+							return True
+
+		print(f"[Local] Pre-downloading model: {model_name}")
+		print(f"[Local] This may take a while for large models...")
+
+		# Build environment with proxy settings
+		env = os.environ.copy()
+		if self.http_proxy:
+			env['HTTP_PROXY'] = self.http_proxy
+			env['http_proxy'] = self.http_proxy
+		if self.https_proxy:
+			env['HTTPS_PROXY'] = self.https_proxy
+			env['https_proxy'] = self.https_proxy
+		if self.no_proxy:
+			env['NO_PROXY'] = self.no_proxy
+			env['no_proxy'] = self.no_proxy
+		if self.hf_token:
+			env['HF_TOKEN'] = self.hf_token
+
+		# Use huggingface-cli to download
+		cmd = [
+			self.python_path, "-m", "huggingface_hub.commands.huggingface_cli",
+			"download", model_name,
+			"--local-dir-use-symlinks", "False"
+		]
+
+		try:
+			print(f"[Local] Running: {' '.join(cmd)}")
+			start_time = time.time()
+
+			process = subprocess.Popen(
+				cmd,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.STDOUT,
+				text=True,
+				env=env
+			)
+
+			# Stream output and check for progress
+			last_progress_time = time.time()
+			while True:
+				line = process.stdout.readline()
+				if not line and process.poll() is not None:
+					break
+				if line:
+					line = line.strip()
+					if line:
+						print(f"[Download] {line}")
+						last_progress_time = time.time()
+
+				# Check timeout
+				elapsed = time.time() - start_time
+				if elapsed > timeout:
+					print(f"[Local] Download timeout after {elapsed:.0f}s")
+					process.terminate()
+					return False
+
+			if process.returncode == 0:
+				elapsed = time.time() - start_time
+				print(f"[Local] Model downloaded successfully in {elapsed:.1f}s")
+				return True
+			else:
+				print(f"[Local] Download failed with exit code {process.returncode}")
+				return False
+
+		except Exception as e:
+			print(f"[Local] Error downloading model: {e}")
+			return False
 
 	def _build_command(self, runtime_name: str, model_path: str, port: int, parameters: Dict[str, Any]) -> Optional[List[str]]:
 		"""Build command line for the inference server.
