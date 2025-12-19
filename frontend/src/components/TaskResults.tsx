@@ -48,6 +48,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'table' | 'comparison' | 'sensitivity' | 'pareto'>('table');
   const [sensitivityParam, setSensitivityParam] = useState<string>('');
+  const [isExperimentsExpanded, setIsExperimentsExpanded] = useState<boolean>(false);
 
   // Save axis selections to localStorage whenever they change
   useEffect(() => {
@@ -1070,17 +1071,31 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
 
                 {/* Experiments Table */}
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-gray-900">All Experiments ({filteredExperiments.length})</h3>
+                  <div
+                    className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => setIsExperimentsExpanded(!isExperimentsExpanded)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className={`w-4 h-4 text-gray-500 transition-transform ${isExperimentsExpanded ? 'rotate-90' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-gray-900">All Experiments ({filteredExperiments.length})</h3>
+                    </div>
                     {selectedExperiments.length > 0 && (
                       <button
-                        onClick={() => setViewMode('comparison')}
+                        onClick={(e) => { e.stopPropagation(); setViewMode('comparison'); }}
                         className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                       >
                         Compare Selected ({selectedExperiments.length})
                       </button>
                     )}
                   </div>
+                  {isExperimentsExpanded && (
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
@@ -1159,6 +1174,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                       </tbody>
                     </table>
                   </div>
+                  )}
                 </div>
 
                 {/* Task Summary */}
