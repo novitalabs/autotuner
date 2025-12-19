@@ -49,6 +49,8 @@ cd frontend && npm install && npm run dev
 
 Then open http://localhost:5173 to create and monitor tasks.
 
+**Tip:** Drag and drop a YAML file onto the New Task page (`#new-task`) to quickly import a task configuration.
+
 ## Example Configuration
 
 ```yaml
