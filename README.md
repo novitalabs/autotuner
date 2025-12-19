@@ -6,6 +6,7 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM).
 
 - **Multiple Deployment Modes**: Docker, Local (direct GPU), OME (Kubernetes)
 - **Web UI**: React frontend with real-time monitoring
+- **Agent Assistant**: LLM-powered assistant for task management and troubleshooting
 - **Optimization Strategies**: Grid search, Bayesian optimization
 - **SLO-Aware Scoring**: Exponential penalties for constraint violations
 

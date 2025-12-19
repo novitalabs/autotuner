@@ -51,24 +51,23 @@ Then open http://localhost:5173 to create and monitor tasks.
 
 ## Example Configuration
 
-```json
-{
-  "task_name": "my-tune",
-  "model": {
-    "id_or_path": "llama-3-2-1b-instruct"
-  },
-  "base_runtime": "sglang",
-  "parameters": {
-    "mem-fraction-static": [0.8, 0.9]
-  },
-  "optimization": {
-    "strategy": "grid_search",
-    "objective": "maximize_throughput"
-  },
-  "benchmark": {
-    "num_concurrency": [1, 4]
-  }
-}
+```yaml
+task_name: my-tune
+
+model:
+  id_or_path: llama-3-2-1b-instruct
+
+base_runtime: sglang
+
+parameters:
+  mem-fraction-static: [0.8, 0.9]
+
+optimization:
+  strategy: grid_search
+  objective: maximize_throughput
+
+benchmark:
+  num_concurrency: [1, 4]
 ```
 
 ## Results
