@@ -7,5 +7,7 @@
 logs/
 
 .env
+docs/.venv
+docs/_build
 
 /env/
