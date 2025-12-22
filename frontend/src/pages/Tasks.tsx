@@ -253,7 +253,7 @@ export default function Tasks() {
 						)}
 					</div>
 				) : (
-					<div className="overflow-x-auto">
+					<div className="overflow-x-visible">
 						<table className="min-w-full divide-y divide-gray-300">
 							<thead>
 								<tr>
