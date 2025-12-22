@@ -1,4 +1,4 @@
-# LLM Inference Autotuner - Product Roadmap
+# LLM Autotuner - Product Roadmap
 
 > **Last Updated**: 2025/12/03
 > **Project Status**: Production-Ready with Active Development
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The LLM Inference Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed four major milestones including dual-mode deployment (Kubernetes/OME and standalone Docker), full-stack web application, and runtime-agnostic configuration architecture.
+The LLM Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed four major milestones including dual-mode deployment (Kubernetes/OME and standalone Docker), full-stack web application, and runtime-agnostic configuration architecture.
 
 **Key Achievements:**
 - ✅ 28 tasks executed, 408 experiments run, 312 successful results
