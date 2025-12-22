@@ -27,7 +27,7 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 
 ## Milestone Overview
 
-| | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: UI/UX Polish | M5+: Future |
+| | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: Agent Assistant | M5+: Future |
 |---|---------------------|-------------------|----------------------|------------------|-------------|
 | **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/22 | Planned |
 | **Status** | ✅ Done | ✅ Done | ✅ Done | ✅ Done | 🔵 Planned |

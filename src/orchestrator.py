@@ -75,8 +75,8 @@ class AutotunerOrchestrator:
 			# Python path will be set dynamically based on runtime in run_experiment
 			# Store paths for different runtimes
 			self._runtime_python_paths = {
-				"sglang": str(Path(__file__).parent.parent / ".venv-sglang" / "bin" / "python"),
-				"vllm": "/root/work/vllm/env/bin/python",
+				"sglang": str(Path.home() / "work" / "sglang" / ".venv" / "bin" / "python"),
+				"vllm": str(Path.home() / "work" / "vllm" / ".venv" / "bin" / "python"),
 			}
 			# Default to sglang python for initial controller setup
 			default_python = self._runtime_python_paths.get("sglang", "python3")
