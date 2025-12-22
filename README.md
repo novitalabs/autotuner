@@ -16,7 +16,7 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM).
 
 ## Quick Start
 
-**→ [Get started in 5 minutes with Docker](docs/QUICKSTART.md)**
+**→ [Get started in 5 minutes with Docker](docs/getting-started/quickstart.md)**
 
 ```bash
 # Install
