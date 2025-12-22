@@ -1,4 +1,4 @@
-# Inference-Autotuner: Comprehensive Deployment Architecture Analysis
+# Autotuner: Comprehensive Deployment Architecture Analysis
 
 ## Executive Summary
 

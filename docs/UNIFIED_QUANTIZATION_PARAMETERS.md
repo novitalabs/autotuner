@@ -620,7 +620,7 @@ Output: {
 
 ---
 
-## Integration with Inference-Autotuner
+## Integration with Autotuner
 
 ### Autotuner Task Configuration
 
