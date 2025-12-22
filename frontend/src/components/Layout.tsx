@@ -319,13 +319,13 @@ export default function Layout() {
 						<div className="w-8 h-8 flex items-center justify-center">
 							<Logo className="w-full h-full" />
 						</div>
-						<div>
+						<div className="group/version">
 							<h1 className="text-sm font-bold text-gray-900">Autotuner</h1>
 							<p className="text-xs text-gray-500" title={`Build: ${typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}`}>
 								{version ? (
 									<>
 										v{version}
-										<span className="text-[0.625rem] text-gray-400">
+										<span className="text-[0.625rem] text-gray-400 opacity-0 group-hover/version:opacity-100 transition-opacity">
 											{typeof __BUILD_TIME__ !== 'undefined' ? `+${__BUILD_TIME__}` : '-dev'}
 										</span>
 									</>
