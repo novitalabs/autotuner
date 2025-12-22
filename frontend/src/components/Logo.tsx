@@ -10,56 +10,18 @@ export function Logo({ className = "" }: LogoProps) {
 			xmlns="http://www.w3.org/2000/svg"
 			className={className}
 		>
-			{/* Three concentric arcs suggesting fine-tuning levels */}
+			{/* Main upward triangle - representing optimization & improvement */}
+			{/* Inspired by Novita's geometric style, forming an "A" for Autotuner */}
 			<path
-				d="M 16 4 A 12 12 0 0 1 28 16"
-				stroke="#9CA3AF"
-				strokeWidth="2.5"
-				strokeLinecap="round"
-				opacity="0.4"
-			/>
-			<path
-				d="M 28 16 A 12 12 0 0 1 16 28"
-				stroke="#6B7280"
-				strokeWidth="2.5"
-				strokeLinecap="round"
-				opacity="0.6"
-			/>
-			<path
-				d="M 16 28 A 12 12 0 0 1 4 16"
-				stroke="#4B5563"
-				strokeWidth="2.5"
-				strokeLinecap="round"
-				opacity="0.8"
+				d="M 16 3 L 29 27 L 19 27 L 16 21 L 13 27 L 3 27 Z"
+				fill="#3ECF8E"
 			/>
 
-			{/* Central adjustment nodes in a triangle formation */}
-			<circle cx="16" cy="12" r="2" fill="#4B5563" />
-			<circle cx="20" cy="20" r="2" fill="#6B7280" />
-			<circle cx="12" cy="20" r="2" fill="#6B7280" />
-
-			{/* Connecting lines suggesting automation flow */}
-			<line
-				x1="16" y1="12"
-				x2="20" y2="20"
-				stroke="#9CA3AF"
-				strokeWidth="1.5"
-				opacity="0.5"
-			/>
-			<line
-				x1="20" y1="20"
-				x2="12" y2="20"
-				stroke="#9CA3AF"
-				strokeWidth="1.5"
-				opacity="0.5"
-			/>
-			<line
-				x1="12" y1="20"
-				x2="16" y2="12"
-				stroke="#9CA3AF"
-				strokeWidth="1.5"
-				opacity="0.5"
-			/>
+			{/* Tuning indicator - three horizontal bars suggesting adjustment levels */}
+			{/* These represent the iterative tuning process */}
+			<rect x="11" y="14" width="10" height="2" rx="0.5" fill="white" opacity="0.9" />
+			<rect x="12.5" y="10" width="7" height="1.5" rx="0.5" fill="white" opacity="0.7" />
+			<rect x="14" y="7" width="4" height="1.5" rx="0.5" fill="white" opacity="0.5" />
 		</svg>
 	);
 }
