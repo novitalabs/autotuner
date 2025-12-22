@@ -1,5 +1,9 @@
 # LLM Inference Autotuner
 
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="256" height="256" alt="Inference Autotuner Logo" />
+</p>
+
 Automated parameter tuning for LLM inference engines (SGLang, vLLM).
 
 ## Features
