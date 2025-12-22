@@ -1,6 +1,6 @@
 # LLM Autotuner - Product Roadmap
 
-> **Last Updated**: 2025/12/03
+> **Last Updated**: 2025/12/22
 > **Project Status**: Production-Ready with Active Development
 > **Current Version**: v1.0 (Milestone 4 Complete)
 
@@ -21,6 +21,7 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 - ✅ Per-batch SLO filtering with graceful OOM handling
 - ✅ Documentation refinement (66→15 files, 77% reduction)
 - ✅ SLO-aware scoring with exponential penalty functions
+- ✅ **Agent Assistant** with LLM-powered task management and conversational interface
 
 ---
 
@@ -28,9 +29,9 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 
 | | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: UI/UX Polish | M5+: Future |
 |---|---------------------|-------------------|----------------------|------------------|-------------|
-| **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/03 | Planned |
+| **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/22 | Planned |
 | **Status** | ✅ Done | ✅ Done | ✅ Done | ✅ Done | 🔵 Planned |
-| **Features** | ✅ Grid/Random Search<br/>✅ Docker Mode<br/>✅ OME/K8s Mode<br/>✅ Benchmark Parsing<br/>✅ Scoring Algorithms<br/>✅ CLI Interface | ✅ REST API<br/>✅ React Frontend<br/>✅ Task Queue (ARQ)<br/>✅ Log Streaming<br/>✅ Container Monitor<br/>✅ Preset System | ✅ Bayesian Optimization<br/>✅ Quantization Config<br/>✅ Parallel Config<br/>✅ GPU-Aware Scoring<br/>✅ SLO-Aware Scoring<br/>✅ Per-GPU Metrics | ✅ WebSocket Updates<br/>✅ YAML Import/Export<br/>✅ Auto-Update Notif<br/>✅ Multi-Exp Comparison<br/>✅ Custom Logo<br/>✅ Doc Refinement | 🔵 Distributed Workers<br/>🔵 Multi-User Auth<br/>🔵 Cloud Deployment<br/>🔵 CI/CD Integration<br/>🔵 Advanced Analytics |
+| **Features** | ✅ Grid/Random Search<br/>✅ Docker Mode<br/>✅ OME/K8s Mode<br/>✅ Benchmark Parsing<br/>✅ Scoring Algorithms<br/>✅ CLI Interface | ✅ REST API<br/>✅ React Frontend<br/>✅ Task Queue (ARQ)<br/>✅ Log Streaming<br/>✅ Container Monitor<br/>✅ Preset System | ✅ Bayesian Optimization<br/>✅ Quantization Config<br/>✅ Parallel Config<br/>✅ GPU-Aware Scoring<br/>✅ SLO-Aware Scoring<br/>✅ Per-GPU Metrics | ✅ WebSocket Updates<br/>✅ YAML Import/Export<br/>✅ Auto-Update Notif<br/>✅ Multi-Exp Comparison<br/>✅ Agent Assistant<br/>✅ Sphinx Docs Site | 🔵 Distributed Workers<br/>🔵 Multi-User Auth<br/>🔵 Cloud Deployment<br/>🔵 CI/CD Integration<br/>🔵 Advanced Analytics |
 
 ---
 
@@ -40,7 +41,7 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 2025/10/24 ────► Milestone 1: Core Autotuner Foundation
 2025/10/30 ────► Milestone 2: Complete Web Interface & Parameter Preset System
 2025/11/14 ────► Milestone 3: Runtime-Agnostic Configuration & GPU-Aware Optimization
-2025/12/03 ────► Milestone 4: UI/UX Polish & Documentation Refinement
+2025/12/22 ────► Milestone 4: UI/UX Polish, Agent Assistant & Documentation
 ```
 
 ---
@@ -522,12 +523,12 @@ gpu_info = {
 
 ---
 
-## 🎉 Milestone 4: UI/UX Polish & Documentation Refinement
+## 🎉 Milestone 4: UI/UX Polish, Agent Assistant & Documentation
 
-**Date**: 2025-12-03 (tag: `milestone-4`)
+**Date**: 2025-12-22 (tag: `milestone-4`)
 **Status**: ✅ COMPLETED
-**Timeline**: 2025-11-15 → 2025-12-03
-**Objective**: Transform from functional prototype to production-ready platform with professional UI, robust error handling, and maintainable documentation
+**Timeline**: 2025-11-15 → 2025-12-22
+**Objective**: Transform from functional prototype to production-ready platform with professional UI, AI-powered assistant, and comprehensive documentation
 
 ### Key Accomplishments
 
@@ -591,13 +592,56 @@ gpu_info = {
 - [x] API proxy configuration (fixed hardcoded URLs in service files)
 - [x] Pydantic settings fix (added `extra='ignore'` for VITE_* variables)
 
+#### 4.5 Agent Assistant ✅
+- [x] LLM-powered conversational interface for task management
+- [x] Dedicated Agent page with chat UI (`/agent`)
+- [x] Backend API endpoint (`/api/agent/chat`) with SSE streaming
+- [x] Streaming markdown rendering with syntax highlighting
+- [x] Copy-to-clipboard for assistant messages and code blocks
+- [x] Context-aware responses with task/experiment data access
+- [x] Configurable LLM backend (OpenAI-compatible API)
+
+**Architecture:**
+```
+┌─────────────────────┐     SSE Stream      ┌──────────────────┐
+│  AgentChat.tsx      │◄───────────────────►│  /api/agent/chat │
+│  (React Frontend)   │                     │  (FastAPI)       │
+└─────────────────────┘                     └────────┬─────────┘
+         │                                           │
+         │ Markdown                                  │ OpenAI API
+         ▼                                           ▼
+┌─────────────────────┐                     ┌──────────────────┐
+│ StreamingMarkdown   │                     │  LLM Backend     │
+│ (react-markdown)    │                     │  (Configurable)  │
+└─────────────────────┘                     └──────────────────┘
+```
+
+**Key Features:**
+- **Streaming Response**: Real-time token-by-token output via Server-Sent Events
+- **Rich Markdown**: Tables, code blocks with language headers, syntax highlighting
+- **Context Injection**: System prompt with task/experiment context for informed responses
+- **Copy Functionality**: One-click copy for code blocks and full messages
+
+**Components Created:**
+- `AgentChat.tsx` (~400 lines) - Main chat interface with message history
+- `StreamingMarkdown.tsx` (~350 lines) - Paragraph-aware markdown renderer
+- `agent.py` (backend route) - SSE streaming endpoint with LLM integration
+
+#### 4.6 Documentation Website ✅
+- [x] Sphinx documentation with Furo theme
+- [x] GitHub Actions workflow for automated deployment
+- [x] MyST Parser for Markdown support
+- [x] Auto-generated API documentation (autodoc)
+- [x] Organized directory structure (getting-started, user-guide, features, api)
+- [x] Dark mode support with custom branding
+
 ### Technical Achievements
 
 **Code Statistics:**
-- **Frontend**: ~700 lines (YAML I/O, auto-update, UI refinements)
-- **Backend**: ~410 lines (SLO filtering, OOM handling, fixes)
-- **Total New Code**: ~1,110 lines
-- **Documentation**: 51 files removed, 15 kept (-77%)
+- **Frontend**: ~1,500 lines (YAML I/O, auto-update, Agent chat, StreamingMarkdown)
+- **Backend**: ~600 lines (SLO filtering, OOM handling, agent endpoint, fixes)
+- **Total New Code**: ~2,100 lines
+- **Documentation**: Sphinx site with 15+ pages, GitHub Actions CI/CD
 
 **Components Created:**
 - `TaskYAMLImport.tsx` (180 lines) - Drag-and-drop import with validation
@@ -605,6 +649,10 @@ gpu_info = {
 - `UpdateNotification.tsx` (110 lines) - Auto-update banner with GitHub integration
 - `versionService.ts` (60 lines) - Version checking service
 - `check_batch_slo_compliance()` (133 lines) - Per-batch SLO validation
+- `AgentChat.tsx` (~400 lines) - LLM-powered chat interface
+- `StreamingMarkdown.tsx` (~350 lines) - Streaming markdown with copy support
+- `docs/conf.py` - Sphinx configuration with Furo theme
+- `.github/workflows/docs.yml` - GitHub Pages deployment workflow
 
 **Files Modified:**
 - Frontend: Tasks.tsx, TaskResults.tsx, NewTask.tsx, Logo.tsx (10+ files)
@@ -632,6 +680,7 @@ gpu_info = {
 - ✅ Fewer failures: Graceful OOM handling
 - ✅ Cleaner UI: Protected actions, clickable names
 - ✅ Professional branding: Custom logo and favicon
+- ✅ **AI Assistant**: Conversational interface for task guidance and troubleshooting
 
 **For Operators:**
 - ✅ Easier troubleshooting: Per-batch SLO logging
@@ -661,6 +710,7 @@ gpu_info = {
 - ✅ Multi-objective Pareto optimization
 - ✅ Model caching optimization
 - ✅ Full-stack web UI with real-time monitoring
+- ✅ **Agent Assistant** with LLM-powered conversational interface
 
 **Performance:**
 - ✅ 28 tasks executed successfully
@@ -1067,4 +1117,4 @@ python scripts/prepare_custom_dataset.py \
 ---
 
 
-**End of Roadmap** | Last Updated: 2025/11/25 | Version: 1.0 (Milestone 3 Complete)
+**End of Roadmap** | Last Updated: 2025/12/22 | Version: 1.0 (Milestone 4 Complete)
