@@ -49,6 +49,8 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
   const [viewMode, setViewMode] = useState<'table' | 'comparison' | 'sensitivity' | 'pareto'>('table');
   const [sensitivityParam, setSensitivityParam] = useState<string>('');
   const [isExperimentsExpanded, setIsExperimentsExpanded] = useState<boolean>(false);
+  const [selectedChartMetric, setSelectedChartMetric] = useState<string>('objective_score');
+  const [pinnedExperiment, setPinnedExperiment] = useState<number | null>(null);
 
   // Save axis selections to localStorage whenever they change
   useEffect(() => {
@@ -335,15 +337,25 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
     return hoveredExp ? getScatterDataForExperiment(hoveredExp) : [];
   }, [hoveredExperiment, experiments, bestExperiment]);
 
+  // Get scatter data for pinned experiment (show in purple if different from best and hovered)
+  const pinnedExperimentData = useMemo(() => {
+    if (!pinnedExperiment || pinnedExperiment === bestExperiment?.experiment_id) {
+      return [];
+    }
+    const pinnedExp = experiments.find(exp => exp.experiment_id === pinnedExperiment);
+    return pinnedExp ? getScatterDataForExperiment(pinnedExp) : [];
+  }, [pinnedExperiment, experiments, bestExperiment]);
+
   // Get all available numeric fields from scatter data for axis selection
   const scatterAxisOptions = useMemo(() => {
-    const data = bestExperimentData.length > 0 ? bestExperimentData : hoveredExperimentData;
+    const data = bestExperimentData.length > 0 ? bestExperimentData :
+                 hoveredExperimentData.length > 0 ? hoveredExperimentData : pinnedExperimentData;
     return data.length > 0
       ? Object.keys(data[0]).filter(key =>
           typeof data[0][key] === 'number' && key !== 'round_index'
         )
       : [];
-  }, [bestExperimentData, hoveredExperimentData]);
+  }, [bestExperimentData, hoveredExperimentData, pinnedExperimentData]);
 
   // Parameter sensitivity analysis data
   const sensitivityData = useMemo(() => {
@@ -723,13 +735,48 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Objective Score Bar Chart */}
                     <div className="bg-white border border-gray-200 rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                        Objective Scores by Experiment
-                        <span className="ml-3 text-sm font-normal text-gray-500">
-                          <span className="inline-block w-3 h-3 bg-green-500 rounded mr-1"></span>
-                          Best
-                        </span>
-                      </h3>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Experiment Metrics
+                          </h3>
+                          <select
+                            value={selectedChartMetric}
+                            onChange={(e) => setSelectedChartMetric(e.target.value)}
+                            className="text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="objective_score">Objective Score</option>
+                            {allMetricKeys.map((key) => (
+                              <option key={key} value={key}>
+                                {key}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <span className="inline-block w-3 h-3 bg-green-500 rounded"></span>
+                            Best
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="inline-block w-3 h-3 bg-blue-500 rounded"></span>
+                            Normal
+                          </span>
+                          {pinnedExperiment && (
+                            <span className="flex items-center gap-1">
+                              <span className="inline-block w-3 h-3 bg-purple-500 rounded"></span>
+                              Pinned
+                              <button
+                                onClick={() => setPinnedExperiment(null)}
+                                className="ml-1 text-gray-400 hover:text-gray-600"
+                                title="Unpin experiment"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" />
@@ -740,6 +787,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                               if (active && payload && payload.length) {
                                 const data = payload[0].payload;
                                 const isBest = data.experiment_id === bestExperiment?.experiment_id;
+                                const isPinned = data.experiment_id === pinnedExperiment;
                                 const paramDiffs = !isBest && bestExperiment
                                   ? getParameterDiff(data.parameters, bestExperiment.parameters)
                                   : [];
@@ -748,11 +796,15 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                                   <div className="bg-white border border-gray-200 rounded shadow-lg p-3 max-w-sm">
                                     <p className="text-sm font-semibold text-gray-900">{data.name}</p>
                                     <p className="text-sm text-gray-600">
-                                      Score: <span className="font-mono">{(payload[0].value as number).toFixed(4)}</span>
+                                      {selectedChartMetric}: <span className="font-mono">{(payload[0].value as number)?.toFixed(4) ?? 'N/A'}</span>
                                     </p>
                                     {isBest && (
                                       <p className="text-xs text-green-600 font-semibold mt-1">⭐ Best Experiment</p>
                                     )}
+                                    {isPinned && (
+                                      <p className="text-xs text-purple-600 font-semibold mt-1">📌 Pinned</p>
+                                    )}
+                                    <p className="text-xs text-gray-400 mt-1">Click to pin for comparison</p>
                                     {paramDiffs.length > 0 && (
                                       <div className="mt-2 pt-2 border-t border-gray-200">
                                         <p className="text-xs font-semibold text-gray-700 mb-1">Parameter Differences vs Best:</p>
@@ -772,8 +824,8 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             }}
                           />
                           <Bar
-                            dataKey="objective_score"
-                            name="Objective Score"
+                            dataKey={selectedChartMetric}
+                            name={selectedChartMetric}
                             onMouseEnter={(data: any) => {
                               if (data && data.experiment_id) {
                                 setHoveredExperiment(data.experiment_id);
@@ -782,39 +834,57 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             onMouseLeave={() => {
                               setHoveredExperiment(null);
                             }}
+                            onClick={(data: any) => {
+                              if (data && data.experiment_id) {
+                                setPinnedExperiment(prev =>
+                                  prev === data.experiment_id ? null : data.experiment_id
+                                );
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
                             label={(props: any) => {
-                            const { x, y, width, index } = props;
-                            if (x === undefined || y === undefined || width === undefined || index === undefined) return null;
-                            const isBest = chartData[index]?.experiment_id === bestExperiment?.experiment_id;
-                            if (isBest) {
+                              const { x, y, width, index } = props;
+                              if (x === undefined || y === undefined || width === undefined || index === undefined) return null;
+                              const expId = chartData[index]?.experiment_id;
+                              const isBest = expId === bestExperiment?.experiment_id;
+                              const isPinned = expId === pinnedExperiment;
+                              if (isBest || isPinned) {
+                                return (
+                                  <text x={Number(x) + Number(width) / 2} y={Number(y) - 5} fill={isBest ? "#10b981" : "#8b5cf6"} textAnchor="middle" fontSize={14}>
+                                    {isBest ? '⭐' : '📌'}
+                                  </text>
+                                );
+                              }
+                              return null;
+                            }}>
+                            {chartData.map((entry, index) => {
+                              const isBest = entry.experiment_id === bestExperiment?.experiment_id;
+                              const isPinned = entry.experiment_id === pinnedExperiment;
+                              let fill = '#3b82f6'; // normal blue
+                              if (isBest) fill = '#10b981'; // green for best
+                              else if (isPinned) fill = '#8b5cf6'; // purple for pinned
                               return (
-                                <text x={Number(x) + Number(width) / 2} y={Number(y) - 5} fill="#10b981" textAnchor="middle" fontSize={16}>
-                                  ⭐
-                                </text>
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={fill}
+                                />
                               );
-                            }
-                            return null;
-                          }}>
-                            {chartData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={entry.experiment_id === bestExperiment?.experiment_id ? '#10b981' : '#3b82f6'}
-                              />
-                            ))}
+                            })}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+
                     </div>
 
                     {/* Metrics Comparison */}
-                    {(bestExperimentData.length > 0 || hoveredExperimentData.length > 0) && scatterAxisOptions.length > 0 && (
+                    {(bestExperimentData.length > 0 || hoveredExperimentData.length > 0 || pinnedExperimentData.length > 0) && scatterAxisOptions.length > 0 && (
                       <div className="bg-white border border-gray-200 rounded-lg p-4">
                         {/* Title and Legend */}
                         <div className="mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
                             Performance Metrics - Sub-Rounds
                           </h3>
-                          <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-4 mt-2 flex-wrap">
                             {bestExperimentData.length > 0 && (
                               <p className="text-xs text-green-600">
                                 <span className="inline-block w-3 h-3 bg-green-500 rounded-full mr-1"></span>
@@ -825,6 +895,19 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                               <p className="text-xs text-blue-600">
                                 <span className="inline-block w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
                                 Hovered Exp #{hoveredExperiment} ({hoveredExperimentData.length} rounds)
+                              </p>
+                            )}
+                            {pinnedExperimentData.length > 0 && (
+                              <p className="text-xs text-purple-600 flex items-center">
+                                <span className="inline-block w-3 h-3 bg-purple-500 rounded-full mr-1"></span>
+                                Pinned Exp #{pinnedExperiment} ({pinnedExperimentData.length} rounds)
+                                <button
+                                  onClick={() => setPinnedExperiment(null)}
+                                  className="ml-1 text-gray-400 hover:text-gray-600"
+                                  title="Unpin experiment"
+                                >
+                                  ×
+                                </button>
                               </p>
                             )}
                           </div>
@@ -864,7 +947,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
 
                         {/* Chart */}
                         <ResponsiveContainer width="100%" height={300}>
-                          <ScatterChart key={`${bestExperiment?.id}-${hoveredExperiment}`}>
+                          <ScatterChart key={`${bestExperiment?.id}-${hoveredExperiment}-${pinnedExperiment}`}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis
                               type="number"
@@ -883,17 +966,24 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                               content={({ active, payload }) => {
                                 if (active && payload && payload.length) {
                                   const data = payload[0].payload;
-                                  const isFromBest = payload[0].name === 'Best Experiment';
+                                  const seriesName = payload[0].name;
+                                  const isFromBest = seriesName === 'Best Experiment';
+                                  const isFromPinned = seriesName === 'Pinned Experiment';
+                                  const expId = isFromBest ? bestExperiment?.experiment_id :
+                                               isFromPinned ? pinnedExperiment : hoveredExperiment;
                                   return (
                                     <div className="bg-white border border-gray-200 rounded shadow-lg p-3 max-w-sm">
                                       <p className="text-sm font-semibold text-gray-900">
                                         {data.round_name} (Concurrency: {data.num_concurrency})
                                       </p>
                                       {isFromBest && (
-                                        <p className="text-xs text-green-600 font-semibold">⭐ Best Experiment #{bestExperiment?.experiment_id}</p>
+                                        <p className="text-xs text-green-600 font-semibold">⭐ Best Experiment #{expId}</p>
                                       )}
-                                      {!isFromBest && (
-                                        <p className="text-xs text-blue-600 font-semibold">Experiment #{hoveredExperiment}</p>
+                                      {isFromPinned && (
+                                        <p className="text-xs text-purple-600 font-semibold">📌 Pinned Experiment #{expId}</p>
+                                      )}
+                                      {!isFromBest && !isFromPinned && (
+                                        <p className="text-xs text-blue-600 font-semibold">Hovered Experiment #{expId}</p>
                                       )}
                                       <div className="mt-2 space-y-1">
                                         <p className="text-xs text-gray-600">
@@ -1001,6 +1091,29 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                                       r={6}
                                       fill="#3b82f6"
                                       stroke="#2563eb"
+                                      strokeWidth={1.5}
+                                      opacity={0.8}
+                                    />
+                                  );
+                                }}
+                              />
+                            )}
+
+                            {/* Pinned experiment data (purple dots) */}
+                            {pinnedExperimentData.length > 0 && (
+                              <Scatter
+                                name="Pinned Experiment"
+                                data={pinnedExperimentData}
+                                fill="#8b5cf6"
+                                shape={(props: any) => {
+                                  const { cx, cy } = props;
+                                  return (
+                                    <circle
+                                      cx={cx}
+                                      cy={cy}
+                                      r={6}
+                                      fill="#8b5cf6"
+                                      stroke="#7c3aed"
                                       strokeWidth={1.5}
                                       opacity={0.8}
                                     />
