@@ -49,7 +49,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
   const [viewMode, setViewMode] = useState<'table' | 'comparison' | 'sensitivity' | 'pareto'>('table');
   const [sensitivityParam, setSensitivityParam] = useState<string>('');
   const [isExperimentsExpanded, setIsExperimentsExpanded] = useState<boolean>(false);
-  const [selectedChartMetric, setSelectedChartMetric] = useState<string>('objective_score');
+  const [selectedChartMetric, setSelectedChartMetric] = useState<string>('mean_total_throughput');
   const [pinnedExperiment, setPinnedExperiment] = useState<number | null>(null);
 
   // Save axis selections to localStorage whenever they change
@@ -584,7 +584,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
 
           <div className="p-6 space-y-6">
             {/* View Mode Tabs */}
-            <div className="border-b border-gray-200">
+            {/*<div className="border-b border-gray-200">
               <nav className="flex gap-4">
                 <button
                   onClick={() => setViewMode('table')}
@@ -627,7 +627,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                   Pareto Frontier
                 </button>
               </nav>
-            </div>
+            </div>*/}
 
             {/* Overview View */}
             {viewMode === 'table' && (
@@ -743,7 +743,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                           <select
                             value={selectedChartMetric}
                             onChange={(e) => setSelectedChartMetric(e.target.value)}
-                            className="text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            className="text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[160px]"
                           >
                             <option value="objective_score">Objective Score</option>
                             {allMetricKeys.map((key) => (
