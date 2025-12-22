@@ -24,6 +24,16 @@ The LLM Inference Autotuner is a comprehensive system for automatically optimizi
 
 ---
 
+## Milestone Overview
+
+| | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: UI/UX Polish | M5+: Future |
+|---|---------------------|-------------------|----------------------|------------------|-------------|
+| **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/03 | Planned |
+| **Status** | ✅ Done | ✅ Done | ✅ Done | ✅ Done | 🔵 Planned |
+| **Features** | ✅ Grid/Random Search<br/>✅ Docker Mode<br/>✅ OME/K8s Mode<br/>✅ Benchmark Parsing<br/>✅ Scoring Algorithms<br/>✅ CLI Interface | ✅ REST API<br/>✅ React Frontend<br/>✅ Task Queue (ARQ)<br/>✅ Log Streaming<br/>✅ Container Monitor<br/>✅ Preset System | ✅ Bayesian Optimization<br/>✅ Quantization Config<br/>✅ Parallel Config<br/>✅ GPU-Aware Scoring<br/>✅ SLO-Aware Scoring<br/>✅ Per-GPU Metrics | ✅ WebSocket Updates<br/>✅ YAML Import/Export<br/>✅ Auto-Update Notif<br/>✅ Multi-Exp Comparison<br/>✅ Custom Logo<br/>✅ Doc Refinement | 🔵 Distributed Workers<br/>🔵 Multi-User Auth<br/>🔵 Cloud Deployment<br/>🔵 CI/CD Integration<br/>🔵 Advanced Analytics |
+
+---
+
 ## Milestone Timeline
 
 ```
