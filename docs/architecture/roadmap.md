@@ -2,13 +2,13 @@
 
 > **Last Updated**: 2025/12/22
 > **Project Status**: Production-Ready with Active Development
-> **Current Version**: v1.0 (Milestone 4 Complete)
+> **Current Version**: v1.1 (Milestone 5 Complete)
 
 ---
 
 ## Executive Summary
 
-The LLM Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed four major milestones including dual-mode deployment (Kubernetes/OME and standalone Docker), full-stack web application, and runtime-agnostic configuration architecture.
+The LLM Autotuner is a comprehensive system for automatically optimizing Large Language Model inference parameters. The project has successfully completed five major milestones including tri-mode deployment (Kubernetes/OME, Docker, and Local), full-stack web application, runtime-agnostic configuration, and an AI-powered Agent System.
 
 **Key Achievements:**
 - ✅ 28 tasks executed, 408 experiments run, 312 successful results
@@ -21,17 +21,19 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 - ✅ Per-batch SLO filtering with graceful OOM handling
 - ✅ Documentation refinement (66→15 files, 77% reduction)
 - ✅ SLO-aware scoring with exponential penalty functions
-- ✅ **Agent Assistant** with LLM-powered task management and conversational interface
+- ✅ **Agent System** with LLM-powered task management, tool execution, and conversational interface
+- ✅ **Local Deployment Mode** for subprocess-based model execution without containers
+- ✅ **Remote Dataset Support** via URL fetching with caching
 
 ---
 
 ## Milestone Overview
 
-| | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: Agent Assistant | M5+: Future |
-|---|---------------------|-------------------|----------------------|------------------|-------------|
-| **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/22 | Planned |
-| **Status** | ✅ Done | ✅ Done | ✅ Done | ✅ Done | 🔵 Planned |
-| **Features** | ✅ Grid/Random Search<br/>✅ Docker Mode<br/>✅ OME/K8s Mode<br/>✅ Benchmark Parsing<br/>✅ Scoring Algorithms<br/>✅ CLI Interface | ✅ REST API<br/>✅ React Frontend<br/>✅ Task Queue (ARQ)<br/>✅ Log Streaming<br/>✅ Container Monitor<br/>✅ Preset System | ✅ Bayesian Optimization<br/>✅ Quantization Config<br/>✅ Parallel Config<br/>✅ GPU-Aware Scoring<br/>✅ SLO-Aware Scoring<br/>✅ Per-GPU Metrics | ✅ WebSocket Updates<br/>✅ YAML Import/Export<br/>✅ Auto-Update Notif<br/>✅ Multi-Exp Comparison<br/>✅ Agent Assistant<br/>✅ Sphinx Docs Site | 🔵 Distributed Workers<br/>🔵 Multi-User Auth<br/>🔵 Cloud Deployment<br/>🔵 CI/CD Integration<br/>🔵 Advanced Analytics |
+| | M1: Core Foundation | M2: Web Interface | M3: Runtime-Agnostic | M4: UI/UX Polish | M5: Agent System | M6+: Future |
+|---|---------------------|-------------------|----------------------|------------------|------------------|-------------|
+| **Date** | 2025/10/24 | 2025/10/30 | 2025/11/14 | 2025/12/01 | 2025/12/22 | Planned |
+| **Status** | ✅ Done | ✅ Done | ✅ Done | ✅ Done | ✅ Done | 🔵 Planned |
+| **Features** | ✅ Grid/Random Search<br/>✅ Docker Mode<br/>✅ OME/K8s Mode<br/>✅ Benchmark Parsing<br/>✅ Scoring Algorithms<br/>✅ CLI Interface | ✅ REST API<br/>✅ React Frontend<br/>✅ Task Queue (ARQ)<br/>✅ Log Streaming<br/>✅ Container Monitor<br/>✅ Preset System | ✅ Bayesian Optimization<br/>✅ Quantization Config<br/>✅ Parallel Config<br/>✅ GPU-Aware Scoring<br/>✅ SLO-Aware Scoring<br/>✅ Per-GPU Metrics | ✅ WebSocket Updates<br/>✅ YAML Import/Export<br/>✅ Auto-Update Notif<br/>✅ Multi-Exp Comparison<br/>✅ Sphinx Docs Site<br/>✅ SLO Filtering | ✅ Agent Chat UI<br/>✅ Tool Framework<br/>✅ Local Deploy Mode<br/>✅ Dataset URL Support<br/>✅ Streaming Markdown<br/>✅ GitHub/HF Tools | 🔵 Distributed Workers<br/>🔵 Multi-User Auth<br/>🔵 Cloud Deployment<br/>🔵 CI/CD Integration<br/>🔵 Advanced Analytics |
 
 ---
 
@@ -41,7 +43,8 @@ The LLM Autotuner is a comprehensive system for automatically optimizing Large L
 2025/10/24 ────► Milestone 1: Core Autotuner Foundation
 2025/10/30 ────► Milestone 2: Complete Web Interface & Parameter Preset System
 2025/11/14 ────► Milestone 3: Runtime-Agnostic Configuration & GPU-Aware Optimization
-2025/12/22 ────► Milestone 4: UI/UX Polish, Agent Assistant & Documentation
+2025/12/01 ────► Milestone 4: UI/UX Polish, SLO Filtering & Documentation
+2025/12/22 ────► Milestone 5: Agent System & Local Deployment Mode
 ```
 
 ---
@@ -523,12 +526,12 @@ gpu_info = {
 
 ---
 
-## 🎉 Milestone 4: UI/UX Polish, Agent Assistant & Documentation
+## 🎉 Milestone 4: UI/UX Polish, SLO Filtering & Documentation
 
-**Date**: 2025-12-22 (tag: `milestone-4`)
+**Date**: 2025-12-01 (tag: `milestone-4`)
 **Status**: ✅ COMPLETED
-**Timeline**: 2025-11-15 → 2025-12-22
-**Objective**: Transform from functional prototype to production-ready platform with professional UI, AI-powered assistant, and comprehensive documentation
+**Timeline**: 2025-11-15 → 2025-12-01
+**Objective**: Transform from functional prototype to production-ready platform with professional UI, SLO filtering, and comprehensive documentation
 
 ### Key Accomplishments
 
@@ -592,42 +595,7 @@ gpu_info = {
 - [x] API proxy configuration (fixed hardcoded URLs in service files)
 - [x] Pydantic settings fix (added `extra='ignore'` for VITE_* variables)
 
-#### 4.5 Agent Assistant ✅
-- [x] LLM-powered conversational interface for task management
-- [x] Dedicated Agent page with chat UI (`/agent`)
-- [x] Backend API endpoint (`/api/agent/chat`) with SSE streaming
-- [x] Streaming markdown rendering with syntax highlighting
-- [x] Copy-to-clipboard for assistant messages and code blocks
-- [x] Context-aware responses with task/experiment data access
-- [x] Configurable LLM backend (OpenAI-compatible API)
-
-**Architecture:**
-```
-┌─────────────────────┐     SSE Stream      ┌──────────────────┐
-│  AgentChat.tsx      │◄───────────────────►│  /api/agent/chat │
-│  (React Frontend)   │                     │  (FastAPI)       │
-└─────────────────────┘                     └────────┬─────────┘
-         │                                           │
-         │ Markdown                                  │ OpenAI API
-         ▼                                           ▼
-┌─────────────────────┐                     ┌──────────────────┐
-│ StreamingMarkdown   │                     │  LLM Backend     │
-│ (react-markdown)    │                     │  (Configurable)  │
-└─────────────────────┘                     └──────────────────┘
-```
-
-**Key Features:**
-- **Streaming Response**: Real-time token-by-token output via Server-Sent Events
-- **Rich Markdown**: Tables, code blocks with language headers, syntax highlighting
-- **Context Injection**: System prompt with task/experiment context for informed responses
-- **Copy Functionality**: One-click copy for code blocks and full messages
-
-**Components Created:**
-- `AgentChat.tsx` (~400 lines) - Main chat interface with message history
-- `StreamingMarkdown.tsx` (~350 lines) - Paragraph-aware markdown renderer
-- `agent.py` (backend route) - SSE streaming endpoint with LLM integration
-
-#### 4.6 Documentation Website ✅
+#### 4.5 Documentation Website ✅
 - [x] Sphinx documentation with Furo theme
 - [x] GitHub Actions workflow for automated deployment
 - [x] MyST Parser for Markdown support
@@ -638,9 +606,9 @@ gpu_info = {
 ### Technical Achievements
 
 **Code Statistics:**
-- **Frontend**: ~1,500 lines (YAML I/O, auto-update, Agent chat, StreamingMarkdown)
-- **Backend**: ~600 lines (SLO filtering, OOM handling, agent endpoint, fixes)
-- **Total New Code**: ~2,100 lines
+- **Frontend**: ~800 lines (YAML I/O, auto-update, SLO visualization)
+- **Backend**: ~400 lines (SLO filtering, OOM handling, fixes)
+- **Total New Code**: ~1,200 lines
 - **Documentation**: Sphinx site with 15+ pages, GitHub Actions CI/CD
 
 **Components Created:**
@@ -649,8 +617,6 @@ gpu_info = {
 - `UpdateNotification.tsx` (110 lines) - Auto-update banner with GitHub integration
 - `versionService.ts` (60 lines) - Version checking service
 - `check_batch_slo_compliance()` (133 lines) - Per-batch SLO validation
-- `AgentChat.tsx` (~400 lines) - LLM-powered chat interface
-- `StreamingMarkdown.tsx` (~350 lines) - Streaming markdown with copy support
 - `docs/conf.py` - Sphinx configuration with Furo theme
 - `.github/workflows/docs.yml` - GitHub Pages deployment workflow
 
@@ -680,7 +646,6 @@ gpu_info = {
 - ✅ Fewer failures: Graceful OOM handling
 - ✅ Cleaner UI: Protected actions, clickable names
 - ✅ Professional branding: Custom logo and favicon
-- ✅ **AI Assistant**: Conversational interface for task guidance and troubleshooting
 
 **For Operators:**
 - ✅ Easier troubleshooting: Per-batch SLO logging
@@ -694,7 +659,144 @@ gpu_info = {
 - ✅ Clear architecture: Essential docs only
 - ✅ Build tracking: Timestamp in version display
 
-## Current Status: Production-Ready v1.0 ✅
+---
+
+## 🎉 Milestone 5: Agent System & Local Deployment Mode
+
+**Date**: 2025-12-22 (tag: `milestone-5`)
+**Status**: ✅ COMPLETED
+**Timeline**: 2025-12-01 → 2025-12-22
+**Objective**: Introduce LLM-powered Agent System for conversational task management and add Local Deployment Mode for faster development iteration
+
+### Key Accomplishments
+
+#### 5.1 Agent Chat Interface ✅
+- [x] Full-featured chat UI with streaming markdown responses (`/agent`)
+- [x] Session management with persistent conversation history
+- [x] Editable session titles with auto-generation from first message
+- [x] IndexedDB-based message storage with backend sync
+- [x] Server-Sent Events (SSE) for real-time streaming responses
+
+**Architecture:**
+```
+┌─────────────────────┐     SSE Stream      ┌──────────────────┐
+│  AgentChat.tsx      │◄───────────────────►│  /api/agent/chat │
+│  (React Frontend)   │                     │  (FastAPI)       │
+└─────────────────────┘                     └────────┬─────────┘
+         │                                           │
+         │ Markdown                                  │ OpenAI API
+         ▼                                           ▼
+┌─────────────────────┐                     ┌──────────────────┐
+│ StreamingMarkdown   │                     │  LLM Backend     │
+│ (react-markdown)    │                     │  (Configurable)  │
+└─────────────────────┘                     └──────────────────┘
+```
+
+#### 5.2 Tool Execution Framework ✅
+- [x] Authorization system with `AuthorizationScope` enum (none, privileged, dangerous)
+- [x] Privileged tools require user approval before execution
+- [x] Auto-execute pending tools after authorization granted
+- [x] Clear visual indicators for tool status in chat UI
+
+**Tool Categories Implemented:**
+
+| Category | Tools | Authorization |
+|----------|-------|---------------|
+| Task Management | `create_task`, `start_task`, `get_task_status`, `get_task_logs` | None |
+| Worker Control | `restart_arq_worker` | Privileged |
+| System Utilities | `sleep`, `get_current_time` | None |
+| GitHub Integration | `search_github_issues`, `create_github_issue`, `comment_github_issue` | None |
+| HuggingFace CLI | `hf_cache_scan`, `hf_download`, `hf_repo_info` | None |
+| Experiment Analysis | `get_experiment_logs` | None |
+
+#### 5.3 Agent Backend Architecture ✅
+- [x] LangChain framework for flexible model support
+- [x] Support for Claude (Anthropic) and open-source models
+- [x] Max iterations increased from 10 to 100 for complex tasks
+- [x] Automatic tool result handling for multi-step operations
+
+**API Endpoints:**
+- `POST /api/agent/chat` - SSE streaming chat endpoint
+- `GET /api/agent/sessions` - List all sessions
+- `POST /api/agent/sessions` - Create new session
+- `PUT /api/agent/sessions/{id}` - Update session title
+- `DELETE /api/agent/sessions/{id}` - Delete session
+- `GET /api/agent/sessions/{id}/messages` - Get session messages
+
+#### 5.4 Streaming Markdown Component ✅
+- [x] Paragraph-aware streaming that preserves atomic elements
+- [x] GitHub Flavored Markdown support (tables, code blocks, task lists)
+- [x] Copy buttons for code blocks and tables (copies source, not rendered HTML)
+- [x] Tailwind typography styling for consistent appearance
+
+#### 5.5 Local Deployment Mode ✅
+- [x] New `LocalController` for subprocess-based model execution
+- [x] Direct vLLM/SGLang server launch via `python -m` commands
+- [x] Automatic port allocation (30000-30100 range)
+- [x] Process lifecycle management with graceful shutdown
+- [x] Log capture and streaming to task log files
+
+**Runtime Support:**
+- vLLM local environment: `.venv-vllm/` with CUDA 12
+- SGLang local environment: `.venv-sglang/` (SM86 limitation)
+- Automatic environment detection and activation
+
+#### 5.6 Dataset URL Support ✅
+- [x] Remote URL dataset loading (CSV, JSONL, compressed archives)
+- [x] Automatic format detection and conversion
+- [x] URL-hash based caching in `~/.local/share/inference-autotuner/datasets/`
+- [x] Deduplication option for prompt datasets
+- [x] genai-bench submodule updated to fork with URL support
+
+#### 5.7 Additional Improvements ✅
+- [x] HuggingFace offline mode: Fixed cache path handling for air-gapped environments
+- [x] GitHub Issue #3 fix: Resolved `analyze_slo_violations()` AttributeError
+- [x] Foldable experiments list: Collapsible UI for large experiment sets
+- [x] Comprehensive parameter presets: Runtime-specific vLLM and SGLang presets
+- [x] Project rebranding: Logo redesign inspired by Novita.ai style
+
+### Technical Achievements
+
+**Code Statistics:**
+- **Agent Frontend**: ~800 lines (AgentChat.tsx, StreamingMarkdown.tsx, AgentMessage.tsx)
+- **Agent Backend**: ~600 lines (routes/agent.py, schemas/agent.py, services/agent_service.py)
+- **Tools**: ~500 lines (task_tools.py, worker_tools.py, github_tools.py, hf_tools.py)
+- **Local Mode**: ~400 lines (local_controller.py, autotuner_worker.py updates)
+- **Dataset**: ~200 lines (dataset_controller.py)
+- **Total New Code**: ~2,500 lines
+
+**Key Components Created:**
+- `AgentChat.tsx` (~400 lines) - Main chat interface with message history
+- `StreamingMarkdown.tsx` (~350 lines) - Paragraph-aware markdown renderer
+- `LocalController` (~300 lines) - Subprocess-based deployment controller
+- `DatasetController` (~200 lines) - Remote dataset fetching and caching
+- 12 agent tools across 6 categories
+
+### Performance Impact
+
+| Metric | Before M5 | After M5 | Improvement |
+|--------|-----------|----------|-------------|
+| **Task Creation** | Form-only | Conversational + Form | Natural language |
+| **Deployment Setup** | Docker/K8s required | Local subprocess option | Faster iteration |
+| **Dataset Loading** | Local files only | Remote URL support | More flexible |
+| **Agent Iterations** | N/A | Up to 100 steps | Complex workflows |
+
+### Impact Summary
+
+**For Users:**
+- ✅ Natural language task creation and management via Agent
+- ✅ Faster local development without Docker/Kubernetes overhead
+- ✅ Remote dataset support for production workload testing
+- ✅ GitHub integration for issue tracking and collaboration
+- ✅ HuggingFace integration for model management
+
+**For Developers:**
+- ✅ Local deployment mode for rapid iteration
+- ✅ Extensible tool framework for custom integrations
+- ✅ Comprehensive logging and debugging support
+- ✅ Session-based conversation history
+
+## Current Status: Production-Ready v1.1 ✅
 
 ### What Works Today
 
@@ -702,6 +804,7 @@ gpu_info = {
 - ✅ Grid search, random search, Bayesian optimization (Optuna TPE)
 - ✅ Docker mode deployment (recommended)
 - ✅ Kubernetes/OME mode deployment
+- ✅ **Local mode deployment** (subprocess-based, no containers)
 - ✅ Runtime-agnostic quantization configuration (vLLM, SGLang, TensorRT-LLM)
 - ✅ Runtime-agnostic parallelism configuration (18 presets)
 - ✅ SLO-aware scoring with exponential penalties
@@ -710,7 +813,8 @@ gpu_info = {
 - ✅ Multi-objective Pareto optimization
 - ✅ Model caching optimization
 - ✅ Full-stack web UI with real-time monitoring
-- ✅ **Agent Assistant** with LLM-powered conversational interface
+- ✅ **Agent System** with LLM-powered conversational interface
+- ✅ **Remote dataset support** via URL fetching
 
 **Performance:**
 - ✅ 28 tasks executed successfully
@@ -727,19 +831,20 @@ gpu_info = {
 - ✅ Redis task queue with ARQ worker
 - ✅ Docker container management
 - ✅ Kubernetes resource management
+- ✅ **LangChain-based agent framework** with 12 tools
 
 ---
 
 ## Future Roadmap
 
 
-### 🔵 Phase 5: Distributed Architecture & Parallel Execution (Planned)
+### 🔵 Phase 6: Distributed Architecture & Parallel Execution (Planned)
 
 **Priority**: High
 **Effort**: 3-4 weeks
 **Value**: ⭐⭐⭐⭐⭐
 
-#### 5.1 Distributed Worker Architecture
+#### 6.1 Distributed Worker Architecture
 - [ ] **Central Web Manager**: Single control plane for multiple workers
 - [ ] **Worker Registration**: Auto-discovery and registration via Redis
 - [ ] **Heartbeat Monitoring**: Worker health checks and failure detection
@@ -790,7 +895,7 @@ gpu_info = {
 3. Week 3: Result aggregation and monitoring
 4. Week 4: Frontend dashboard and testing
 
-#### 5.2 Advanced Parallel Execution
+#### 6.2 Advanced Parallel Execution
 - [ ] User-configurable max_parallel setting (currently hardcoded at 5)
 - [ ] Per-worker parallelism configuration
 - [ ] Dynamic parallelism based on GPU availability
@@ -804,7 +909,7 @@ gpu_info = {
 - Configurable resource allocation per task
 - Fair scheduling with priority queues
 
-#### 5.3 Task Sharding & Load Balancing
+#### 6.3 Task Sharding & Load Balancing
 - [ ] Automatic task splitting across workers
 - [ ] Load-aware scheduling (balance by GPU count)
 - [ ] Locality-aware scheduling (prefer same-node experiments)
@@ -813,13 +918,13 @@ gpu_info = {
 
 ---
 
-### 🔵 Phase 6: Advanced Optimization & Runtime Features (Planned)
+### 🔵 Phase 7: Advanced Optimization & Runtime Features (Planned)
 
 **Priority**: Medium
 **Effort**: 2-4 weeks
 **Value**: ⭐⭐⭐⭐
 
-#### 6.1 Runtime-Specific Optimizations
+#### 7.1 Runtime-Specific Optimizations
 
 **SGLang Radix Cache Management:**
 - [ ] **Reset radix cache at experiment start**: Clear cache before each experiment
@@ -851,7 +956,7 @@ def reset_sglang_radix_cache(container_id: str):
 - [ ] Runtime-specific profiling hooks
 - [ ] Memory defragmentation between experiments
 
-#### 6.2 Multi-Fidelity Optimization
+#### 7.2 Multi-Fidelity Optimization
 - [ ] Progressive benchmark complexity
 - [ ] Early stopping for poor configurations
 - [ ] Hyperband algorithm integration
@@ -859,14 +964,14 @@ def reset_sglang_radix_cache(container_id: str):
 - [ ] Quick validation runs (low concurrency, short duration)
 - [ ] Full benchmark only for promising configs
 
-#### 6.3 Transfer Learning
+#### 7.3 Transfer Learning
 - [ ] Model similarity detection (architecture, size, quantization)
 - [ ] Cross-model parameter transfer
 - [ ] Historical performance database (SQLite → PostgreSQL)
 - [ ] Meta-learning for initialization
 - [ ] Warmstart Bayesian optimization with historical data
 
-#### 6.4 Enhanced Multi-Objective Optimization
+#### 7.4 Enhanced Multi-Objective Optimization
 - [ ] NSGA-II algorithm for Pareto frontier
 - [ ] 3+ objective support (latency, throughput, cost, energy, memory)
 - [ ] Interactive trade-off exploration
@@ -876,7 +981,7 @@ def reset_sglang_radix_cache(container_id: str):
 
 ---
 
-#### 6.5 Enhanced Export & Data Portability
+#### 7.5 Enhanced Export & Data Portability
 - [ ] Export experiment results to CSV
 - [ ] Export results to JSON for analysis
 - [ ] Export results to Excel (.xlsx) format
@@ -899,7 +1004,7 @@ def reset_sglang_radix_cache(container_id: str):
 - Task Configs: `.yaml`, `.json`
 - Templates: Zip archive with metadata
 
-#### 6.6 Custom Dataset Support for GenAI-Bench
+#### 7.6 Custom Dataset Support for GenAI-Bench
 - [ ] Fetch datasets from user-specified URLs
 - [ ] Support CSV format parsing
 - [ ] Support JSONL (JSON Lines) format parsing
@@ -990,31 +1095,31 @@ python scripts/prepare_custom_dataset.py \
    - Statistics reporting
 
 
-### 🔵 Phase 7: Enterprise Features (Planned)
+### 🔵 Phase 8: Enterprise Features (Planned)
 
 **Priority**: Low-Medium
 **Effort**: 3-5 weeks
 **Value**: ⭐⭐⭐
 
-#### 7.1 Multi-User Support
+#### 8.1 Multi-User Support
 - [ ] User authentication (OAuth2)
 - [ ] Role-based access control (RBAC)
 - [ ] Task ownership and sharing
 - [ ] Team workspaces
 
-#### 7.2 Advanced Monitoring
+#### 8.2 Advanced Monitoring
 - [ ] Prometheus metrics exporter
 - [ ] Grafana dashboard templates
 - [ ] Alert rules for failures
 - [ ] Performance analytics
 
-#### 7.3 CI/CD Integration
+#### 8.3 CI/CD Integration
 - [ ] GitHub Actions workflow
 - [ ] Automated benchmarking on PR
 - [ ] Performance regression detection
 - [ ] Automated deployment
 
-#### 7.4 Cloud Deployment
+#### 8.4 Cloud Deployment
 - [ ] AWS deployment guide (EKS)
 - [ ] GCP deployment guide (GKE)
 - [ ] Azure deployment guide (AKS)
@@ -1023,25 +1128,25 @@ python scripts/prepare_custom_dataset.py \
 
 ---
 
-### 🟢 Phase 8: Research & Innovation (Future)
+### 🟢 Phase 9: Research & Innovation (Future)
 
 **Priority**: Low
 **Effort**: Variable
 **Value**: ⭐⭐⭐
 
-#### 8.1 Auto-Scaling Integration
+#### 9.1 Auto-Scaling Integration
 - [ ] Horizontal Pod Autoscaler (HPA) optimization
 - [ ] Vertical Pod Autoscaler (VPA) tuning
 - [ ] Knative Serving integration
 - [ ] Cost-aware scaling
 
-#### 8.2 Advanced Benchmarking
+#### 9.2 Advanced Benchmarking
 - [ ] Custom benchmark scenario editor
 - [ ] Real-world traffic replay
 - [ ] Synthetic load generation
 - [ ] Multi-modal benchmarking
 
-#### 8.3 Model-Specific Optimization
+#### 9.3 Model-Specific Optimization
 - [ ] Architecture-aware parameter tuning
 - [ ] Quantization-aware optimization
 - [ ] Attention mechanism tuning
@@ -1090,7 +1195,7 @@ python scripts/prepare_custom_dataset.py \
 
 ## Success Metrics
 
-### Current Performance (Milestone 3)
+### Current Performance (Milestone 5)
 
 | Metric | Value | Target |
 |--------|-------|--------|
@@ -1102,8 +1207,8 @@ python scripts/prepare_custom_dataset.py \
 | **UI Response Time** | <200ms | <100ms |
 | **API Latency (P95)** | <500ms | <200ms |
 | **Supported Runtimes** | 3 (vLLM, SGLang, TRT-LLM) | - |
-| **Quantization Presets** | 5 | - |
-| **Parallelism Presets** | 18 (6 per runtime) | - |
+| **Deployment Modes** | 3 (Docker, OME, Local) | - |
+| **Agent Tools** | 12 (across 6 categories) | - |
 
 ### Future Targets (v2.0)
 
@@ -1117,4 +1222,4 @@ python scripts/prepare_custom_dataset.py \
 ---
 
 
-**End of Roadmap** | Last Updated: 2025/12/22 | Version: 1.0 (Milestone 4 Complete)
+**End of Roadmap** | Last Updated: 2025/12/22 | Version: 1.1 (Milestone 5 Complete)

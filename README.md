@@ -40,26 +40,28 @@ Access at http://localhost:5173
 
 ## Documentation
 
+**Full Documentation**: https://novitalabs.github.io/inference-autotuner/
+
 ### Project Overview
-- [ROADMAP.md](docs/ROADMAP.md) - **Product roadmap with completed milestones and future plans**
+- [ROADMAP.md](docs/architecture/roadmap.md) - **Product roadmap with completed milestones and future plans**
 
 ### Setup & Deployment
-- [INSTALLATION.md](docs/INSTALLATION.md) - **Complete installation guide**
-- [QUICKSTART.md](docs/QUICKSTART.md) - Quick start tutorial
-- [DOCKER_MODE.md](docs/DOCKER_MODE.md) - Docker deployment guide
-- [OME_INSTALLATION.md](docs/OME_INSTALLATION.md) - Kubernetes/OME setup
+- [Installation Guide](docs/getting-started/installation.md) - **Complete installation guide**
+- [Quick Start](docs/getting-started/quickstart.md) - Quick start tutorial
+- [Docker Mode](docs/user-guide/docker-mode.md) - Docker deployment guide
+- [Kubernetes/OME](docs/user-guide/kubernetes.md) - Kubernetes/OME setup
 
 ### Features & Configuration
-- [SLO_SCORING.md](docs/SLO_SCORING.md) - SLO-aware scoring with exponential penalties
-- [PARALLEL_EXECUTION.md](docs/PARALLEL_EXECUTION.md) - Parallel experiment execution
-- [WEBSOCKET_IMPLEMENTATION.md](docs/WEBSOCKET_IMPLEMENTATION.md) - Real-time updates via WebSocket
-- [UNIFIED_QUANTIZATION_PARAMETERS.md](docs/UNIFIED_QUANTIZATION_PARAMETERS.md) - Quantization configuration
-- [PRESET_QUICK_REFERENCE.md](docs/PRESET_QUICK_REFERENCE.md) - Parameter preset system
-- [BAYESIAN_OPTIMIZATION.md](docs/BAYESIAN_OPTIMIZATION.md) - Bayesian optimization strategy
-- [GPU_TRACKING.md](docs/GPU_TRACKING.md) - GPU intelligent scheduling
+- [SLO Scoring](docs/features/slo-scoring.md) - SLO-aware scoring with exponential penalties
+- [Parallel Execution](docs/features/parallel-execution.md) - Parallel experiment execution
+- [WebSocket Implementation](docs/features/websocket.md) - Real-time updates via WebSocket
+- [Quantization Parameters](docs/UNIFIED_QUANTIZATION_PARAMETERS.md) - Quantization configuration
+- [Parameter Presets](docs/user-guide/presets.md) - Parameter preset system
+- [Bayesian Optimization](docs/features/bayesian-optimization.md) - Bayesian optimization strategy
+- [GPU Tracking](docs/features/gpu-tracking.md) - GPU intelligent scheduling
 
 ### Operations & Troubleshooting
-- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ### Development History
 - [agentlog/](agentlog/) - Daily development diary (yyyy/mmdd.md format) written directly to files
