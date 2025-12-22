@@ -7,6 +7,7 @@
 
 import type { IterationBlock as IterationBlockType } from "../types/agent";
 import ToolCallCard from "./ToolCallCard";
+import StreamingMarkdown from "./StreamingMarkdown";
 
 interface IterationBlockProps {
 	iteration: IterationBlockType;
@@ -33,13 +34,10 @@ export default function IterationBlock({
 
 			{/* Content section - thinking/reasoning text */}
 			{iteration.content && (
-				<div className="text-sm whitespace-pre-wrap break-words">
-					{iteration.content}
-					{/* Blinking cursor for active streaming */}
-					{isStreaming && (
-						<span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
-					)}
-				</div>
+				<StreamingMarkdown
+					content={iteration.content}
+					isStreaming={isStreaming}
+				/>
 			)}
 
 			{/* Tool calls section - execution history */}
