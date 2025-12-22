@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The LLM Inference Autotuner is a system for automatically tuning LLM inference engine parameters. It supports dual deployment modes (Kubernetes/OME and standalone Docker) with a web UI for task management and background job processing.
+The LLM Autotuner is a system for automatically tuning LLM inference engine parameters. It supports dual deployment modes (Kubernetes/OME and standalone Docker) with a web UI for task management and background job processing.
 
 **Key Capabilities:**
 - Grid search, random search, and **Bayesian optimization** across parameter combinations

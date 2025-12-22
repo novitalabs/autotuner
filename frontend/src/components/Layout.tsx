@@ -320,7 +320,7 @@ export default function Layout() {
 							<Logo className="w-full h-full" />
 						</div>
 						<div>
-							<h1 className="text-sm font-bold text-gray-900">Inference Autotuner</h1>
+							<h1 className="text-sm font-bold text-gray-900">Autotuner</h1>
 							<p className="text-xs text-gray-500" title={`Build: ${typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}`}>
 								{version ? (
 									<>

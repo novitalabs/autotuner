@@ -1,6 +1,6 @@
-# LLM Inference Autotuner - Frontend
+# LLM Autotuner - Frontend
 
-React + TypeScript frontend application for the LLM Inference Autotuner.
+React + TypeScript frontend application for the LLM Autotuner.
 
 ## Tech Stack
 
