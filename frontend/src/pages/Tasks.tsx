@@ -151,7 +151,7 @@ export default function Tasks() {
 				<div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
 					<button
 						onClick={() => navigateTo('new-task')}
-						className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+						className="inline-flex items-center justify-center rounded-md bg-emerald-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
 					>
 						<svg
 							className="h-5 w-5 mr-2"
@@ -178,7 +178,7 @@ export default function Tasks() {
 				</label>
 				<select
 					id="status-filter"
-					className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+					className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-emerald-500 sm:text-sm"
 					value={statusFilter}
 					onChange={(e) => setStatusFilter(e.target.value)}
 				>
@@ -232,7 +232,7 @@ export default function Tasks() {
 							<div className="mt-6">
 								<button
 									onClick={() => navigateTo('new-task')}
-									className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+									className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-500 hover:bg-emerald-600"
 								>
 									<svg
 										className="h-5 w-5 mr-2"

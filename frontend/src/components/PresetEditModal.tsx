@@ -159,7 +159,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., High Performance"
               />
             </div>
@@ -172,7 +172,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="Describe this preset..."
               />
             </div>
@@ -185,7 +185,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                 type="text"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., performance, memory, general"
               />
             </div>
@@ -197,7 +197,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
               <select
                 value={runtime}
                 onChange={(e) => setRuntime(e.target.value as 'sglang' | 'vllm' | '')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Universal (all runtimes)</option>
                 <option value="sglang">SGLang</option>
@@ -228,7 +228,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                 <button
                   type="button"
                   onClick={addParameter}
-                  className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                  className="px-3 py-1 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 text-sm"
                 >
                   Add Parameter
                 </button>
@@ -274,7 +274,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                       value={param.name}
                       onChange={(e) => updateParameter(index, 'name', e.target.value)}
                       placeholder="Parameter name (e.g., tp-size)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                   <div className="flex-1">
@@ -283,7 +283,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
                       value={param.values}
                       onChange={(e) => updateParameter(index, 'values', e.target.value)}
                       placeholder="Values (e.g., 1, 2, 4)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                   <button
@@ -315,7 +315,7 @@ export default function PresetEditModal({ preset, onClose }: PresetEditModalProp
             <button
               type="submit"
               disabled={updateMutation.isPending}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+              className="px-6 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 disabled:bg-blue-400"
             >
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </button>

@@ -951,7 +951,7 @@ AGENT_MODEL=gpt-4`}
 									handleCancelEditTitle();
 								}
 							}}
-							className="flex-1 text-2xl font-bold text-gray-900 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+							className="flex-1 text-2xl font-bold text-gray-900 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500"
 							placeholder="Enter title..."
 						/>
 					) : (
@@ -1023,7 +1023,7 @@ AGENT_MODEL=gpt-4`}
 						onChange={(e) => setInput(e.target.value)}
 						onKeyDown={handleKeyPress}
 						placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-						className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+						className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
 						rows={1}
 						style={{ minHeight: "44px", maxHeight: "200px" }}
 						disabled={sendMessageMutation.isPending}
@@ -1031,7 +1031,7 @@ AGENT_MODEL=gpt-4`}
 					<button
 						onClick={handleSend}
 						disabled={!input.trim() || sendMessageMutation.isPending}
-						className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+						className="p-3 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
 						title={sendMessageMutation.isPending ? "Sending..." : "Send message"}
 					>
 						{sendMessageMutation.isPending ? (
@@ -1066,7 +1066,7 @@ function MessageBubble({ message, onAuthorize, isAuthorizing }: { message: Messa
 		return (
 			<div className="flex justify-end">
 				<div className="group relative max-w-3xl">
-					<div className="rounded-lg px-4 py-3 bg-blue-600 text-white">
+					<div className="rounded-lg px-4 py-3 bg-emerald-500 text-white">
 						<div className="text-sm whitespace-pre-wrap break-words">
 							{message.content}
 						</div>

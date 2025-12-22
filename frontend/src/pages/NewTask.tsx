@@ -887,7 +887,7 @@ export default function NewTask() {
                 value={taskName}
                 onChange={(e) => setTaskName(e.target.value)}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="docker-simple-tune"
               />
             </div>
@@ -899,7 +899,7 @@ export default function NewTask() {
               <select
                 value={deploymentMode}
                 onChange={(e) => setDeploymentMode(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="local">Local (Subprocess)</option>
                 <option value="docker">Docker</option>
@@ -915,7 +915,7 @@ export default function NewTask() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="Describe the purpose of this autotuning task"
               />
             </div>
@@ -933,7 +933,7 @@ export default function NewTask() {
               <select
                 value={baseRuntime}
                 onChange={(e) => setBaseRuntime(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="sglang">SGLang</option>
                 <option value="vllm">vLLM</option>
@@ -948,7 +948,7 @@ export default function NewTask() {
                 type="text"
                 value={runtimeImageTag}
                 onChange={(e) => setRuntimeImageTag(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="v0.5.2-cu126 (optional)"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -971,7 +971,7 @@ export default function NewTask() {
                 value={modelIdOrPath}
                 onChange={(e) => setModelIdOrPath(e.target.value)}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="llama-3-2-1b-instruct or meta-llama/Llama-3.2-1B-Instruct"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -988,7 +988,7 @@ export default function NewTask() {
                 value={modelNamespace}
                 onChange={(e) => setModelNamespace(e.target.value)}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="autotuner"
               />
             </div>
@@ -1038,7 +1038,7 @@ export default function NewTask() {
               <button
                 type="button"
                 onClick={addParameter}
-                className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                className="px-3 py-1 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 text-sm"
               >
                 Add Parameter
               </button>
@@ -1071,7 +1071,7 @@ export default function NewTask() {
                     value={param.name}
                     onChange={(e) => updateParameter(index, 'name', e.target.value)}
                     placeholder="Parameter name (e.g., tp-size)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <div className="flex-1">
@@ -1080,7 +1080,7 @@ export default function NewTask() {
                     value={param.values}
                     onChange={(e) => updateParameter(index, 'values', e.target.value)}
                     placeholder="Values (e.g., 1, 2, 4)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <button
@@ -1112,7 +1112,7 @@ export default function NewTask() {
               <select
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="grid_search">Grid Search</option>
                 <option value="random_search">Random Search</option>
@@ -1146,7 +1146,7 @@ export default function NewTask() {
               <select
                 value={objective}
                 onChange={(e) => setObjective(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="minimize_latency">Minimize Latency</option>
                 <option value="maximize_throughput">Maximize Throughput</option>
@@ -1163,7 +1163,7 @@ export default function NewTask() {
                 value={maxIterations}
                 onChange={(e) => setMaxIterations(parseInt(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -1176,7 +1176,7 @@ export default function NewTask() {
                 value={timeoutPerIteration}
                 onChange={(e) => setTimeoutPerIteration(parseInt(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
@@ -1194,7 +1194,7 @@ export default function NewTask() {
                 type="text"
                 value={benchmarkTask}
                 onChange={(e) => setBenchmarkTask(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="text-to-text"
               />
             </div>
@@ -1207,7 +1207,7 @@ export default function NewTask() {
                 type="text"
                 value={benchmarkModelName}
                 onChange={(e) => setBenchmarkModelName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="Auto-filled from Model ID/Path"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -1223,7 +1223,7 @@ export default function NewTask() {
                 type="text"
                 value={modelTokenizer}
                 onChange={(e) => setModelTokenizer(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="Leave empty to auto-fill with Model ID/Path"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -1239,7 +1239,7 @@ export default function NewTask() {
                 type="text"
                 value={trafficScenarios}
                 onChange={(e) => setTrafficScenarios(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="D(100,100)"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -1255,7 +1255,7 @@ export default function NewTask() {
                 type="text"
                 value={numConcurrency}
                 onChange={(e) => setNumConcurrency(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="1, 4, 8"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -1272,7 +1272,7 @@ export default function NewTask() {
                 value={maxTimePerIteration}
                 onChange={(e) => setMaxTimePerIteration(parseInt(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -1285,7 +1285,7 @@ export default function NewTask() {
                 value={maxRequestsPerIteration}
                 onChange={(e) => setMaxRequestsPerIteration(parseInt(e.target.value))}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -1297,7 +1297,7 @@ export default function NewTask() {
                 type="text"
                 value={temperature}
                 onChange={(e) => setTemperature(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="0.0"
               />
             </div>
@@ -1314,7 +1314,7 @@ export default function NewTask() {
                     type="text"
                     value={datasetUrl}
                     onChange={(e) => setDatasetUrl(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="https://example.com/api_logs.csv.gz"
                   />
                   <p className="text-sm text-gray-500 mt-1">
@@ -1327,7 +1327,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={datasetDeduplicate}
                       onChange={(e) => setDatasetDeduplicate(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-sm text-gray-700">Deduplicate prompts</span>
                   </label>
@@ -1352,7 +1352,7 @@ export default function NewTask() {
                 type="checkbox"
                 checked={enableSLO}
                 onChange={(e) => setEnableSLO(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
               />
               <span className="ml-2 text-sm font-medium text-gray-700">Enable SLO</span>
             </label>
@@ -1369,7 +1369,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={enableTTFT}
                       onChange={(e) => setEnableTTFT(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-xs text-gray-600">Enable</span>
                   </label>
@@ -1382,7 +1382,7 @@ export default function NewTask() {
                         type="text"
                         value={sloTtftThreshold}
                         onChange={(e) => setSloTtftThreshold(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="1.0"
                       />
                     </div>
@@ -1392,7 +1392,7 @@ export default function NewTask() {
                         type="text"
                         value={sloTtftWeight}
                         onChange={(e) => setSloTtftWeight(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="2.0"
                       />
                     </div>
@@ -1409,7 +1409,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={enableTPOT}
                       onChange={(e) => setEnableTPOT(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-xs text-gray-600">Enable</span>
                   </label>
@@ -1422,7 +1422,7 @@ export default function NewTask() {
                         type="text"
                         value={sloTpotThreshold}
                         onChange={(e) => setSloTpotThreshold(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="0.05"
                       />
                     </div>
@@ -1432,7 +1432,7 @@ export default function NewTask() {
                         type="text"
                         value={sloTpotWeight}
                         onChange={(e) => setSloTpotWeight(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="2.0"
                       />
                     </div>
@@ -1449,7 +1449,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={enableP50}
                       onChange={(e) => setEnableP50(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-xs text-gray-600">Enable</span>
                   </label>
@@ -1462,7 +1462,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP50Threshold}
                         onChange={(e) => setSloP50Threshold(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="2.0"
                       />
                     </div>
@@ -1472,7 +1472,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP50Weight}
                         onChange={(e) => setSloP50Weight(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="1.0"
                       />
                     </div>
@@ -1489,7 +1489,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={enableP90}
                       onChange={(e) => setEnableP90(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-xs text-gray-600">Enable</span>
                   </label>
@@ -1502,7 +1502,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP90Threshold}
                         onChange={(e) => setSloP90Threshold(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="5.0"
                       />
                     </div>
@@ -1512,7 +1512,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP90Weight}
                         onChange={(e) => setSloP90Weight(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="2.0"
                       />
                     </div>
@@ -1522,7 +1522,7 @@ export default function NewTask() {
                           type="checkbox"
                           checked={sloP90HardFail}
                           onChange={(e) => setSloP90HardFail(e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                         />
                         <span className="ml-2 text-xs text-gray-700">Enable hard fail above ratio:</span>
                         <input
@@ -1530,7 +1530,7 @@ export default function NewTask() {
                           value={sloP90FailRatio}
                           onChange={(e) => setSloP90FailRatio(e.target.value)}
                           disabled={!sloP90HardFail}
-                          className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                          className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
                           placeholder="0.2"
                         />
                         <span className="ml-1 text-xs text-gray-500">(20% over = fail)</span>
@@ -1549,7 +1549,7 @@ export default function NewTask() {
                       type="checkbox"
                       checked={enableP99}
                       onChange={(e) => setEnableP99(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                     />
                     <span className="ml-2 text-xs text-gray-600">Enable</span>
                   </label>
@@ -1562,7 +1562,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP99Threshold}
                         onChange={(e) => setSloP99Threshold(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="10.0"
                       />
                     </div>
@@ -1572,7 +1572,7 @@ export default function NewTask() {
                         type="text"
                         value={sloP99Weight}
                         onChange={(e) => setSloP99Weight(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="3.0"
                       />
                     </div>
@@ -1582,7 +1582,7 @@ export default function NewTask() {
                           type="checkbox"
                           checked={sloP99HardFail}
                           onChange={(e) => setSloP99HardFail(e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-blue-600 focus:ring-emerald-500 border-gray-300 rounded"
                         />
                         <span className="ml-2 text-xs text-gray-700">Enable hard fail above ratio:</span>
                         <input
@@ -1590,7 +1590,7 @@ export default function NewTask() {
                           value={sloP99FailRatio}
                           onChange={(e) => setSloP99FailRatio(e.target.value)}
                           disabled={!sloP99HardFail}
-                          className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                          className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
                           placeholder="0.5"
                         />
                         <span className="ml-1 text-xs text-gray-500">(50% over = fail)</span>
@@ -1612,7 +1612,7 @@ export default function NewTask() {
                       type="text"
                       value={sloSteepness}
                       onChange={(e) => setSloSteepness(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="0.1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -1637,7 +1637,7 @@ export default function NewTask() {
           <button
             type="submit"
             disabled={createTaskMutation.isPending}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+            className="px-6 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 disabled:bg-blue-400"
           >
             {createTaskMutation.isPending ? (originalTask ? 'Saving...' : 'Creating...') : (originalTask ? 'Save Changes' : 'Create Task')}
           </button>

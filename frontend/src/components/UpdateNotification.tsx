@@ -115,7 +115,7 @@ export function UpdateNotification({ githubRepo }: UpdateNotificationProps) {
                 href={updateInfo.downloadUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-emerald-500 rounded-md hover:bg-emerald-600 transition-colors"
               >
                 View Release
                 <svg

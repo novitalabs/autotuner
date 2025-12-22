@@ -82,7 +82,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
     return (
       <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading results...</p>
         </div>
       </div>
@@ -550,7 +550,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                 </button>
                 <button
                   onClick={exportToJSON}
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 text-sm bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors flex items-center gap-1"
                   title="Export to JSON"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -837,7 +837,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             <select
                               value={scatterXAxis}
                               onChange={(e) => setScatterXAxis(e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[200px]"
                             >
                               {scatterAxisOptions.map((key) => (
                                 <option key={key} value={key}>
@@ -851,7 +851,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                             <select
                               value={scatterYAxis}
                               onChange={(e) => setScatterYAxis(e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+                              className="text-xs border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[200px]"
                             >
                               {scatterAxisOptions.map((key) => (
                                 <option key={key} value={key}>
@@ -1025,7 +1025,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search parameters or ID..."
-                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
                     <div>
@@ -1033,7 +1033,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                       <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         <option value="all">All</option>
                         <option value="success">Success</option>
@@ -1048,7 +1048,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as 'id' | 'score' | 'duration')}
-                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         <option value="id">Experiment ID</option>
                         <option value="score">Objective Score</option>
@@ -1060,7 +1060,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                       <select
                         value={sortOrder}
                         onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
-                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         <option value="asc">Ascending</option>
                         <option value="desc">Descending</option>
@@ -1089,7 +1089,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                     {selectedExperiments.length > 0 && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setViewMode('comparison'); }}
-                        className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        className="text-sm px-3 py-1.5 bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors"
                       >
                         Compare Selected ({selectedExperiments.length})
                       </button>
@@ -1215,7 +1215,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                     </p>
                     <button
                       onClick={() => setViewMode('table')}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                      className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors"
                     >
                       Go to Overview
                     </button>
@@ -1361,7 +1361,7 @@ export default function TaskResults({ task, onClose }: TaskResultsProps) {
                       <select
                         value={sensitivityParam}
                         onChange={(e) => setSensitivityParam(e.target.value)}
-                        className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         {allParameterKeys.map(key => (
                           <option key={key} value={key}>{key}</option>

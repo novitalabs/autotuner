@@ -98,7 +98,7 @@ export default function Experiments() {
 				</label>
 				<select
 					id="task-filter"
-					className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+					className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-emerald-500 sm:text-sm"
 					value={selectedTaskId}
 					onChange={(e) =>
 						setSelectedTaskId(e.target.value === "all" ? "all" : Number(e.target.value))

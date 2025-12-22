@@ -37,7 +37,7 @@ export default function IterationBlock({
 					{iteration.content}
 					{/* Blinking cursor for active streaming */}
 					{isStreaming && (
-						<span className="inline-block w-2 h-4 ml-1 bg-blue-600 animate-pulse" />
+						<span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
 					)}
 				</div>
 			)}
