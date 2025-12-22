@@ -19,7 +19,24 @@ export default function Containers() {
 	const logEndRef = useRef<HTMLDivElement | null>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
 
-	// Fetch containers
+	// Fetch Docker info first to check availability
+	const { data: dockerInfo, error: dockerInfoError, isLoading: dockerInfoLoading } = useQuery({
+		queryKey: ["dockerInfo"],
+		queryFn: () => apiClient.getDockerInfo(),
+		refetchInterval: (query) => {
+			// Stop polling if Docker is unavailable (503 error)
+			if (query.state.error && (query.state.error as any)?.response?.status === 503) {
+				return false;
+			}
+			return 10000;
+		},
+		retry: false // Don't retry if Docker is unavailable
+	});
+
+	// Check if Docker daemon is unavailable (503 error)
+	const isDockerUnavailable = dockerInfoError && (dockerInfoError as any)?.response?.status === 503;
+
+	// Fetch containers - only when Docker is available
 	const {
 		data: containers,
 		isLoading,
@@ -27,14 +44,8 @@ export default function Containers() {
 	} = useQuery({
 		queryKey: ["containers", showAll],
 		queryFn: () => apiClient.getContainers(showAll),
-		refetchInterval: 3000 // Auto-refresh every 3 seconds
-	});
-
-	// Fetch Docker info
-	const { data: dockerInfo } = useQuery({
-		queryKey: ["dockerInfo"],
-		queryFn: () => apiClient.getDockerInfo(),
-		refetchInterval: 10000
+		refetchInterval: 3000, // Auto-refresh every 3 seconds
+		enabled: !isDockerUnavailable && !dockerInfoLoading // Only fetch when Docker is available
 	});
 
 	// Fetch container logs (static mode)
@@ -263,8 +274,39 @@ export default function Containers() {
 				<p className="text-gray-600 mt-2">Manage and monitor Docker containers</p>
 			</div>
 
+			{/* Docker Unavailable State */}
+			{isDockerUnavailable && (
+				<div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+					<svg
+						className="w-16 h-16 mx-auto mb-4 text-gray-400"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+					>
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={1.5}
+							d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+						/>
+					</svg>
+					<h2 className="text-xl font-semibold text-gray-700 mb-2">Docker Not Available</h2>
+					<p className="text-gray-500 mb-4">
+						Unable to connect to the Docker daemon. Please ensure Docker is installed and running.
+					</p>
+					<div className="bg-gray-100 rounded p-4 text-left max-w-md mx-auto">
+						<p className="text-sm text-gray-600 font-mono">
+							# Check Docker status<br />
+							sudo systemctl status docker<br /><br />
+							# Start Docker<br />
+							sudo systemctl start docker
+						</p>
+					</div>
+				</div>
+			)}
+
 			{/* Docker Info Summary */}
-			{dockerInfo && (
+			{!isDockerUnavailable && dockerInfo && (
 				<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
 					<div className="bg-white p-4 rounded-lg shadow">
 						<div className="text-sm text-gray-600">Total Containers</div>
@@ -290,6 +332,7 @@ export default function Containers() {
 			)}
 
 			{/* Controls */}
+			{!isDockerUnavailable && (
 			<div className="mb-4 flex items-center justify-between">
 				<label className="flex items-center gap-2">
 					<input
@@ -301,9 +344,10 @@ export default function Containers() {
 					<span className="text-sm text-gray-700">Show all containers (including stopped)</span>
 				</label>
 			</div>
+			)}
 
 			{/* Loading State */}
-			{isLoading && (
+			{!isDockerUnavailable && isLoading && (
 				<div className="bg-white rounded-lg shadow p-8 text-center">
 					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
 					<p className="text-gray-600">Loading containers...</p>
@@ -311,14 +355,14 @@ export default function Containers() {
 			)}
 
 			{/* Error State */}
-			{error && (
+			{!isDockerUnavailable && error && (
 				<div className="bg-red-50 border border-red-200 rounded-lg p-4">
 					<p className="text-red-800">Failed to load containers. Make sure Docker is running.</p>
 				</div>
 			)}
 
 			{/* Containers List */}
-			{!isLoading && !error && (
+			{!isDockerUnavailable && !isLoading && !error && (
 				<div className="grid grid-cols-1 gap-4">
 					{containers?.length === 0 ? (
 						<div className="bg-white rounded-lg shadow p-8 text-center">
