@@ -3,9 +3,9 @@
  * Supports URL parameters, IndexedDB storage, and background sync
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit2, ArrowUp, Loader2 } from "lucide-react";
+import { Edit2, ArrowUp, Loader2, Copy, Check } from "lucide-react";
 import agentApi from "../services/agentApi";
 import { getChatStorage, type MessageData } from "../services/chatStorage";
 import type { IterationBlock, ToolExecutionResult } from "../types/agent";
@@ -1049,6 +1049,14 @@ AGENT_MODEL=gpt-4`}
 function MessageBubble({ message, onAuthorize, isAuthorizing }: { message: MessageData; onAuthorize?: (scope: string) => void; isAuthorizing?: boolean }) {
 	const { timezone } = useTimezone();
 	const isUser = message.role === "user";
+	const [copied, setCopied] = useState(false);
+
+	// Copy message content to clipboard
+	const handleCopy = useCallback(async () => {
+		await navigator.clipboard.writeText(message.content);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, [message.content]);
 
 	// Format time using the timezone from context
 	const displayTime = (ts: string) => {
@@ -1121,6 +1129,26 @@ function MessageBubble({ message, onAuthorize, isAuthorizing }: { message: Messa
 							isAuthorizing={isAuthorizing}
 						/>
 					))}
+					{/* Copy button at bottom */}
+					<div className="mt-3 pt-2 border-t border-gray-100 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+						<button
+							onClick={handleCopy}
+							className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+							title="Copy message"
+						>
+							{copied ? (
+								<>
+									<Check className="w-3.5 h-3.5" />
+									<span>Copied</span>
+								</>
+							) : (
+								<>
+									<Copy className="w-3.5 h-3.5" />
+									<span>Copy</span>
+								</>
+							)}
+						</button>
+					</div>
 				</div>
 				{/* Timestamp - below bubble, only visible on hover */}
 				<div className="text-xs mt-1 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity text-left">
