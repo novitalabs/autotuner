@@ -145,7 +145,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 						onClick={() => handleModeChange('none')}
 						className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
 							configMode === 'none'
-								? 'bg-blue-600 text-white border-blue-600'
+								? 'bg-emerald-500 text-white border-emerald-500'
 								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
 						}`}
 					>
@@ -156,7 +156,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 						onClick={() => handleModeChange('preset')}
 						className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
 							configMode === 'preset'
-								? 'bg-blue-600 text-white border-blue-600'
+								? 'bg-emerald-500 text-white border-emerald-500'
 								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
 						}`}
 					>
@@ -167,7 +167,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 						onClick={() => handleModeChange('custom')}
 						className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
 							configMode === 'custom'
-								? 'bg-blue-600 text-white border-blue-600'
+								? 'bg-emerald-500 text-white border-emerald-500'
 								: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
 						}`}
 					>
@@ -200,7 +200,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 							onClick={() => handlePresetToggle(preset.id)}
 							className={`p-3 border rounded-md cursor-pointer transition-colors ${
 								value.presets?.includes(preset.id)
-									? 'border-blue-600 bg-blue-50'
+									? 'border-emerald-500 bg-blue-50'
 									: 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
 							}`}
 						>
@@ -214,7 +214,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 										type="checkbox"
 										checked={value.presets?.includes(preset.id) || false}
 										onChange={() => {}}
-										className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+										className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-emerald-500"
 									/>
 								</div>
 							</div>
@@ -243,7 +243,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 									onClick={() => handleCustomFieldToggle('gemm_dtype', dtype)}
 									className={`flex items-center px-3 py-2 border rounded-md cursor-pointer transition-colors ${
 										isFieldValueSelected('gemm_dtype', dtype)
-											? 'border-blue-600 bg-blue-50'
+											? 'border-emerald-500 bg-blue-50'
 											: 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
 									}`}
 								>
@@ -251,7 +251,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 										type="checkbox"
 										checked={isFieldValueSelected('gemm_dtype', dtype)}
 										onChange={() => {}}
-										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 pointer-events-none"
+										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none"
 									/>
 									<span className="ml-2 text-sm text-gray-900">{dtype}</span>
 								</div>
@@ -282,7 +282,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 									onClick={() => handleCustomFieldToggle('kvcache_dtype', dtype)}
 									className={`flex items-center px-3 py-2 border rounded-md cursor-pointer transition-colors ${
 										isFieldValueSelected('kvcache_dtype', dtype)
-											? 'border-blue-600 bg-blue-50'
+											? 'border-emerald-500 bg-blue-50'
 											: 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
 									}`}
 								>
@@ -290,7 +290,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 										type="checkbox"
 										checked={isFieldValueSelected('kvcache_dtype', dtype)}
 										onChange={() => {}}
-										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 pointer-events-none"
+										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none"
 									/>
 									<span className="ml-2 text-sm text-gray-900">{dtype}</span>
 								</div>
@@ -319,7 +319,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 									onClick={() => handleCustomFieldToggle('attention_dtype', dtype)}
 									className={`flex items-center px-3 py-2 border rounded-md cursor-pointer transition-colors ${
 										isFieldValueSelected('attention_dtype', dtype)
-											? 'border-blue-600 bg-blue-50'
+											? 'border-emerald-500 bg-blue-50'
 											: 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
 									}`}
 								>
@@ -327,7 +327,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 										type="checkbox"
 										checked={isFieldValueSelected('attention_dtype', dtype)}
 										onChange={() => {}}
-										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 pointer-events-none"
+										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none"
 									/>
 									<span className="ml-2 text-sm text-gray-900">{dtype}</span>
 								</div>
@@ -356,7 +356,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 									onClick={() => handleCustomFieldToggle('moe_dtype', dtype)}
 									className={`flex items-center px-3 py-2 border rounded-md cursor-pointer transition-colors ${
 										isFieldValueSelected('moe_dtype', dtype)
-											? 'border-blue-600 bg-blue-50'
+											? 'border-emerald-500 bg-blue-50'
 											: 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
 									}`}
 								>
@@ -364,7 +364,7 @@ export const QuantizationConfigForm: React.FC<QuantizationConfigFormProps> = ({ 
 										type="checkbox"
 										checked={isFieldValueSelected('moe_dtype', dtype)}
 										onChange={() => {}}
-										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 pointer-events-none"
+										className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none"
 									/>
 									<span className="ml-2 text-sm text-gray-900">{dtype}</span>
 								</div>

@@ -92,7 +92,7 @@ export default function ExperimentLogViewer({ taskId, experimentId, onClose }: E
                 type="checkbox"
                 checked={autoScroll}
                 onChange={(e) => setAutoScroll(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-gray-300 text-blue-600 focus:ring-emerald-500"
               />
               Auto-scroll
             </label>
@@ -145,7 +145,7 @@ export default function ExperimentLogViewer({ taskId, experimentId, onClose }: E
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors"
             >
               Close
             </button>

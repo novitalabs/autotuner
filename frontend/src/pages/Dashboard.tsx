@@ -187,7 +187,7 @@ export default function Dashboard() {
 										</div>
 										<div className="w-full bg-gray-200 rounded-full h-2">
 											<div
-												className={`h-2 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-blue-600'}`}
+												className={`h-2 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
 												style={{ width: `${gpu.memory_usage_percent}%` }}
 											></div>
 										</div>
@@ -252,7 +252,7 @@ export default function Dashboard() {
 														<div className="mb-1">
 															<div className="w-full bg-gray-200 rounded-full h-1.5">
 																<div
-																	className={`h-1.5 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-blue-600'}`}
+																	className={`h-1.5 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
 																	style={{ width: `${gpu.memory_usage_percent}%` }}
 																></div>
 															</div>
@@ -431,7 +431,7 @@ export default function Dashboard() {
 								</div>
 								<div className="w-full bg-gray-200 rounded-full h-2">
 									<div
-										className="bg-blue-600 h-2 rounded-full"
+										className="bg-emerald-500 h-2 rounded-full"
 										style={{
 											width: `${(task.completed_experiments / task.max_iterations) * 100}%`,
 										}}

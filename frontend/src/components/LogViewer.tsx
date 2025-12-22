@@ -235,7 +235,7 @@ export default function LogViewer({ taskId, taskName, onClose }: LogViewerProps)
 								type="checkbox"
 								checked={autoScroll}
 								onChange={(e) => setAutoScroll(e.target.checked)}
-								className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+								className="rounded border-gray-300 text-blue-600 focus:ring-emerald-500"
 							/>
 							<span className="ml-2 text-sm text-gray-700">Auto-scroll</span>
 						</label>

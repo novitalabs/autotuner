@@ -339,7 +339,7 @@ export default function Containers() {
 						type="checkbox"
 						checked={showAll}
 						onChange={(e) => setShowAll(e.target.checked)}
-						className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+						className="rounded border-gray-300 text-blue-600 focus:ring-emerald-500"
 					/>
 					<span className="text-sm text-gray-700">Show all containers (including stopped)</span>
 				</label>
@@ -349,7 +349,7 @@ export default function Containers() {
 			{/* Loading State */}
 			{!isDockerUnavailable && isLoading && (
 				<div className="bg-white rounded-lg shadow p-8 text-center">
-					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
 					<p className="text-gray-600">Loading containers...</p>
 				</div>
 			)}
@@ -434,7 +434,7 @@ export default function Containers() {
 													<button
 														onClick={() => handleAction(container.id, "restart")}
 														disabled={restartMutation.isPending}
-														className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+														className="px-3 py-1.5 text-sm bg-emerald-500 text-white rounded hover:bg-emerald-600 disabled:opacity-50"
 													>
 														Restart
 													</button>
@@ -611,7 +611,7 @@ export default function Containers() {
 												className={`px-3 py-1 text-sm rounded ${
 													isStreaming
 														? "bg-yellow-600 hover:bg-yellow-700 text-white"
-														: "bg-blue-600 hover:bg-blue-700 text-white"
+														: "bg-emerald-500 hover:bg-emerald-600 text-white"
 												}`}
 											>
 												{isStreaming ? "Stop Streaming" : "Start Streaming"}
