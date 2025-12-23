@@ -1,0 +1,99 @@
+<svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="10" orient="auto">
+      <path d="M0,0 L10,0 L5,10 z" fill="#3ECF8E"/>
+    </marker>
+    <marker id="arrowUp" markerWidth="10" markerHeight="10" refX="5" refY="0" orient="auto">
+      <path d="M0,10 L10,10 L5,0 z" fill="#3ECF8E"/>
+    </marker>
+  </defs>
+
+  <!-- Task Container -->
+  <rect x="10" y="10" width="450" height="160" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+  <text x="30" y="38" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#1F2937">Task</text>
+  <text x="75" y="38" font-family="system-ui, sans-serif" font-size="12" fill="#6B7280">llama-3-tune-throughput</text>
+  <text x="30" y="56" font-family="system-ui, sans-serif" font-size="10" fill="#9CA3AF">model: llama-3.2-1b • strategy: bayesian • objective: max_throughput</text>
+
+  <!-- Experiments Row -->
+  <text x="30" y="80" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#6B7280">Experiments (1:N)</text>
+
+  <!-- Experiment 1 - Success -->
+  <rect x="30" y="90" width="95" height="65" rx="8" fill="#F0FDF4" stroke="#3ECF8E" stroke-width="1.5"/>
+  <circle cx="45" cy="105" r="4" fill="#3ECF8E"/>
+  <text x="55" y="109" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#1F2937">Exp #1</text>
+  <text x="38" y="125" font-family="monospace" font-size="9" fill="#6B7280">tp=1</text>
+  <text x="38" y="138" font-family="monospace" font-size="9" fill="#6B7280">mem=0.85</text>
+  <text x="38" y="151" font-family="monospace" font-size="9" fill="#3ECF8E">661 tok/s</text>
+
+  <!-- Experiment 2 - Success (Best) -->
+  <rect x="135" y="90" width="95" height="65" rx="8" fill="#F0FDF4" stroke="#3ECF8E" stroke-width="2.5"/>
+  <circle cx="150" cy="105" r="4" fill="#3ECF8E"/>
+  <text x="160" y="109" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#1F2937">Exp #2 ★</text>
+  <text x="143" y="125" font-family="monospace" font-size="9" fill="#6B7280">tp=2</text>
+  <text x="143" y="138" font-family="monospace" font-size="9" fill="#6B7280">mem=0.90</text>
+  <text x="143" y="151" font-family="monospace" font-size="9" fill="#3ECF8E">842 tok/s</text>
+
+  <!-- Experiment 3 - Failed -->
+  <rect x="240" y="90" width="95" height="65" rx="8" fill="#FEF2F2" stroke="#EF4444" stroke-width="1.5"/>
+  <circle cx="255" cy="105" r="4" fill="#EF4444"/>
+  <text x="265" y="109" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#1F2937">Exp #3</text>
+  <text x="248" y="125" font-family="monospace" font-size="9" fill="#6B7280">tp=4</text>
+  <text x="248" y="138" font-family="monospace" font-size="9" fill="#6B7280">mem=0.95</text>
+  <text x="248" y="151" font-family="monospace" font-size="9" fill="#EF4444">OOM</text>
+
+  <!-- Experiment 4 - Pending -->
+  <rect x="345" y="90" width="95" height="65" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5" stroke-dasharray="4"/>
+  <circle cx="360" cy="105" r="4" fill="#9CA3AF"/>
+  <text x="370" y="109" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#9CA3AF">Exp #N</text>
+  <text x="353" y="125" font-family="monospace" font-size="9" fill="#9CA3AF">tp=?</text>
+  <text x="353" y="138" font-family="monospace" font-size="9" fill="#9CA3AF">mem=?</text>
+  <text x="353" y="151" font-family="monospace" font-size="9" fill="#9CA3AF">pending</text>
+
+  <!-- Redis Queue -->
+  <rect x="480" y="50" width="100" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="530" y="75" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#92400E">Redis Queue</text>
+
+  <!-- Arrow: Task to Queue -->
+  <line x1="460" y1="90" x2="480" y2="70" stroke="#F59E0B" stroke-width="2"/>
+  <polygon points="480,70 472,75 475,67" fill="#F59E0B"/>
+
+  <!-- ARQ Worker -->
+  <rect x="480" y="110" width="210" height="110" rx="12" fill="#F0FDF4" stroke="#3ECF8E" stroke-width="2"/>
+  <text x="585" y="135" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#1F2937">ARQ Worker</text>
+  <text x="585" y="152" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6B7280">Background Job Processor</text>
+
+  <!-- Worker Steps -->
+  <text x="500" y="175" font-family="system-ui, sans-serif" font-size="10" fill="#1F2937">1. Deploy inference server</text>
+  <text x="500" y="190" font-family="system-ui, sans-serif" font-size="10" fill="#1F2937">2. Run benchmark (genai-bench)</text>
+  <text x="500" y="205" font-family="system-ui, sans-serif" font-size="10" fill="#1F2937">3. Score &amp; compare results</text>
+
+  <!-- Arrow: Queue to Worker -->
+  <line x1="530" y1="90" x2="530" y2="108" stroke="#3ECF8E" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- Arrow: Worker back to Task (results) -->
+  <path d="M 480 165 L 350 165 L 350 155" fill="none" stroke="#3ECF8E" stroke-width="2" stroke-dasharray="4"/>
+  <polygon points="350,155 345,163 355,163" fill="#3ECF8E"/>
+  <text x="405" y="162" font-family="system-ui, sans-serif" font-size="9" fill="#3ECF8E">results</text>
+
+  <!-- Database -->
+  <rect x="10" y="190" width="140" height="80" rx="8" fill="#1F2937"/>
+  <text x="80" y="215" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#9CA3AF">SQLite Database</text>
+  <text x="80" y="235" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">tasks table</text>
+  <text x="80" y="250" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">experiments table</text>
+  <text x="80" y="265" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">metrics &amp; scores</text>
+
+  <!-- Connection: Task to DB -->
+  <line x1="80" y1="170" x2="80" y2="188" stroke="#E2E8F0" stroke-width="1.5" stroke-dasharray="3"/>
+
+  <!-- Legend -->
+  <rect x="170" y="230" width="280" height="40" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+  <text x="180" y="248" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#6B7280">Status:</text>
+  <circle cx="220" cy="244" r="4" fill="#3ECF8E"/>
+  <text x="230" y="248" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">Success</text>
+  <circle cx="290" cy="244" r="4" fill="#EF4444"/>
+  <text x="300" y="248" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">Failed</text>
+  <circle cx="355" cy="244" r="4" fill="#9CA3AF"/>
+  <text x="365" y="248" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">Pending</text>
+  <rect x="410" y="240" width="8" height="8" rx="2" stroke="#3ECF8E" stroke-width="2" fill="none"/>
+  <text x="422" y="248" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">Best</text>
+</svg>

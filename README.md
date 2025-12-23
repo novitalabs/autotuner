@@ -23,6 +23,15 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best per
   <img src="docs/assets/agent-flow.svg" width="700" alt="Agent Flow" />
 </p>
 
+## Core Concepts
+<p align="center">
+  <img src="docs/assets/concepts.svg" width="700" alt="Core Concepts" />
+</p>
+
+- **Task**: A tuning job containing model config, parameter ranges, SLOs, and optimization strategy
+- **Experiment**: Individual trial with specific parameter values; multiple experiments per task
+- **ARQ Worker**: Background processor that deploys models, runs benchmarks, and scores results
+
 ## Features
 
 - **Multiple Deployment Modes**: Docker, Local (direct GPU), OME (Kubernetes)
