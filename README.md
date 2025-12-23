@@ -94,4 +94,4 @@ Access at http://localhost:5173
 
 ## Contributing
 
-See [CLAUDE.md](CLAUDE.md) for development guidelines and project architecture.
+See [DEVELOPMENT](docs/DEVELOPMENT.md) for development guidelines and project architecture.
