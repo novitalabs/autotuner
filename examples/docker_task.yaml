@@ -1,0 +1,48 @@
+# Example task configuration for Docker mode
+# Run with: python src/run_autotuner.py examples/docker_task.yaml --mode docker
+
+task_name: llama-3-docker-tune
+description: Tune Llama-3.2-1B parameters for optimal throughput
+
+model:
+  id_or_path: llama-3-2-1b-instruct  # Directory in /mnt/data/models/
+  namespace: autotuner
+
+base_runtime: sglang  # or "vllm"
+runtime_image_tag: v0.5.2-cu126
+
+parameters:
+  tp-size: [1, 2]
+  mem-fraction-static: [0.85, 0.90]
+  max-num-seqs: [64, 128]
+
+optimization:
+  strategy: bayesian  # or "grid_search"
+  objective: maximize_throughput
+  max_iterations: 20
+  timeout_per_iteration: 600
+
+slo:
+  ttft:
+    threshold: 1.0
+    weight: 2.0
+  tpot:
+    threshold: 0.05
+    weight: 2.0
+  latency:
+    p90:
+      threshold: 5.0
+      weight: 2.0
+      hard_fail: true
+      fail_ratio: 0.2
+  steepness: 0.1
+
+benchmark:
+  task: text-to-text
+  model_name: Llama-3.2-1B-Instruct
+  model_tokenizer: meta-llama/Llama-3.2-1B-Instruct
+  traffic_scenarios:
+    - D(100,100)
+  num_concurrency: [1, 4, 8]
+  additional_params:
+    temperature: 0.0

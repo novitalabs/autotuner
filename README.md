@@ -6,6 +6,23 @@
 
 Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best performance, while respecting SLOs and hardware constraints.
 
+## How to Use
+
+### CLI Mode
+<p align="center">
+  <img src="docs/assets/cli-flow.svg" width="700" alt="CLI Flow" />
+</p>
+
+### Web UI Mode
+<p align="center">
+  <img src="docs/assets/web-flow.svg" width="700" alt="Web UI Flow" />
+</p>
+
+### Agent Mode
+<p align="center">
+  <img src="docs/assets/agent-flow.svg" width="700" alt="Agent Flow" />
+</p>
+
 ## Features
 
 - **Multiple Deployment Modes**: Docker, Local (direct GPU), OME (Kubernetes)
@@ -23,7 +40,7 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best per
 pip install -r requirements.txt && pip install genai-bench
 
 # Run
-python src/run_autotuner.py examples/docker_task.json --mode docker
+python src/run_autotuner.py examples/docker_task.yaml --mode docker
 ```
 
 ## Web UI

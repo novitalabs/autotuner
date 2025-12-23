@@ -1,0 +1,67 @@
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3ECF8E"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#F59E0B"/>
+    </marker>
+  </defs>
+
+  <!-- Box 1: Ask in Chat -->
+  <rect x="10" y="20" width="140" height="100" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+  <text x="80" y="45" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1F2937">Ask in Chat</text>
+  <text x="80" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6B7280" font-style="italic">"Tune llama-3</text>
+  <text x="80" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6B7280" font-style="italic">with TP=2 for</text>
+  <text x="80" y="96" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#6B7280" font-style="italic">low latency"</text>
+
+  <!-- Arrow 1: Ask → AI -->
+  <line x1="155" y1="70" x2="185" y2="70" stroke="#3ECF8E" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- Box 2: AI Understands -->
+  <rect x="190" y="20" width="140" height="100" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+  <text x="260" y="48" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1F2937">AI Understands</text>
+  <text x="260" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Parse intent</text>
+  <text x="260" y="84" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Plan actions</text>
+  <text x="260" y="100" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Ask if unclear</text>
+
+  <!-- Arrow 2: AI → Execute -->
+  <line x1="335" y1="70" x2="365" y2="70" stroke="#3ECF8E" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- Box 3: Auto Execute -->
+  <rect x="370" y="20" width="140" height="100" rx="12" fill="#F0FDF4" stroke="#3ECF8E" stroke-width="2"/>
+  <text x="440" y="48" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1F2937">Auto Execute</text>
+  <text x="440" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Create task</text>
+  <text x="440" y="84" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Start tuning</text>
+  <text x="440" y="100" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#3ECF8E">Monitor progress</text>
+
+  <!-- Arrow 3: Execute → Report (success) -->
+  <line x1="515" y1="70" x2="545" y2="70" stroke="#3ECF8E" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- Box 4: Get Report -->
+  <rect x="550" y="20" width="140" height="100" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+  <text x="620" y="48" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#1F2937">Get Report</text>
+  <text x="620" y="68" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Summary text</text>
+  <text x="620" y="84" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Code snippets</text>
+  <text x="620" y="100" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#6B7280">Data tables</text>
+
+  <!-- Error path: Arrow down from Execute -->
+  <line x1="440" y1="125" x2="440" y2="148" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <!-- Box 5: Handle Errors -->
+  <rect x="310" y="152" width="260" height="56" rx="12" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+  <text x="440" y="174" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#92400E">Handle Errors</text>
+  <text x="375" y="194" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#B45309">Adjust &amp; retry</text>
+  <text x="505" y="194" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#B45309">Report issue</text>
+  <!-- Separator in error box -->
+  <line x1="440" y1="182" x2="440" y2="202" stroke="#F59E0B" stroke-width="1" stroke-dasharray="3"/>
+
+  <!-- Retry loop: Error → back to AI -->
+  <polyline points="310,180 260,180 260,125" fill="none" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <!-- Tools bar -->
+  <rect x="10" y="152" width="140" height="56" rx="6" fill="#1F2937"/>
+  <text x="80" y="172" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#9CA3AF">Available Tools</text>
+  <text x="80" y="188" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">Task • Worker • GitHub</text>
+  <text x="80" y="200" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#6B7280">HuggingFace • Logs</text>
+</svg>
