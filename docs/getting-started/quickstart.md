@@ -31,11 +31,31 @@ pip install -r requirements.txt
 pip install genai-bench
 ```
 
+## Configuration
+
+Copy the example environment file and customize as needed:
+
+```bash
+cp .env.example .env
+```
+
+Key settings in `.env`:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SERVER_PORT` | Backend API port | 8000 |
+| `FRONTEND_PORT` | Frontend dev server port | 5173 |
+| `DOCKER_MODEL_PATH` | Host path to models | /mnt/data/models |
+| `HF_TOKEN` | HuggingFace token (for gated models) | - |
+| `HTTP_PROXY` | Proxy for HuggingFace downloads | - |
+
+See `.env.example` for all available options including Agent and GitHub integration settings.
+
 ## Run Your First Task
 
 **Command Line:**
 ```bash
-python src/run_autotuner.py examples/docker_task.json --mode docker
+python src/run_autotuner.py examples/docker_task.yaml --mode docker
 ```
 
 **Or use the Web UI:**
