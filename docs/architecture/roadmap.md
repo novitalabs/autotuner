@@ -2,7 +2,7 @@
 
 > **Last Updated**: 2025/12/22
 > **Project Status**: Production-Ready with Active Development
-> **Current Version**: v1.1 (Milestone 5 Complete)
+> **Current Version**: v0.2.0 (Milestone 5 Complete)
 
 ---
 
@@ -796,7 +796,7 @@ gpu_info = {
 - ✅ Comprehensive logging and debugging support
 - ✅ Session-based conversation history
 
-## Current Status: Production-Ready v1.1 ✅
+## Current Status: Production-Ready v0.2.0 ✅
 
 ### What Works Today
 
@@ -1222,4 +1222,4 @@ python scripts/prepare_custom_dataset.py \
 ---
 
 
-**End of Roadmap** | Last Updated: 2025/12/22 | Version: 1.1 (Milestone 5 Complete)
+**End of Roadmap** | Last Updated: 2025/12/22 | Version: 0.2.0 (Milestone 5 Complete)

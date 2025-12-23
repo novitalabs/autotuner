@@ -4,7 +4,7 @@
   <img src="frontend/public/favicon.svg" width="256" height="256" alt="Autotuner Logo" />
 </p>
 
-Automated parameter tuning for LLM inference engines (SGLang, vLLM).
+Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best performance, while respecting SLOs and hardware constraints.
 
 ## Features
 

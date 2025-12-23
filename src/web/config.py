@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
 	# Application
 	app_name: str = "LLM Inference Autotuner API"
-	app_version: str = "0.1.0"
+	app_version: str = "0.2.0"
 	debug: bool = True
 
 	# Server configuration
