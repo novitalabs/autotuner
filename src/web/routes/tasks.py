@@ -10,6 +10,7 @@ from typing import List
 import asyncio
 from pathlib import Path
 import os
+import logging
 
 from web.db.session import get_db
 from web.db.models import Task, TaskStatus, Experiment
@@ -17,6 +18,7 @@ from web.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskListResponse
 from web.services import TaskService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -185,7 +187,7 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	await db.delete(task)
 	await db.commit()
 
-	print(f"[API] Deleted task {task_id} from database")
+	logger.info("Deleted task %d from database", task_id)
 
 
 @router.post("/{task_id}/start", response_model=TaskResponse)
@@ -213,7 +215,7 @@ async def start_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	from web.workers import enqueue_autotuning_task
 
 	job_id = await enqueue_autotuning_task(task.id)
-	print(f"[API] Enqueued task {task.id} with job_id: {job_id}")
+	logger.info("Enqueued task %d with job_id: %s", task.id, job_id)
 
 	return task
 
@@ -280,7 +282,7 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	from web.workers import enqueue_autotuning_task
 
 	job_id = await enqueue_autotuning_task(task.id)
-	print(f"[API] Restarted and enqueued task {task.id} with job_id: {job_id}")
+	logger.info("Restarted and enqueued task %d with job_id: %s", task.id, job_id)
 
 	return task
 
@@ -311,7 +313,7 @@ async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	# Delete all experiments for this task
 	delete_result = await db.execute(delete(Experiment).where(Experiment.task_id == task_id))
 	experiments_deleted = delete_result.rowcount
-	print(f"[API] Deleted {experiments_deleted} experiments for task {task_id}")
+	logger.info("Deleted %d experiments for task %d", experiments_deleted, task_id)
 
 	# Reset task fields
 	task.completed_at = None
@@ -331,11 +333,11 @@ async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	if log_file.exists():
 		try:
 			log_file.unlink()
-			print(f"[API] Deleted log file for task {task_id}: {log_file}")
+			logger.info("Deleted log file for task %d: %s", task_id, log_file)
 		except Exception as e:
-			print(f"[API] Warning: Failed to delete log file {log_file}: {e}")
+			logger.warning("Failed to delete log file %s: %s", log_file, e)
 
-	print(f"[API] Cleared task {task_id}: deleted {experiments_deleted} experiments and reset task state")
+	logger.info("Cleared task %d: deleted %d experiments and reset task state", task_id, experiments_deleted)
 	return task
 
 
