@@ -32,6 +32,8 @@ async def list_workers(include_offline: bool = False):
 	workers = await registry.get_all_workers(include_offline=include_offline)
 
 	responses = [worker_info_to_response(w) for w in workers]
+	# Sort by worker_id for consistent ordering
+	responses.sort(key=lambda w: w.worker_id)
 
 	# Count by status
 	online_count = sum(1 for w in responses if w.status == WorkerStatus.ONLINE)

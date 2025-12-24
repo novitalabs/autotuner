@@ -188,10 +188,25 @@ async def start_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	await db.commit()
 	await db.refresh(task)
 
-	# Enqueue ARQ job
+	# Enqueue ARQ job with full task config for distributed workers
 	from web.workers import enqueue_autotuning_task
 
-	job_id = await enqueue_autotuning_task(task.id)
+	task_config = {
+		"task_name": task.task_name,
+		"description": task.description or "",
+		"model": task.model_config,
+		"base_runtime": task.base_runtime,
+		"runtime_image_tag": task.runtime_image_tag,
+		"parameters": task.parameters,
+		"optimization": task.optimization_config,
+		"benchmark": task.benchmark_config,
+		"deployment_mode": task.deployment_mode,
+		"clusterbasemodel_config": task.clusterbasemodel_config,
+		"clusterservingruntime_config": task.clusterservingruntime_config,
+		"slo": task.slo_config,
+	}
+
+	job_id = await enqueue_autotuning_task(task.id, task_config)
 	logger.info("Enqueued task %d with job_id: %s", task.id, job_id)
 
 	return task
@@ -255,10 +270,25 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	await db.commit()
 	await db.refresh(task)
 
-	# Enqueue ARQ job
+	# Enqueue ARQ job with full task config for distributed workers
 	from web.workers import enqueue_autotuning_task
 
-	job_id = await enqueue_autotuning_task(task.id)
+	task_config = {
+		"task_name": task.task_name,
+		"description": task.description or "",
+		"model": task.model_config,
+		"base_runtime": task.base_runtime,
+		"runtime_image_tag": task.runtime_image_tag,
+		"parameters": task.parameters,
+		"optimization": task.optimization_config,
+		"benchmark": task.benchmark_config,
+		"deployment_mode": task.deployment_mode,
+		"clusterbasemodel_config": task.clusterbasemodel_config,
+		"clusterservingruntime_config": task.clusterservingruntime_config,
+		"slo": task.slo_config,
+	}
+
+	job_id = await enqueue_autotuning_task(task.id, task_config)
 	logger.info("Restarted and enqueued task %d with job_id: %s", task.id, job_id)
 
 	return task

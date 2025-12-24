@@ -26,17 +26,18 @@ async def get_arq_pool() -> ArqRedis:
 	return _redis_pool
 
 
-async def enqueue_autotuning_task(task_id: int) -> str:
+async def enqueue_autotuning_task(task_id: int, task_config: dict = None) -> str:
 	"""Enqueue an autotuning task.
 
 	Args:
 	    task_id: Database task ID
+	    task_config: Optional full task configuration for distributed workers
 
 	Returns:
 	    Job ID
 	"""
 	pool = await get_arq_pool()
-	job = await pool.enqueue_job("run_autotuning_task", task_id)
+	job = await pool.enqueue_job("run_autotuning_task", task_id, task_config)
 	return job.job_id
 
 

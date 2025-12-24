@@ -42,6 +42,7 @@ class WorkerRegister(BaseModel):
 
 	worker_id: str = Field(..., description="Unique worker identifier (UUID or hostname-based)")
 	hostname: str = Field(..., description="Worker hostname")
+	alias: Optional[str] = Field(None, description="Worker alias from local config")
 	ip_address: Optional[str] = Field(None, description="Worker IP address")
 	gpu_count: int = Field(default=0, description="Number of GPUs available")
 	gpu_model: Optional[str] = Field(None, description="GPU model name")

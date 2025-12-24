@@ -95,10 +95,12 @@ class WorkerRegistry:
 		existing = await self.redis.get(worker_key)
 		if existing:
 			existing_info = WorkerInfo.model_validate_json(existing)
-			# Update existing worker
+			# Update existing worker, preserve alias if not provided in registration
+			alias = registration.alias if registration.alias else existing_info.alias
 			worker_info = WorkerInfo(
 				worker_id=registration.worker_id,
 				hostname=registration.hostname,
+				alias=alias,
 				ip_address=registration.ip_address,
 				gpu_count=registration.gpu_count,
 				gpu_model=registration.gpu_model,
@@ -118,6 +120,7 @@ class WorkerRegistry:
 			worker_info = WorkerInfo(
 				worker_id=registration.worker_id,
 				hostname=registration.hostname,
+				alias=registration.alias,
 				ip_address=registration.ip_address,
 				gpu_count=registration.gpu_count,
 				gpu_model=registration.gpu_model,
