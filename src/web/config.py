@@ -75,6 +75,10 @@ class Settings(BaseSettings):
 	gh_token: str = Field(default="", description="GitHub token for creating issues")
 	gh_repo: str = Field(default="", description="GitHub repo in format 'owner/repo'")
 
+	# Worker configuration (for distributed mode)
+	worker_id: str = Field(default="", description="Worker ID (auto-generated if empty)")
+	worker_max_parallel: int = Field(default=5, description="Maximum concurrent experiments per worker")
+
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -12,7 +12,7 @@ import orjson
 from web.config import get_settings
 from web.db.session import init_db, get_db
 from web.db.seed_presets import seed_system_presets
-from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent
+from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent, workers
 
 
 
@@ -81,6 +81,7 @@ app.include_router(dashboard.router)
 app.include_router(websocket.router, prefix="/api", tags=["websocket"])
 app.include_router(ome_resources.router)
 app.include_router(agent.router)
+app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
 
 
 @app.get("/")

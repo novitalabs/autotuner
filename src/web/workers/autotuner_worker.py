@@ -4,6 +4,9 @@ ARQ worker configuration and task functions.
 
 import sys
 import logging
+import socket
+import uuid
+import subprocess
 from pathlib import Path
 
 # Add project root to path for imports
@@ -16,7 +19,7 @@ from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select, update
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 import io
 import asyncio
 
@@ -931,3 +934,180 @@ class WorkerSettings:
 	max_jobs = 5  # Maximum concurrent jobs
 	job_timeout = 86400 * 30  # 720 hours timeout for entire task (rely on per-experiment timeout instead)
 	keep_result = 3600  # Keep results for 1 hour
+
+	# Worker identity (can be overridden via environment variable WORKER_ID)
+	worker_id: Optional[str] = None
+
+	@staticmethod
+	def get_worker_id() -> str:
+		"""Get or generate worker ID."""
+		import os
+		worker_id = os.environ.get("WORKER_ID")
+		if not worker_id:
+			# Generate from hostname + short UUID
+			hostname = socket.gethostname()
+			short_uuid = str(uuid.uuid4())[:8]
+			worker_id = f"{hostname}-{short_uuid}"
+		return worker_id
+
+	@staticmethod
+	def get_gpu_info() -> tuple[int, Optional[str], Optional[float], Optional[List[Dict]]]:
+		"""Get GPU information using nvidia-smi.
+
+		Returns:
+			Tuple of (gpu_count, gpu_model, total_memory_gb, gpu_details)
+		"""
+		try:
+			result = subprocess.run(
+				["nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
+				capture_output=True,
+				text=True,
+				timeout=10
+			)
+			if result.returncode != 0:
+				return 0, None, None, None
+
+			gpus = []
+			total_memory = 0
+			gpu_model = None
+
+			for line in result.stdout.strip().split("\n"):
+				if not line.strip():
+					continue
+				parts = [p.strip() for p in line.split(",")]
+				if len(parts) >= 3:
+					idx = int(parts[0])
+					name = parts[1]
+					memory_mb = float(parts[2])
+					memory_gb = memory_mb / 1024
+
+					if gpu_model is None:
+						gpu_model = name
+
+					gpus.append({
+						"index": idx,
+						"name": name,
+						"memory_total_gb": round(memory_gb, 2)
+					})
+					total_memory += memory_gb
+
+			return len(gpus), gpu_model, round(total_memory, 2), gpus
+
+		except Exception as e:
+			logging.warning(f"Failed to get GPU info: {e}")
+			return 0, None, None, None
+
+	@staticmethod
+	async def on_startup(ctx: Dict[str, Any]) -> None:
+		"""Called when worker starts. Register with the manager."""
+		import os
+		from src.web.schemas.worker import WorkerRegister, WorkerCapabilities, GPUInfo
+		from src.web.workers.registry import get_worker_registry, HEARTBEAT_INTERVAL
+
+		worker_id = WorkerSettings.get_worker_id()
+		hostname = socket.gethostname()
+
+		# Get GPU information
+		gpu_count, gpu_model, gpu_memory_gb, gpu_details = WorkerSettings.get_gpu_info()
+
+		# Convert GPU details to GPUInfo objects
+		gpus = None
+		if gpu_details:
+			gpus = [GPUInfo(
+				index=g["index"],
+				name=g["name"],
+				memory_total_gb=g["memory_total_gb"]
+			) for g in gpu_details]
+
+		# Determine deployment mode
+		deployment_mode = os.environ.get("DEPLOYMENT_MODE", settings.deployment_mode)
+
+		# Create registration
+		registration = WorkerRegister(
+			worker_id=worker_id,
+			hostname=hostname,
+			ip_address=None,  # Could detect local IP if needed
+			gpu_count=gpu_count,
+			gpu_model=gpu_model,
+			gpu_memory_gb=gpu_memory_gb,
+			gpus=gpus,
+			deployment_mode=deployment_mode,
+			max_parallel=WorkerSettings.max_jobs,
+			capabilities=WorkerCapabilities(
+				deployment_modes=[deployment_mode],
+				docker_available=deployment_mode == "docker"
+			)
+		)
+
+		# Register with manager
+		try:
+			registry = await get_worker_registry()
+			worker_info = await registry.register(registration)
+			ctx["worker_id"] = worker_id
+			ctx["registry"] = registry
+			logging.info(f"✅ Worker registered: {worker_id} ({hostname}, {gpu_count} GPUs)")
+		except Exception as e:
+			logging.error(f"❌ Failed to register worker: {e}")
+			# Continue anyway - worker can still process jobs
+
+		# Start heartbeat task
+		ctx["heartbeat_task"] = asyncio.create_task(
+			WorkerSettings._heartbeat_loop(ctx)
+		)
+
+	@staticmethod
+	async def on_shutdown(ctx: Dict[str, Any]) -> None:
+		"""Called when worker shuts down. Deregister from the manager."""
+		# Cancel heartbeat task
+		heartbeat_task = ctx.get("heartbeat_task")
+		if heartbeat_task:
+			heartbeat_task.cancel()
+			try:
+				await heartbeat_task
+			except asyncio.CancelledError:
+				pass
+
+		# Deregister worker
+		worker_id = ctx.get("worker_id")
+		registry = ctx.get("registry")
+		if worker_id and registry:
+			try:
+				await registry.deregister(worker_id)
+				logging.info(f"👋 Worker deregistered: {worker_id}")
+			except Exception as e:
+				logging.error(f"Failed to deregister worker: {e}")
+
+	@staticmethod
+	async def _heartbeat_loop(ctx: Dict[str, Any]) -> None:
+		"""Background task to send periodic heartbeats."""
+		from src.web.schemas.worker import WorkerHeartbeat
+		from src.web.workers.registry import HEARTBEAT_INTERVAL
+
+		worker_id = ctx.get("worker_id")
+		registry = ctx.get("registry")
+
+		if not worker_id or not registry:
+			return
+
+		while True:
+			try:
+				await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+				# Get current job count from ARQ context
+				# Note: ARQ doesn't expose this directly, so we track manually
+				current_jobs = ctx.get("current_jobs", 0)
+				current_job_ids = ctx.get("current_job_ids", [])
+
+				heartbeat = WorkerHeartbeat(
+					worker_id=worker_id,
+					current_jobs=current_jobs,
+					current_job_ids=current_job_ids,
+				)
+
+				await registry.heartbeat(heartbeat)
+				logging.debug(f"💓 Heartbeat sent: {worker_id} (jobs: {current_jobs})")
+
+			except asyncio.CancelledError:
+				break
+			except Exception as e:
+				logging.warning(f"Heartbeat failed: {e}")
