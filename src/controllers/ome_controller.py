@@ -4,7 +4,6 @@ OME Deployment Controller
 Manages the lifecycle of InferenceService resources for autotuning experiments.
 """
 
-import re
 import time
 import yaml
 import sys
@@ -15,6 +14,7 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
 from .base_controller import BaseModelController
+from .utils import sanitize_dns_name
 
 # Import GPU discovery utility with absolute import
 # Add parent directory to path if needed
@@ -22,41 +22,6 @@ if str(Path(__file__).parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.gpu_discovery import find_best_node_for_deployment
-
-
-def sanitize_dns_name(name: str) -> str:
-	"""
-	Sanitize a name to be OME webhook compliant.
-
-	OME webhook requires names to match: [a-z]([-a-z0-9]*[a-z0-9])?
-	Rules:
-	- lowercase letters, numbers, '-' only (NO periods)
-	- must start with a lowercase letter
-	- must end with alphanumeric character
-	- max 253 characters
-
-	Args:
-	    name: The name to sanitize
-
-	Returns:
-	    OME-compliant name
-	"""
-	# Convert to lowercase
-	name = name.lower()
-	# Replace invalid characters (including periods) with dash
-	name = re.sub(r'[^a-z0-9-]', '-', name)
-	# Remove leading non-letters (must start with letter)
-	name = re.sub(r'^[^a-z]+', '', name)
-	# Remove trailing non-alphanumeric
-	name = re.sub(r'[^a-z0-9]+$', '', name)
-	# Replace multiple consecutive dashes with single dash
-	name = re.sub(r'-+', '-', name)
-	# Truncate to 253 characters
-	name = name[:253]
-	# Ensure name starts with a letter (if empty after sanitization, use 'task')
-	if not name or not name[0].isalpha():
-		name = 'task-' + name
-	return name
 
 
 class OMEController(BaseModelController):

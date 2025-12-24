@@ -5,7 +5,6 @@ Manages the lifecycle of model inference services using standalone Docker contai
 No Kubernetes required - direct Docker container management.
 """
 
-import re
 import time
 import requests
 from pathlib import Path
@@ -18,32 +17,15 @@ except ImportError:
 	docker = None
 
 from controllers.base_controller import BaseModelController
-from utils.gpu_monitor import get_gpu_monitor
-
-
-def sanitize_container_name(name: str) -> str:
-	"""
-	Sanitize a name for Docker container naming.
-
-	Docker allows [a-zA-Z0-9][a-zA-Z0-9_.-]+ but we'll be more restrictive
-	to match Kubernetes naming for consistency.
-
-	Args:
-	    name: The name to sanitize
-
-	Returns:
-	    Container-safe name
-	"""
-	# Convert to lowercase
-	name = name.lower()
-	# Replace invalid characters with dash
-	name = re.sub(r'[^a-z0-9-._]', '-', name)
-	# Remove leading/trailing non-alphanumeric
-	name = re.sub(r'^[^a-z0-9]+', '', name)
-	name = re.sub(r'[^a-z0-9]+$', '', name)
-	# Replace multiple consecutive dashes with single dash
-	name = re.sub(r'-+', '-', name)
-	return name
+from controllers.utils import (
+	sanitize_container_name,
+	find_available_port,
+	parse_parallel_config,
+	setup_proxy_environment,
+	build_param_string,
+	get_runtime_config,
+	format_gpu_devices_for_cuda
+)
 
 
 class DockerController(BaseModelController):
@@ -164,7 +146,7 @@ class DockerController(BaseModelController):
 			return None
 
 		# Determine host port (avoid conflicts) - needed for both bridge and host networking
-		host_port = self._find_available_port(8000, 8100)
+		host_port = find_available_port(8000, 8100)
 		if not host_port:
 			print(f"[Docker] Could not find available port in range 8000-8100")
 			return None
@@ -172,46 +154,21 @@ class DockerController(BaseModelController):
 		# Build command with model identifier and host port
 		command_str = runtime_config["command"].format(model_path=model_identifier, port=host_port)
 
-		# Add all parameters as command-line arguments
-		for param_name, param_value in parameters.items():
-			# Convert parameter name to CLI format (add -- prefix if not present)
-			if not param_name.startswith("--"):
-				cli_param = f"--{param_name}"
-			else:
-				cli_param = param_name
-
-			# Handle boolean parameters specially
-			# - If false: skip the parameter entirely (don't add to command)
-			# - If true: add parameter flag without value (e.g., --enable-mixed-chunk)
-			# - Otherwise: add parameter with value (e.g., --tp-size 4)
-			if isinstance(param_value, bool):
-				if param_value:  # Only add flag if True
-					command_str += f" {cli_param}"
-				# If False, skip this parameter entirely
-			else:
-				command_str += f" {cli_param} {param_value}"
+		# Add all parameters as command-line arguments using shared utility
+		param_str = build_param_string(parameters)
+		if param_str:
+			command_str += f" {param_str}"
 
 		command_list = command_str.split()
 
-		# Determine GPU allocation based on parallel configuration
-		# Calculate world_size = tp × pp × dp (or tp × pp × cp for TensorRT-LLM)
-		tp = parameters.get("tensor-parallel-size", parameters.get("tp-size", parameters.get("tp_size", 1)))
-		pp = parameters.get("pipeline-parallel-size", parameters.get("pp-size", parameters.get("pp_size", 1)))
-		dp = parameters.get("data-parallel-size", parameters.get("dp-size", parameters.get("dp_size", 1)))
-		cp = parameters.get("context-parallel-size", parameters.get("cp-size", parameters.get("cp_size", 1)))
-		dcp = parameters.get("decode-context-parallel-size", parameters.get("dcp-size", parameters.get("dcp_size", 1)))
-
-		# Convert to integers
-		tp = int(tp) if isinstance(tp, (int, float, str)) else 1
-		pp = int(pp) if isinstance(pp, (int, float, str)) else 1
-		dp = int(dp) if isinstance(dp, (int, float, str)) else 1
-		cp = int(cp) if isinstance(cp, (int, float, str)) else 1
-		dcp = int(dcp) if isinstance(dcp, (int, float, str)) else 1
-
-		# Calculate world_size
-		# For vLLM/SGLang: world_size = tp × pp × max(dp, dcp)
-		# For TensorRT-LLM: world_size = tp × pp × cp (no dp support)
-		world_size = tp * pp * max(dp, dcp, cp)
+		# Determine GPU allocation based on parallel configuration using shared utility
+		parallel_config = self._get_parallel_config(parameters)
+		tp = parallel_config["tp"]
+		pp = parallel_config["pp"]
+		dp = parallel_config["dp"]
+		cp = parallel_config["cp"]
+		dcp = parallel_config["dcp"]
+		world_size = parallel_config["world_size"]
 		num_gpus = world_size
 
 		print(f"[Docker] Parallel configuration: TP={tp}, PP={pp}, DP={dp}, CP={cp}, DCP={dcp}")
@@ -219,8 +176,8 @@ class DockerController(BaseModelController):
 
 		# Build container configuration
 		try:
-			# Determine GPU devices
-			gpu_info_dict = self._select_gpus(num_gpus)
+			# Determine GPU devices using shared intelligent selection
+			gpu_info_dict = self._select_gpus_intelligent(num_gpus, log_prefix="[Docker]")
 			if not gpu_info_dict:
 				print(f"[Docker] Failed to allocate {num_gpus} GPU(s)")
 				return None
@@ -254,32 +211,20 @@ class DockerController(BaseModelController):
 				"HF_HOME": "/root/.cache/huggingface"  # Cache directory for downloaded models
 			}
 
-			# Set CUDA_VISIBLE_DEVICES for multi-GPU parallel execution (world_size > 1)
-			# This is needed so the container process can see all allocated GPUs
-			# Note: We still use device_requests to allocate the GPUs from Docker's perspective,
-			# but CUDA_VISIBLE_DEVICES tells the inference engine which GPUs to use inside the container
+			# Set CUDA_VISIBLE_DEVICES for multi-GPU parallel execution using shared utility
 			if world_size > 1 and gpu_devices:
-				# Map Docker's allocated GPU indices to 0, 1, 2, ... for the container
-				# This is important because the inference engine expects consecutive GPU indices starting from 0
-				cuda_visible_devices = ",".join(str(i) for i in range(len(gpu_devices)))
+				cuda_visible_devices = format_gpu_devices_for_cuda([int(i) for i in gpu_devices])
 				env_vars["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
 				print(f"[Docker] Setting CUDA_VISIBLE_DEVICES={cuda_visible_devices} for world_size={world_size}")
 
-			# Add proxy settings if configured
-			if self.http_proxy:
-				env_vars["HTTP_PROXY"] = self.http_proxy
-				env_vars["http_proxy"] = self.http_proxy
-			if self.https_proxy:
-				env_vars["HTTPS_PROXY"] = self.https_proxy
-				env_vars["https_proxy"] = self.https_proxy
-			if self.no_proxy:
-				env_vars["NO_PROXY"] = self.no_proxy
-				env_vars["no_proxy"] = self.no_proxy
-
-			# Add HuggingFace token if configured
-			if self.hf_token:
-				env_vars["HF_TOKEN"] = self.hf_token
-				env_vars["HUGGING_FACE_HUB_TOKEN"] = self.hf_token  # Alternative name some libraries use
+			# Add proxy settings and HF token using shared utility
+			env_vars = setup_proxy_environment(
+				env_vars,
+				http_proxy=self.http_proxy,
+				https_proxy=self.https_proxy,
+				no_proxy=self.no_proxy,
+				hf_token=self.hf_token
+			)
 
 			# Debug: Print env vars being passed to container
 			print(f"[Docker] Environment variables to be set in container:")
@@ -602,7 +547,7 @@ class DockerController(BaseModelController):
 	def _get_runtime_config(
 		self, runtime_name: str, parameters: Dict[str, Any], image_tag: Optional[str] = None
 	) -> Optional[Dict[str, str]]:
-		"""Get Docker image and command configuration for a runtime.
+		"""Get Docker image and command configuration for a runtime using shared utility.
 
 		Args:
 		    runtime_name: Runtime identifier
@@ -612,37 +557,10 @@ class DockerController(BaseModelController):
 		Returns:
 		    Dictionary with 'image' and 'command' keys, or None if unsupported
 		"""
-		# Map runtime names to Docker images and base commands
-		# Base command only includes essential fixed parameters
-		# Dynamic parameters are added by the caller
-		runtime_configs = {
-			"sglang": {
-				"image": "lmsysorg/sglang:v0.5.2-cu126",
-				"command": "python3 -m sglang.launch_server --model-path {model_path} --host 0.0.0.0 --port {port}",
-			},
-			"vllm": {
-				"image": "vllm/vllm-openai:latest",
-				"command": "python3 -m vllm.entrypoints.openai.api_server --model {model_path} --host 0.0.0.0 --port {port}",
-			},
-		}
-
-		# Try exact match or prefix match
-		config = None
-		for key, cfg in runtime_configs.items():
-			if runtime_name.lower().startswith(key):
-				config = cfg.copy()
-				break
-
-		if not config:
-			return None
-
-		# Override image tag if provided
-		if image_tag:
-			# Extract base image name (before colon)
-			base_image = config["image"].split(":")[0]
-			config["image"] = f"{base_image}:{image_tag}"
+		# Use shared runtime configuration utility
+		config = get_runtime_config(runtime_name, image_tag)
+		if config and image_tag:
 			print(f"[Docker] Using custom image tag: {config['image']}")
-
 		return config
 
 	def _ensure_image_available(self, image_name: str) -> bool:
@@ -723,129 +641,3 @@ class DockerController(BaseModelController):
 			print(f"[Docker] Error checking image: {e}")
 			return False
 
-	def _select_gpus(self, num_gpus: int) -> Optional[Dict[str, Any]]:
-		"""Select GPU devices for the container using intelligent allocation.
-
-		Args:
-		    num_gpus: Number of GPUs required
-
-		Returns:
-		    Dict with 'device_ids' (list of GPU IDs), 'gpu_model' (str), and 'gpu_info' (detailed info),
-		    or None if not enough GPUs
-		"""
-		gpu_monitor = get_gpu_monitor()
-
-		if not gpu_monitor.is_available():
-			print("[Docker] nvidia-smi not available. Using fallback GPU allocation.")
-			# Fallback: use first N GPUs
-			return {
-				"device_ids": [str(i) for i in range(num_gpus)],
-				"gpu_model": "Unknown",
-				"gpu_info": {
-					"count": num_gpus,
-					"indices": list(range(num_gpus)),
-					"allocation_method": "fallback"
-				}
-			}
-
-		# Use intelligent GPU allocation
-		try:
-			# Estimate memory requirement (rough heuristic: 8GB per GPU for typical LLM)
-			min_memory_mb = 8000  # Minimum 8GB free per GPU
-
-			allocated_gpus, success = gpu_monitor.allocate_gpus(
-				count=num_gpus,
-				min_memory_mb=min_memory_mb
-			)
-
-			if not success or len(allocated_gpus) < num_gpus:
-				print(f"[Docker] Could not allocate {num_gpus} GPU(s) with {min_memory_mb}MB free memory")
-				print(f"[Docker] Available GPUs: {len(allocated_gpus)}")
-
-				# Try without memory constraint
-				print(f"[Docker] Retrying allocation without memory constraint...")
-				allocated_gpus, success = gpu_monitor.allocate_gpus(count=num_gpus, min_memory_mb=None)
-
-				if not success:
-					print(f"[Docker] Failed to allocate any GPUs")
-					return None
-
-			# Get detailed GPU info for allocated devices
-			snapshot = gpu_monitor.query_gpus(use_cache=False)
-			if not snapshot:
-				print("[Docker] Failed to query GPU information")
-				return None
-
-			gpu_details = []
-			gpu_model = None
-			for gpu in snapshot.gpus:
-				if gpu.index in allocated_gpus:
-					gpu_details.append({
-						"index": gpu.index,
-						"name": gpu.name,
-						"uuid": gpu.uuid,
-						"memory_total_mb": gpu.memory_total_mb,
-						"memory_free_mb": gpu.memory_free_mb,
-						"memory_usage_percent": gpu.memory_usage_percent,
-						"utilization_percent": gpu.utilization_percent,
-						"temperature_c": gpu.temperature_c,
-						"power_draw_w": gpu.power_draw_w,
-						"availability_score": gpu.score
-					})
-					if gpu_model is None:
-						gpu_model = gpu.name
-
-			print(f"[Docker] Selected GPUs: {allocated_gpus}")
-			print(f"[Docker] GPU Model: {gpu_model}")
-			for detail in gpu_details:
-				print(f"[Docker]   GPU {detail['index']}: {detail['memory_free_mb']}/{detail['memory_total_mb']}MB free, "
-					  f"{detail['utilization_percent']}% utilized, Score: {detail['availability_score']:.2f}")
-
-			return {
-				"device_ids": [str(idx) for idx in allocated_gpus],
-				"gpu_model": gpu_model or "Unknown",
-				"gpu_info": {
-					"count": len(allocated_gpus),
-					"indices": allocated_gpus,
-					"allocation_method": "intelligent",
-					"details": gpu_details,
-					"allocated_at": snapshot.timestamp.isoformat()
-				}
-			}
-
-		except Exception as e:
-			print(f"[Docker] Error in intelligent GPU selection: {e}")
-			print(f"[Docker] Falling back to simple allocation")
-
-			# Final fallback: simple first-N allocation
-			return {
-				"device_ids": [str(i) for i in range(num_gpus)],
-				"gpu_model": "Unknown",
-				"gpu_info": {
-					"count": num_gpus,
-					"indices": list(range(num_gpus)),
-					"allocation_method": "fallback_error"
-				}
-			}
-
-	def _find_available_port(self, start_port: int, end_port: int) -> Optional[int]:
-		"""Find an available port in the specified range.
-
-		Args:
-		    start_port: Start of port range
-		    end_port: End of port range
-
-		Returns:
-		    Available port number, or None if no ports available
-		"""
-		import socket
-
-		for port in range(start_port, end_port + 1):
-			try:
-				with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-					s.bind(("", port))
-					return port
-			except OSError:
-				continue
-
-		return None

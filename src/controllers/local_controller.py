@@ -6,9 +6,7 @@ No Docker or Kubernetes required - direct process management.
 """
 
 import os
-import re
 import signal
-import socket
 import subprocess
 import time
 import requests
@@ -16,25 +14,14 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from controllers.base_controller import BaseModelController
-from utils.gpu_monitor import get_gpu_monitor
-
-
-def sanitize_service_name(name: str) -> str:
-	"""
-	Sanitize a name for service identification.
-
-	Args:
-	    name: The name to sanitize
-
-	Returns:
-	    Sanitized name
-	"""
-	name = name.lower()
-	name = re.sub(r'[^a-z0-9-._]', '-', name)
-	name = re.sub(r'^[^a-z0-9]+', '', name)
-	name = re.sub(r'[^a-z0-9]+$', '', name)
-	name = re.sub(r'-+', '-', name)
-	return name
+from controllers.utils import (
+	sanitize_service_name,
+	find_available_port,
+	parse_parallel_config,
+	setup_proxy_environment,
+	build_param_list,
+	get_runtime_config
+)
 
 
 class LocalController(BaseModelController):
@@ -116,25 +103,22 @@ class LocalController(BaseModelController):
 			return None
 
 		# Find available port (use 30000-30100 to avoid conflict with autotuner web server ports 8000, 9000-9010)
-		host_port = self._find_available_port(30000, 30100)
+		host_port = find_available_port(30000, 30100)
 		if not host_port:
 			print(f"[Local] Could not find available port in range 30000-30100")
 			return None
 
-		# Calculate GPU requirements
-		tp = parameters.get("tensor-parallel-size", parameters.get("tp-size", parameters.get("tp_size", 1)))
-		pp = parameters.get("pipeline-parallel-size", parameters.get("pp-size", parameters.get("pp_size", 1)))
-		dp = parameters.get("data-parallel-size", parameters.get("dp-size", parameters.get("dp_size", 1)))
+		# Calculate GPU requirements using shared utility
+		parallel_config = self._get_parallel_config(parameters)
+		tp = parallel_config["tp"]
+		pp = parallel_config["pp"]
+		dp = parallel_config["dp"]
+		num_gpus = parallel_config["world_size"]
 
-		tp = int(tp) if isinstance(tp, (int, float, str)) else 1
-		pp = int(pp) if isinstance(pp, (int, float, str)) else 1
-		dp = int(dp) if isinstance(dp, (int, float, str)) else 1
-
-		num_gpus = tp * pp * dp
 		print(f"[Local] Parallel configuration: TP={tp}, PP={pp}, DP={dp}, Total GPUs={num_gpus}")
 
-		# Select GPUs
-		gpu_info = self._select_gpus(num_gpus)
+		# Select GPUs using shared intelligent selection
+		gpu_info = self._select_gpus_intelligent(num_gpus, log_prefix="[Local]")
 		if not gpu_info:
 			print(f"[Local] Failed to allocate {num_gpus} GPU(s)")
 			return None
@@ -155,22 +139,17 @@ class LocalController(BaseModelController):
 
 		print(f"[Local] Command: {self.python_path} {' '.join(cmd)}")
 
-		# Prepare environment
+		# Prepare environment using shared utility
 		env = os.environ.copy()
 		env["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_devices)
 
-		if self.http_proxy:
-			env["HTTP_PROXY"] = self.http_proxy
-			env["http_proxy"] = self.http_proxy
-		if self.https_proxy:
-			env["HTTPS_PROXY"] = self.https_proxy
-			env["https_proxy"] = self.https_proxy
-		if self.no_proxy:
-			env["NO_PROXY"] = self.no_proxy
-			env["no_proxy"] = self.no_proxy
-		if self.hf_token:
-			env["HF_TOKEN"] = self.hf_token
-			env["HUGGING_FACE_HUB_TOKEN"] = self.hf_token
+		env = setup_proxy_environment(
+			env,
+			http_proxy=self.http_proxy,
+			https_proxy=self.https_proxy,
+			no_proxy=self.no_proxy,
+			hf_token=self.hf_token
+		)
 
 		# Log file
 		log_file_path = self.log_dir / f"{service_id}.log"
@@ -520,7 +499,7 @@ class LocalController(BaseModelController):
 			return False
 
 	def _build_command(self, runtime_name: str, model_path: str, port: int, parameters: Dict[str, Any]) -> Optional[List[str]]:
-		"""Build command line for the inference server.
+		"""Build command line for the inference server using shared utilities.
 
 		Args:
 		    runtime_name: Runtime name (sglang, vllm)
@@ -531,118 +510,35 @@ class LocalController(BaseModelController):
 		Returns:
 		    Command list or None if unsupported runtime
 		"""
+		# Get runtime configuration from shared utility
+		runtime_config = get_runtime_config(runtime_name)
+		if not runtime_config:
+			return None
+
 		runtime_lower = runtime_name.lower()
 
 		if "sglang" in runtime_lower:
 			cmd = [
-				"-m", "sglang.launch_server",
-				"--model-path", model_path,
+				runtime_config["module"].replace("-m ", "").strip(),
+				runtime_config["model_param"], model_path,
 				"--host", "0.0.0.0",
 				"--port", str(port),
 			]
 		elif "vllm" in runtime_lower:
 			cmd = [
-				"-m", "vllm.entrypoints.openai.api_server",
-				"--model", model_path,
+				runtime_config["module"].replace("-m ", "").strip(),
+				runtime_config["model_param"], model_path,
 				"--host", "0.0.0.0",
 				"--port", str(port),
 			]
 		else:
 			return None
 
-		# Add parameters
-		for param_name, param_value in parameters.items():
-			# Skip internal parameters
-			if param_name.startswith("__"):
-				continue
-
-			# Convert to CLI format
-			if not param_name.startswith("--"):
-				cli_param = f"--{param_name}"
-			else:
-				cli_param = param_name
-
-			# Handle boolean parameters
-			if isinstance(param_value, bool):
-				if param_value:
-					cmd.append(cli_param)
-			else:
-				cmd.extend([cli_param, str(param_value)])
+		# Add parameters using shared utility
+		param_list = build_param_list(parameters)
+		cmd.extend(param_list)
 
 		return cmd
-
-	def _select_gpus(self, num_gpus: int) -> Optional[Dict[str, Any]]:
-		"""Select GPU devices using intelligent allocation.
-
-		Args:
-		    num_gpus: Number of GPUs required
-
-		Returns:
-		    Dict with device_ids and gpu_model, or None if not enough GPUs
-		"""
-		gpu_monitor = get_gpu_monitor()
-
-		if not gpu_monitor.is_available():
-			print("[Local] nvidia-smi not available. Using fallback GPU allocation.")
-			return {
-				"device_ids": [str(i) for i in range(num_gpus)],
-				"gpu_model": "Unknown",
-			}
-
-		try:
-			min_memory_mb = 8000  # Minimum 8GB free per GPU
-			allocated_gpus, success = gpu_monitor.allocate_gpus(
-				count=num_gpus,
-				min_memory_mb=min_memory_mb
-			)
-
-			if not success or len(allocated_gpus) < num_gpus:
-				print(f"[Local] Retrying allocation without memory constraint...")
-				allocated_gpus, success = gpu_monitor.allocate_gpus(count=num_gpus, min_memory_mb=None)
-
-				if not success:
-					return None
-
-			# Get GPU info
-			snapshot = gpu_monitor.query_gpus(use_cache=False)
-			gpu_model = None
-			if snapshot:
-				for gpu in snapshot.gpus:
-					if gpu.index in allocated_gpus:
-						gpu_model = gpu.name
-						break
-
-			print(f"[Local] Selected GPUs: {allocated_gpus}")
-			return {
-				"device_ids": [str(idx) for idx in allocated_gpus],
-				"gpu_model": gpu_model or "Unknown",
-			}
-
-		except Exception as e:
-			print(f"[Local] Error in GPU selection: {e}, using fallback")
-			return {
-				"device_ids": [str(i) for i in range(num_gpus)],
-				"gpu_model": "Unknown",
-			}
-
-	def _find_available_port(self, start_port: int, end_port: int) -> Optional[int]:
-		"""Find an available port in the specified range.
-
-		Args:
-		    start_port: Start of port range
-		    end_port: End of port range
-
-		Returns:
-		    Available port number, or None if no ports available
-		"""
-		for port in range(start_port, end_port + 1):
-			try:
-				with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-					s.bind(("", port))
-					return port
-			except OSError:
-				continue
-		return None
 
 	def _print_logs(self, service_id: str, tail: int = 50):
 		"""Print logs for debugging.
