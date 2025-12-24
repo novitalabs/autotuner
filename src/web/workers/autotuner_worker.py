@@ -31,6 +31,7 @@ from src.utils.quantization_integration import merge_parameters_with_quant_confi
 from src.utils.gpu_scheduler import estimate_gpu_requirements, check_gpu_availability, wait_for_gpu_availability
 from src.web.workers.checkpoint import TaskCheckpoint
 from src.web.events.broadcaster import get_broadcaster, EventType, create_event
+from src.web.workers.pubsub import get_result_publisher, close_result_publisher
 
 settings = get_settings()
 
@@ -305,6 +306,10 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 
 			# Get broadcaster instance
 			broadcaster = get_broadcaster()
+
+			# Get result publisher from context (initialized in on_startup)
+			publisher = ctx.get("publisher")
+			worker_id = ctx.get("worker_id", "unknown")
 
 			# Update task status
 			task.status = TaskStatus.RUNNING
@@ -697,6 +702,23 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						)
 					)
 
+					# Publish result via Redis Pub/Sub for distributed listeners
+					if publisher:
+						try:
+							await publisher.publish_experiment_completed(
+								task_id=task_id,
+								experiment_id=iteration,
+								status=result["status"],
+								metrics=result.get("metrics", {}),
+								objective_score=result.get("objective_score"),
+								error_message=result.get("error_message"),
+								elapsed_time=elapsed if db_experiment.started_at else 0.0,
+								parameters=params,
+							)
+							logger.debug(f"[Experiment {iteration}] Result published to Pub/Sub")
+						except Exception as pub_err:
+							logger.warning(f"[Experiment {iteration}] Failed to publish result: {pub_err}")
+
 					# Save checkpoint after each experiment
 					try:
 						await db.refresh(task)
@@ -1050,6 +1072,14 @@ class WorkerSettings:
 			logging.error(f"❌ Failed to register worker: {e}")
 			# Continue anyway - worker can still process jobs
 
+		# Initialize result publisher for Pub/Sub
+		try:
+			publisher = await get_result_publisher(worker_id)
+			ctx["publisher"] = publisher
+			logging.info(f"📡 Result publisher initialized for worker: {worker_id}")
+		except Exception as e:
+			logging.error(f"❌ Failed to initialize result publisher: {e}")
+
 		# Start heartbeat task
 		ctx["heartbeat_task"] = asyncio.create_task(
 			WorkerSettings._heartbeat_loop(ctx)
@@ -1066,6 +1096,13 @@ class WorkerSettings:
 				await heartbeat_task
 			except asyncio.CancelledError:
 				pass
+
+		# Close result publisher
+		try:
+			await close_result_publisher()
+			logging.info("📡 Result publisher closed")
+		except Exception as e:
+			logging.error(f"Failed to close result publisher: {e}")
 
 		# Deregister worker
 		worker_id = ctx.get("worker_id")
