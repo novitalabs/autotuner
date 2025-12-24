@@ -501,6 +501,6 @@ Minimal config for fast testing:
 
 ## See Also
 
-- [Main README](../README.md) - General documentation
-- [OME Installation](../docs/OME_INSTALLATION.md) - Kubernetes setup
-- [examples/docker_task.json](../examples/docker_task.json) - Example configuration
+- [Main README](../../README.md) - General documentation
+- [Kubernetes Guide](kubernetes.md) - Kubernetes setup
+- [examples/docker_task.yaml](../../examples/docker_task.yaml) - Example configuration

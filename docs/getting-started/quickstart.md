@@ -98,6 +98,6 @@ View results in `results/<task_name>_results.json` or in the Web UI.
 
 ## Next Steps
 
-- [DOCKER_MODE.md](DOCKER_MODE.md) - Full Docker documentation
-- [SLO_SCORING.md](SLO_SCORING.md) - Add SLO constraints
-- [BAYESIAN_OPTIMIZATION.md](BAYESIAN_OPTIMIZATION.md) - Smarter optimization
+- [Docker Mode](../user-guide/docker-mode.md) - Full Docker documentation
+- [SLO Scoring](../features/slo-scoring.md) - Add SLO constraints
+- [Bayesian Optimization](../features/bayesian-optimization.md) - Smarter optimization

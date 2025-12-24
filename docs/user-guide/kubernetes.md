@@ -547,4 +547,4 @@ Once OME is installed and verified:
    python src/run_autotuner.py examples/simple_task.json --direct
    ```
 
-For more information, see the main [README.md](../README.md).
+For more information, see the main [README.md](../../README.md).

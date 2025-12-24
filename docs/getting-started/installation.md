@@ -97,7 +97,7 @@ pip install vllm
 
 ### OME Mode (Kubernetes)
 
-See [OME_INSTALLATION.md](OME_INSTALLATION.md) for Kubernetes setup.
+See [Kubernetes Guide](../user-guide/kubernetes.md) for Kubernetes setup.
 
 ## Configuration
 
@@ -162,7 +162,7 @@ curl http://localhost:8000/api/system/health
 
 ## Troubleshooting
 
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues.
+See [Troubleshooting](../troubleshooting.md) for common issues.
 
 **Common issues:**
 - Redis not running → `docker run -d -p 6379:6379 redis:alpine`
