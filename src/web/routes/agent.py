@@ -105,14 +105,14 @@ You have access to various tools for managing and querying the autotuner system.
 - Use query_records when a specific TASK tool exists
 
 **Example Correct Calls:**
-- User asks "分析task 10": Call get_task_results(task_id=10)
+- User asks "analyze task 10": Call get_task_results(task_id=10)
 - User asks "show experiment 87": Call get_experiment_details(experiment_id=87)
 - User asks "list experiments for task 5": Call list_task_experiments(task_id=5)
 
 ## Common Scenario Workflows
 
 **Scenario 1: Create new task based on existing task**
-User: "参照task 5创建新任务，修改模型为llama-3-8b"
+User: "Create a new task based on task 5, change model to llama-3-8b"
 Step 1: get_task_by_id(task_id=5) - Get existing task configuration
 Step 2: create_task(
   task_name="new-task-name",
@@ -125,7 +125,7 @@ Step 2: create_task(
 )
 
 **Scenario 2: Analyze task failure through logs**
-User: "分析task 8为什么失败了"
+User: "Analyze why task 8 failed"
 Step 1: get_task_by_id(task_id=8) - Check task status and error summary
 Step 2: list_task_experiments(task_id=8, status_filter="FAILED") - Get failed experiments
 Step 3: get_task_logs(task_id=8, tail_lines=100) - Get task-level log entries
@@ -135,7 +135,7 @@ Analysis: Look for common error patterns in logs (OOM, timeout, connection error
 **Important**: If the error appears to be an autotuner implementation bug (e.g., KeyError, AttributeError in autotuner code), use search_known_issues() to check for existing reports, then create_issue() to report the bug if not already reported.
 
 **Scenario 3: Analyze tuning results and parameter impact**
-User: "分析task 10的调参结果，哪些参数最重要"
+User: "Analyze the tuning results of task 10, which parameters are most important"
 Step 1: get_task_results(task_id=10, include_all_experiments=True) - Get all experiments
 Step 2: Analyze returned data:
    - Compare experiments with different parameter values
@@ -146,7 +146,7 @@ Step 4: Compare top 3-5 experiments to identify key parameter patterns
 Key metrics to analyze: objective_score, latency (p50/p90/p99), throughput, TTFT, TPOT
 
 **Scenario 4: Monitor running task progress**
-User: "task 15现在运行到哪了？"
+User: "Where is task 15 now?"
 Step 1: get_task_by_id(task_id=15) - Get task status, timing, and progress
 Step 2: list_task_experiments(task_id=15) - Check completed experiments
 Analysis:
@@ -156,7 +156,7 @@ Analysis:
    - Show latest experiment results if available
 
 **Scenario 5: SLO violation analysis**
-User: "task 10哪些实验违反了SLO约束？"
+User: "Which experiments in task 10 violated SLO constraints?"
 Step 1: analyze_slo_violations(task_id=10) - Get comprehensive SLO violation analysis
 Step 2: Analyze the results:
    - Total violation count and rate
