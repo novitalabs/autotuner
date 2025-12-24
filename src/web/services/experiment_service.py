@@ -8,6 +8,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from web.db.models import Experiment, ExperimentStatus
+from web.services.db_utils import create_and_refresh, commit_and_refresh
 
 
 class ExperimentService:
@@ -96,10 +97,7 @@ class ExperimentService:
 		Returns:
 			Created experiment with ID assigned
 		"""
-		db.add(experiment)
-		await db.commit()
-		await db.refresh(experiment)
-		return experiment
+		return await create_and_refresh(db, experiment)
 
 	@staticmethod
 	async def update_experiment(db: AsyncSession, experiment: Experiment) -> Experiment:
@@ -113,9 +111,7 @@ class ExperimentService:
 		Returns:
 			Updated experiment
 		"""
-		await db.commit()
-		await db.refresh(experiment)
-		return experiment
+		return await commit_and_refresh(db, experiment)
 
 	@staticmethod
 	async def delete_experiment(db: AsyncSession, experiment_id: int) -> bool:

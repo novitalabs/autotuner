@@ -8,6 +8,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from web.db.models import ParameterPreset
+from web.services.db_utils import create_and_refresh, commit_and_refresh
 
 
 class PresetService:
@@ -88,10 +89,7 @@ class PresetService:
 		Returns:
 			Created preset with ID assigned
 		"""
-		db.add(preset)
-		await db.commit()
-		await db.refresh(preset)
-		return preset
+		return await create_and_refresh(db, preset)
 
 	@staticmethod
 	async def update_preset(db: AsyncSession, preset: ParameterPreset) -> ParameterPreset:
@@ -105,9 +103,7 @@ class PresetService:
 		Returns:
 			Updated preset
 		"""
-		await db.commit()
-		await db.refresh(preset)
-		return preset
+		return await commit_and_refresh(db, preset)
 
 	@staticmethod
 	async def delete_preset(db: AsyncSession, preset_id: int) -> bool:

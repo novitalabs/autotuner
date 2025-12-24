@@ -8,6 +8,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from web.db.models import Task, TaskStatus
+from web.services.db_utils import create_and_refresh, commit_and_refresh
 
 
 class TaskService:
@@ -83,10 +84,7 @@ class TaskService:
 		Returns:
 			Created task with ID assigned
 		"""
-		db.add(task)
-		await db.commit()
-		await db.refresh(task)
-		return task
+		return await create_and_refresh(db, task)
 
 	@staticmethod
 	async def update_task(db: AsyncSession, task: Task) -> Task:
@@ -100,9 +98,7 @@ class TaskService:
 		Returns:
 			Updated task
 		"""
-		await db.commit()
-		await db.refresh(task)
-		return task
+		return await commit_and_refresh(db, task)
 
 	@staticmethod
 	async def delete_task(db: AsyncSession, task_id: int) -> bool:
