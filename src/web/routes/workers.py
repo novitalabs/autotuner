@@ -10,6 +10,7 @@ from web.schemas.worker import (
 	WorkerHeartbeat,
 	WorkerResponse,
 	WorkerListResponse,
+	WorkerRenameRequest,
 	WorkerStatus,
 )
 from web.workers.registry import (
@@ -108,3 +109,20 @@ async def get_available_workers():
 	registry = await get_worker_registry()
 	workers = await registry.get_available_workers()
 	return [worker_info_to_response(w) for w in workers]
+
+
+@router.patch("/{worker_id}/alias", response_model=WorkerResponse)
+async def rename_worker(worker_id: str, request: WorkerRenameRequest):
+	"""Set or clear a worker's alias (nickname).
+
+	Args:
+		worker_id: Worker identifier
+		request: New alias or null to clear
+	"""
+	registry = await get_worker_registry()
+	worker = await registry.set_worker_alias(worker_id, request.alias)
+
+	if not worker:
+		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	return worker_info_to_response(worker)

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { dashboardApi } from '../services/dashboardApi';
 import type { DistributedWorker } from '../services/dashboardApi';
@@ -10,6 +10,9 @@ import {
 	CircleStackIcon,
 	ClockIcon,
 	ServerStackIcon,
+	PencilIcon,
+	CheckIcon,
+	XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 function formatBytes(mb: number): string {
@@ -46,6 +49,24 @@ export default function Dashboard() {
 
 	// Track selected experiment for log viewer
 	const [selectedExperiment, setSelectedExperiment] = useState<{ taskId: number; experimentId: number } | null>(null);
+
+	// Track worker being edited for alias rename
+	const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
+	const [editingAlias, setEditingAlias] = useState<string>('');
+
+	// Query client for cache invalidation
+	const queryClient = useQueryClient();
+
+	// Mutation for renaming worker
+	const renameWorkerMutation = useMutation({
+		mutationFn: ({ workerId, alias }: { workerId: string; alias: string | null }) =>
+			dashboardApi.renameWorker(workerId, alias),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['distributedWorkers'] });
+			setEditingWorkerId(null);
+			setEditingAlias('');
+		},
+	});
 
 	// Get timezone formatting functions
 	const { formatTime, timezoneOffsetMs } = useTimezone();
@@ -382,13 +403,74 @@ export default function Dashboard() {
 						{distributedWorkers.workers.map((worker: DistributedWorker) => (
 							<div key={worker.worker_id} className="p-3 border rounded bg-white hover:bg-gray-50">
 								<div className="flex items-center justify-between mb-2">
-									<div className="flex items-center gap-2">
-										<ServerIcon className="h-4 w-4 text-gray-400" />
-										<span className="font-medium text-sm truncate max-w-[150px]" title={worker.worker_id}>
-											{worker.hostname}
-										</span>
+									<div className="flex items-center gap-2 flex-1 min-w-0">
+										<ServerIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+										{editingWorkerId === worker.worker_id ? (
+											<div className="flex items-center gap-1 flex-1">
+												<input
+													type="text"
+													value={editingAlias}
+													onChange={(e) => setEditingAlias(e.target.value)}
+													placeholder={worker.hostname}
+													className="text-sm border rounded px-1 py-0.5 w-24"
+													autoFocus
+													onKeyDown={(e) => {
+														if (e.key === 'Enter') {
+															renameWorkerMutation.mutate({
+																workerId: worker.worker_id,
+																alias: editingAlias.trim() || null
+															});
+														} else if (e.key === 'Escape') {
+															setEditingWorkerId(null);
+															setEditingAlias('');
+														}
+													}}
+												/>
+												<button
+													onClick={() => renameWorkerMutation.mutate({
+														workerId: worker.worker_id,
+														alias: editingAlias.trim() || null
+													})}
+													className="p-0.5 hover:bg-green-100 rounded"
+													title="Save"
+												>
+													<CheckIcon className="h-3.5 w-3.5 text-green-600" />
+												</button>
+												<button
+													onClick={() => {
+														setEditingWorkerId(null);
+														setEditingAlias('');
+													}}
+													className="p-0.5 hover:bg-red-100 rounded"
+													title="Cancel"
+												>
+													<XMarkIcon className="h-3.5 w-3.5 text-red-600" />
+												</button>
+											</div>
+										) : (
+											<>
+												<span className="font-medium text-sm truncate" title={worker.worker_id}>
+													{worker.alias || worker.hostname}
+												</span>
+												{worker.alias && (
+													<span className="text-xs text-gray-400 truncate" title={worker.hostname}>
+														({worker.hostname})
+													</span>
+												)}
+												<button
+													onClick={() => {
+														setEditingWorkerId(worker.worker_id);
+														setEditingAlias(worker.alias || '');
+													}}
+													className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
+													title="Rename worker"
+												>
+													<PencilIcon className="h-3 w-3 text-gray-400" />
+												</button>
+											</>
+										)}
 									</div>
-									<span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(worker.status)}`}>
+									<span className={`px-2 py-0.5 text-xs rounded-full flex-shrink-0 ${getStatusColor(worker.status)}`}>
 										{worker.status}
 									</span>
 								</div>
@@ -416,6 +498,36 @@ export default function Dashboard() {
 										<span>Heartbeat: {formatHeartbeat(worker.seconds_since_heartbeat)}</span>
 									</div>
 								</div>
+								{/* GPU Status from Heartbeat */}
+								{worker.gpus && worker.gpus.length > 0 && (
+									<div className="mt-2 pt-2 border-t">
+										<div className="text-xs text-gray-500 mb-1">GPU Status</div>
+										<div className="grid gap-1">
+											{worker.gpus.map((gpu) => (
+												<div key={gpu.index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-1.5 py-0.5">
+													<span className="text-gray-600">GPU {gpu.index}</span>
+													<div className="flex items-center gap-2">
+														{gpu.utilization_percent !== null && (
+															<span className={`${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
+																{gpu.utilization_percent.toFixed(0)}%
+															</span>
+														)}
+														{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
+															<span className="text-gray-500">
+																{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}GB
+															</span>
+														)}
+														{gpu.temperature_c !== null && (
+															<span className={`${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
+																{gpu.temperature_c}°C
+															</span>
+														)}
+													</div>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
 							</div>
 						))}
 					</div>
