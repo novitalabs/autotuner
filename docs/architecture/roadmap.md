@@ -924,6 +924,24 @@ gpu_info = {
 **Effort**: 2-4 weeks
 **Value**: ⭐⭐⭐⭐
 
+#### 7.0 Agent Charting Tool
+- [ ] Add chart generation tool for Agent to visualize experiment results
+- [ ] Candidates: Matplotlib (static images), Plotly (interactive HTML)
+- [ ] Chart types: bar charts, line plots, scatter plots, heatmaps
+- [ ] Use cases:
+  - Compare throughput/latency across experiments
+  - Visualize parameter sensitivity
+  - Generate Pareto frontier plots
+  - Create SLO compliance charts
+- [ ] Output: Save charts to files or display inline in chat
+
+**Implementation Options:**
+| Library | Pros | Cons |
+|---------|------|------|
+| Matplotlib | Simple, widely used, static images | Not interactive |
+| Plotly | Interactive, HTML export, beautiful | Larger dependency |
+| Seaborn | Statistical plots, built on Matplotlib | Limited interactivity |
+
 #### 7.1 Runtime-Specific Optimizations
 
 **SGLang Radix Cache Management:**
