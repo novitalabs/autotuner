@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { dashboardApi } from '../services/dashboardApi';
-import type { DistributedWorker } from '../services/dashboardApi';
+import type { DistributedWorker, WorkerGPUHistory } from '../services/dashboardApi';
 import { useTimezone } from '../contexts/TimezoneContext';
 import ExperimentLogViewer from '../components/ExperimentLogViewer';
 import {
@@ -15,13 +15,6 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 
-function formatBytes(mb: number): string {
-	if (mb >= 1024) {
-		return `${(mb / 1024).toFixed(1)} GB`;
-	}
-	return `${mb.toFixed(0)} MB`;
-}
-
 function formatUptime(seconds: number | null): string {
 	if (!seconds) return 'N/A';
 	const hours = Math.floor(seconds / 3600);
@@ -29,30 +22,16 @@ function formatUptime(seconds: number | null): string {
 	return `${hours}h ${minutes}m`;
 }
 
-// Store GPU utilization history (last 12 data points = 1 minute at 5s intervals)
-const MAX_HISTORY_LENGTH = 12;
-type GPUHistory = Record<number, number[]>;
-
 export default function Dashboard() {
-	// Track GPU utilization history
-	const [gpuHistory, setGpuHistory] = useState<GPUHistory>({});
-	// Track which GPU view mode (local or cluster) - persist in localStorage
-	const [gpuViewMode, setGpuViewMode] = useState<'local' | 'cluster'>(() => {
-		const saved = localStorage.getItem('gpuViewMode');
-		return (saved === 'local' || saved === 'cluster') ? saved : 'cluster';
-	});
-
-	// Save GPU view mode to localStorage whenever it changes
-	useEffect(() => {
-		localStorage.setItem('gpuViewMode', gpuViewMode);
-	}, [gpuViewMode]);
-
 	// Track selected experiment for log viewer
 	const [selectedExperiment, setSelectedExperiment] = useState<{ taskId: number; experimentId: number } | null>(null);
 
 	// Track worker being edited for alias rename
 	const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
 	const [editingAlias, setEditingAlias] = useState<string>('');
+
+	// Track GPU history per worker
+	const [gpuHistories, setGpuHistories] = useState<Record<string, WorkerGPUHistory>>({});
 
 	// Query client for cache invalidation
 	const queryClient = useQueryClient();
@@ -72,36 +51,6 @@ export default function Dashboard() {
 	const { formatTime, timezoneOffsetMs } = useTimezone();
 
 	// Fetch dashboard data with auto-refresh
-	const { data: gpuStatus, isLoading: gpuLoading } = useQuery({
-		queryKey: ['gpuStatus'],
-		queryFn: dashboardApi.getGPUStatus,
-		refetchInterval: 5000, // Refresh every 5 seconds
-		enabled: gpuViewMode === 'local',
-	});
-
-	// Fetch cluster GPU status
-	const { data: clusterGpuStatus, isLoading: clusterGpuLoading } = useQuery({
-		queryKey: ['clusterGpuStatus'],
-		queryFn: dashboardApi.getClusterGPUStatus,
-		refetchInterval: 10000, // Refresh every 10 seconds
-		enabled: gpuViewMode === 'cluster',
-	});
-
-	// Update GPU history when new data arrives
-	useEffect(() => {
-		if (gpuStatus?.gpus) {
-			setGpuHistory((prev) => {
-				const updated = { ...prev };
-				gpuStatus.gpus!.forEach((gpu) => {
-					const history = prev[gpu.index] || [];
-					const newHistory = [...history, gpu.utilization_percent].slice(-MAX_HISTORY_LENGTH);
-					updated[gpu.index] = newHistory;
-				});
-				return updated;
-			});
-		}
-	}, [gpuStatus]);
-
 	const { data: workerStatus, isLoading: workerLoading } = useQuery({
 		queryKey: ['workerStatus'],
 		queryFn: dashboardApi.getWorkerStatus,
@@ -114,6 +63,20 @@ export default function Dashboard() {
 		refetchInterval: 5000,
 	});
 
+	// Fetch GPU history for all workers when worker list updates
+	useEffect(() => {
+		if (distributedWorkers?.workers) {
+			distributedWorkers.workers.forEach(async (worker) => {
+				try {
+					const history = await dashboardApi.getWorkerGPUHistory(worker.worker_id);
+					setGpuHistories((prev) => ({ ...prev, [worker.worker_id]: history }));
+				} catch (e) {
+					// Ignore errors - history may not be available yet
+				}
+			});
+		}
+	}, [distributedWorkers]);
+
 	const { data: dbStats, isLoading: dbStatsLoading } = useQuery({
 		queryKey: ['dbStatistics'],
 		queryFn: dashboardApi.getDBStatistics,
@@ -125,195 +88,6 @@ export default function Dashboard() {
 		queryFn: () => dashboardApi.getExperimentTimeline(24),
 		refetchInterval: 30000, // Refresh every 30 seconds
 	});
-
-	// GPU Status Card
-	const renderGPUCard = () => (
-		<div className="bg-white shadow rounded-lg p-4">
-			<div className="flex items-center justify-between mb-3">
-				<h3 className="text-base font-medium text-gray-900 flex items-center">
-					<CpuChipIcon className="h-5 w-5 mr-2 text-blue-500" />
-					GPU Status {gpuViewMode === 'cluster' && '(Cluster-wide)'}
-				</h3>
-				<div className="flex items-center gap-2">
-					{/* Mode toggle buttons */}
-					<button
-						onClick={() => setGpuViewMode('local')}
-						className={`px-2 py-0.5 text-xs rounded ${gpuViewMode === 'local' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-					>
-						Local
-					</button>
-					<button
-						onClick={() => setGpuViewMode('cluster')}
-						className={`px-2 py-0.5 text-xs rounded ${gpuViewMode === 'cluster' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}
-					>
-						Cluster
-					</button>
-					{gpuViewMode === 'local' && gpuStatus && (
-						<span className={`px-2 py-0.5 text-xs rounded-full ${gpuStatus.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-							{gpuStatus.available ? 'Available' : 'Unavailable'}
-						</span>
-					)}
-					{gpuViewMode === 'cluster' && clusterGpuStatus && (
-						<span className={`px-2 py-0.5 text-xs rounded-full ${clusterGpuStatus.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-							{clusterGpuStatus.available ? `${clusterGpuStatus.total_allocatable_gpus}/${clusterGpuStatus.total_gpus} Available` : 'Unavailable'}
-						</span>
-					)}
-				</div>
-			</div>
-
-			{/* Local GPU View */}
-			{gpuViewMode === 'local' && (
-				<>
-					{gpuLoading && <p className="text-gray-500 text-sm">Loading...</p>}
-					{gpuStatus?.error && <p className="text-red-500 text-sm">Error: {gpuStatus.error}</p>}
-
-					{gpuStatus?.gpus && (
-						<div className="space-y-2">
-							{gpuStatus.gpus.map((gpu) => {
-								const history = gpuHistory[gpu.index] || [];
-								return (
-									<div key={gpu.index} className="border rounded p-2">
-										<div className="flex justify-between items-center">
-											<div className="flex items-center gap-2">
-												<strong className="text-sm font-medium">GPU {gpu.index}: {gpu.name}</strong>
-												<span className="text-xs text-gray-500">{gpu.temperature_c}°C</span>
-											</div>
-											<div className="flex items-center gap-2">
-												<span className={`px-1.5 py-0.5 text-xs rounded ${gpu.utilization_percent > 80 ? 'bg-red-100 text-red-800' : gpu.utilization_percent > 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
-													{gpu.utilization_percent}%
-												</span>
-												{/* Tiny utilization history sparkline */}
-												{history.length > 1 && (
-													<div className="flex items-end gap-px" style={{ height: '16px' }}>
-														{history.map((util, idx) => (
-															<div
-																key={idx}
-																className={`${
-																	util > 80
-																		? 'bg-red-400'
-																		: util > 50
-																		? 'bg-yellow-400'
-																		: 'bg-green-400'
-																}`}
-																style={{
-																	width: '2px',
-																	height: `${Math.max(util * 0.16, 2)}px`,
-																	minHeight: '2px'
-																}}
-																title={`${util}%`}
-															></div>
-														))}
-													</div>
-												)}
-											</div>
-										</div>
-
-										{/* Memory Usage Bar */}
-										<div className="mt-1">
-										<div className="flex justify-between text-xs text-gray-600 mb-1">
-											<span>Memory</span>
-											<span>{formatBytes(gpu.memory_used_mb)} / {formatBytes(gpu.memory_total_mb)}</span>
-										</div>
-										<div className="w-full bg-gray-200 rounded-full h-2">
-											<div
-												className={`h-2 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
-												style={{ width: `${gpu.memory_usage_percent}%` }}
-											></div>
-										</div>
-										<p className="text-xs text-gray-500 mt-0.5">{gpu.memory_usage_percent.toFixed(1)}% used</p>
-									</div>
-								</div>
-								);
-							})}
-						</div>
-					)}
-				</>
-			)}
-
-			{/* Cluster GPU View */}
-			{gpuViewMode === 'cluster' && (
-				<>
-					{clusterGpuLoading && <p className="text-gray-500 text-sm">Loading cluster GPUs...</p>}
-					{clusterGpuStatus?.error && <p className="text-red-500 text-sm">Error: {clusterGpuStatus.error}</p>}
-
-					{clusterGpuStatus?.nodes && (
-						<div className="space-y-3">
-							{/* Group GPUs by node */}
-							{Object.entries(
-								clusterGpuStatus.nodes.reduce((acc: Record<string, any[]>, gpu: any) => {
-									if (!acc[gpu.node_name]) {
-										acc[gpu.node_name] = [];
-									}
-									acc[gpu.node_name].push(gpu);
-									return acc;
-								}, {})
-							).map(([nodeName, gpus]: [string, any[]]) => (
-								<div key={nodeName} className="border rounded p-2 bg-gray-50">
-									<div className="flex items-center justify-between mb-2">
-										<h4 className="text-sm font-semibold text-gray-700 flex items-center">
-											<ServerIcon className="h-4 w-4 mr-1 text-gray-600" />
-											{nodeName}
-										</h4>
-										<span className="text-xs text-gray-600">
-											{gpus.filter(g => g.allocatable).length}/{gpus.length} available
-										</span>
-									</div>
-									<div className="grid grid-cols-4 gap-2">
-										{gpus.map((gpu, idx) => (
-											<div
-												key={idx}
-												className={`p-2 rounded border ${
-													gpu.allocatable
-														? 'bg-white border-green-300'
-														: 'bg-gray-100 border-red-300'
-												}`}
-												title={`GPU ${gpu.index}: ${gpu.name}${gpu.has_metrics ? `\nMemory: ${gpu.memory_used_mb}MB / ${gpu.memory_total_mb}MB\nUtil: ${gpu.utilization_percent}%\nTemp: ${gpu.temperature_c}°C` : ''}`}
-											>
-												<div className="flex justify-between items-center mb-1">
-													<span className="text-xs font-medium">GPU {gpu.index}</span>
-													{gpu.has_metrics && (
-														<span className="text-xs text-gray-500">{gpu.temperature_c}°C</span>
-													)}
-												</div>
-												{gpu.has_metrics ? (
-													<>
-														{/* Memory usage bar */}
-														<div className="mb-1">
-															<div className="w-full bg-gray-200 rounded-full h-1.5">
-																<div
-																	className={`h-1.5 rounded-full ${gpu.memory_usage_percent > 90 ? 'bg-red-600' : gpu.memory_usage_percent > 70 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
-																	style={{ width: `${gpu.memory_usage_percent}%` }}
-																></div>
-															</div>
-															<div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
-																<span>Mem</span>
-																<span>{gpu.memory_usage_percent.toFixed(0)}%</span>
-															</div>
-														</div>
-														{/* Utilization badge */}
-														<div className="flex justify-between items-center">
-															<span className="text-[10px] text-gray-500">Util</span>
-															<span className={`px-1 py-0.5 text-[10px] rounded ${gpu.utilization_percent > 80 ? 'bg-red-100 text-red-800' : gpu.utilization_percent > 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
-																{gpu.utilization_percent}%
-															</span>
-														</div>
-													</>
-												) : (
-													<div className="text-[10px] text-gray-500 text-center py-1">
-														No metrics
-													</div>
-												)}
-											</div>
-										))}
-									</div>
-								</div>
-							))}
-						</div>
-					)}
-				</>
-			)}
-		</div>
-	);
 
 	// Worker Status Card
 	const renderWorkerCard = () => {
@@ -498,33 +272,60 @@ export default function Dashboard() {
 										<span>Heartbeat: {formatHeartbeat(worker.seconds_since_heartbeat)}</span>
 									</div>
 								</div>
-								{/* GPU Status from Heartbeat */}
+								{/* GPU Status with History Sparkline */}
 								{worker.gpus && worker.gpus.length > 0 && (
 									<div className="mt-2 pt-2 border-t">
 										<div className="text-xs text-gray-500 mb-1">GPU Status</div>
 										<div className="grid gap-1">
-											{worker.gpus.map((gpu) => (
-												<div key={gpu.index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-1.5 py-0.5">
-													<span className="text-gray-600">GPU {gpu.index}</span>
-													<div className="flex items-center gap-2">
-														{gpu.utilization_percent !== null && (
-															<span className={`${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
-																{gpu.utilization_percent.toFixed(0)}%
-															</span>
-														)}
-														{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
-															<span className="text-gray-500">
-																{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}GB
-															</span>
-														)}
-														{gpu.temperature_c !== null && (
-															<span className={`${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
-																{gpu.temperature_c}°C
-															</span>
-														)}
+											{worker.gpus.map((gpu) => {
+												// Get history for this GPU from worker's history
+												const workerHistory = gpuHistories[worker.worker_id]?.history || [];
+												const gpuUtilHistory = workerHistory
+													.map(h => h.gpus.find(g => g.index === gpu.index)?.utilization)
+													.filter((v): v is number => v !== null && v !== undefined);
+
+												return (
+													<div key={gpu.index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-1.5 py-0.5">
+														<span className="text-gray-600">GPU {gpu.index}</span>
+														<div className="flex items-center gap-2">
+															{/* Utilization History Sparkline */}
+															{gpuUtilHistory.length > 1 && (
+																<div className="flex items-end gap-px" style={{ height: '14px' }} title={`Last ${gpuUtilHistory.length} heartbeats`}>
+																	{gpuUtilHistory.map((util, idx) => (
+																		<div
+																			key={idx}
+																			className={`${
+																				util > 80 ? 'bg-red-400' : util > 50 ? 'bg-yellow-400' : 'bg-green-400'
+																			}`}
+																			style={{
+																				width: '3px',
+																				height: `${Math.max(util * 0.14, 1)}px`,
+																				minHeight: '1px'
+																			}}
+																			title={`${util.toFixed(0)}%`}
+																		></div>
+																	))}
+																</div>
+															)}
+															{gpu.utilization_percent !== null && (
+																<span className={`${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
+																	{gpu.utilization_percent.toFixed(0)}%
+																</span>
+															)}
+															{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
+																<span className="text-gray-500">
+																	{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}GB
+																</span>
+															)}
+															{gpu.temperature_c !== null && (
+																<span className={`${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
+																	{gpu.temperature_c}°C
+																</span>
+															)}
+														</div>
 													</div>
-												</div>
-											))}
+												);
+											})}
 										</div>
 									</div>
 								)}
@@ -918,14 +719,9 @@ export default function Dashboard() {
 				{renderRunningTasksCard()}
 			</div>
 
-			{/* Second row: GPU Status and Timeline */}
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-				<div className="lg:col-span-1">
-					{renderGPUCard()}
-				</div>
-				<div className="lg:col-span-2">
-					{renderTimelineChart()}
-				</div>
+			{/* Second row: Timeline (full width) */}
+			<div className="mb-6">
+				{renderTimelineChart()}
 			</div>
 
 			{/* Experiment Log Viewer Modal */}
