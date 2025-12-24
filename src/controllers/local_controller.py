@@ -13,8 +13,8 @@ import requests
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from controllers.base_controller import BaseModelController
-from controllers.utils import (
+from .base_controller import BaseModelController
+from .utils import (
 	sanitize_service_name,
 	find_available_port,
 	parse_parallel_config,
@@ -434,19 +434,15 @@ class LocalController(BaseModelController):
 		print(f"[Local] Pre-downloading model: {model_name}")
 		print(f"[Local] This may take a while for large models...")
 
-		# Build environment with proxy settings
+		# Build environment with proxy settings using shared utility
 		env = os.environ.copy()
-		if self.http_proxy:
-			env['HTTP_PROXY'] = self.http_proxy
-			env['http_proxy'] = self.http_proxy
-		if self.https_proxy:
-			env['HTTPS_PROXY'] = self.https_proxy
-			env['https_proxy'] = self.https_proxy
-		if self.no_proxy:
-			env['NO_PROXY'] = self.no_proxy
-			env['no_proxy'] = self.no_proxy
-		if self.hf_token:
-			env['HF_TOKEN'] = self.hf_token
+		env = setup_proxy_environment(
+			env,
+			http_proxy=self.http_proxy,
+			https_proxy=self.https_proxy,
+			no_proxy=self.no_proxy,
+			hf_token=self.hf_token
+		)
 
 		# Use huggingface-cli to download
 		cmd = [
@@ -517,16 +513,24 @@ class LocalController(BaseModelController):
 
 		runtime_lower = runtime_name.lower()
 
+		# Extract module name from "-m module.name" format
+		# Keep "-m" flag and module name as separate list items
+		module_string = runtime_config["module"].strip()
+		if module_string.startswith("-m "):
+			# Split "-m module.name" into ["-m", "module.name"]
+			module_parts = ["-m", module_string[3:].strip()]
+		else:
+			# Fallback: use as single item if format is unexpected
+			module_parts = [module_string]
+
 		if "sglang" in runtime_lower:
-			cmd = [
-				runtime_config["module"].replace("-m ", "").strip(),
+			cmd = module_parts + [
 				runtime_config["model_param"], model_path,
 				"--host", "0.0.0.0",
 				"--port", str(port),
 			]
 		elif "vllm" in runtime_lower:
-			cmd = [
-				runtime_config["module"].replace("-m ", "").strip(),
+			cmd = module_parts + [
 				runtime_config["model_param"], model_path,
 				"--host", "0.0.0.0",
 				"--port", str(port),

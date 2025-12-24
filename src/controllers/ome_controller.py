@@ -82,7 +82,7 @@ class OMEController(BaseModelController):
 	def deploy_inference_service(
 		self,
 		task_name: str,
-		experiment_id: str,
+		experiment_id: int,
 		namespace: str,
 		model_name: str,
 		runtime_name: str,
@@ -94,7 +94,7 @@ class OMEController(BaseModelController):
 
 		Args:
 		    task_name: Autotuning task name
-		    experiment_id: Unique experiment identifier
+		    experiment_id: Unique experiment identifier (will be converted to string internally)
 		    namespace: K8s namespace
 		    model_name: Model name
 		    runtime_name: ServingRuntime name
@@ -111,9 +111,12 @@ class OMEController(BaseModelController):
 		Returns:
 		    InferenceService name if successful, None otherwise
 		"""
+		# Convert experiment_id to string for Kubernetes resource naming
+		experiment_id_str = str(experiment_id)
+
 		# Sanitize task_name to be DNS-1123 compliant
 		safe_task_name = sanitize_dns_name(task_name)
-		isvc_name = f"{safe_task_name}-exp{experiment_id}"
+		isvc_name = f"{safe_task_name}-exp{experiment_id_str}"
 
 		# Sanitize model_name to match ClusterBaseModel naming convention
 		# Convert "meta-llama/Llama-3.2-3B-Instruct" to "llama-3-2-3b-instruct"
@@ -141,7 +144,7 @@ class OMEController(BaseModelController):
 			namespace=namespace,
 			isvc_name=isvc_name,
 			task_name=task_name,
-			experiment_id=experiment_id,
+			experiment_id=experiment_id_str,
 			model_name=safe_model_name,
 			runtime_name=runtime_name,
 			params=parameters,

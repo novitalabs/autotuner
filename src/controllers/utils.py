@@ -66,6 +66,13 @@ def sanitize_name_generic(name: str, allow_periods: bool = False) -> str:
     if not name or not name[0].isalpha():
         name = 'task-' + name
 
+    # Remove trailing non-alphanumeric characters again (in case 'task-' prefix left trailing dash)
+    name = re.sub(r'[^a-z0-9]+$', '', name)
+
+    # Final safety check: if still empty or invalid, return 'task'
+    if not name or not name[0].isalpha():
+        name = 'task'
+
     return name
 
 
@@ -189,12 +196,25 @@ def parse_parallel_config(parameters: Dict[str, Any]) -> Dict[str, int]:
                         parameters.get("dcp-size",
                                      parameters.get("dcp_size", 1)))
 
-    # Convert to integers
-    tp = int(tp) if isinstance(tp, (int, float, str)) else 1
-    pp = int(pp) if isinstance(pp, (int, float, str)) else 1
-    dp = int(dp) if isinstance(dp, (int, float, str)) else 1
-    cp = int(cp) if isinstance(cp, (int, float, str)) else 1
-    dcp = int(dcp) if isinstance(dcp, (int, float, str)) else 1
+    # Convert to integers with validation
+    def safe_int_conversion(value, param_name, default=1):
+        """Safely convert value to integer with validation."""
+        try:
+            result = int(value) if isinstance(value, (int, float, str)) else default
+            # Clamp to >= 1 (parallelism size must be at least 1)
+            if result < 1:
+                print(f"[parse_parallel_config] Warning: {param_name}={result} is invalid (< 1), clamping to 1")
+                result = 1
+            return result
+        except (ValueError, TypeError) as e:
+            print(f"[parse_parallel_config] Warning: Failed to convert {param_name}={value} to int: {e}, using default={default}")
+            return default
+
+    tp = safe_int_conversion(tp, "tp", default=1)
+    pp = safe_int_conversion(pp, "pp", default=1)
+    dp = safe_int_conversion(dp, "dp", default=1)
+    cp = safe_int_conversion(cp, "cp", default=1)
+    dcp = safe_int_conversion(dcp, "dcp", default=1)
 
     # Calculate world_size
     # For vLLM/SGLang: world_size = tp × pp × max(dp, dcp, cp)

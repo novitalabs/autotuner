@@ -16,15 +16,14 @@ try:
 except ImportError:
 	docker = None
 
-from controllers.base_controller import BaseModelController
-from controllers.utils import (
+from .base_controller import BaseModelController
+from .utils import (
 	sanitize_container_name,
 	find_available_port,
 	parse_parallel_config,
 	setup_proxy_environment,
-	build_param_string,
-	get_runtime_config,
-	format_gpu_devices_for_cuda
+	build_param_list,
+	get_runtime_config
 )
 
 
@@ -152,14 +151,26 @@ class DockerController(BaseModelController):
 			return None
 
 		# Build command with model identifier and host port
-		command_str = runtime_config["command"].format(model_path=model_identifier, port=host_port)
+		# Use list composition directly to avoid issues with spaces in parameter values
+		command_template = runtime_config["command"]
+
+		# Parse the base command from template (e.g., "python3 -m sglang.launch_server ...")
+		# Split only the base command part, preserving parameter placeholders
+		base_parts = command_template.split()
+		command_list = []
+
+		# Build command list by substituting placeholders
+		for part in base_parts:
+			if "{model_path}" in part:
+				command_list.append(part.replace("{model_path}", model_identifier))
+			elif "{port}" in part:
+				command_list.append(part.replace("{port}", str(host_port)))
+			else:
+				command_list.append(part)
 
 		# Add all parameters as command-line arguments using shared utility
-		param_str = build_param_string(parameters)
-		if param_str:
-			command_str += f" {param_str}"
-
-		command_list = command_str.split()
+		param_list = build_param_list(parameters)
+		command_list.extend(param_list)
 
 		# Determine GPU allocation based on parallel configuration using shared utility
 		parallel_config = self._get_parallel_config(parameters)
@@ -211,11 +222,9 @@ class DockerController(BaseModelController):
 				"HF_HOME": "/root/.cache/huggingface"  # Cache directory for downloaded models
 			}
 
-			# Set CUDA_VISIBLE_DEVICES for multi-GPU parallel execution using shared utility
-			if world_size > 1 and gpu_devices:
-				cuda_visible_devices = format_gpu_devices_for_cuda([int(i) for i in gpu_devices])
-				env_vars["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
-				print(f"[Docker] Setting CUDA_VISIBLE_DEVICES={cuda_visible_devices} for world_size={world_size}")
+			# Note: CUDA_VISIBLE_DEVICES is NOT set here because we use device_requests
+			# Docker's device_requests handles GPU allocation directly via device_ids
+			# Setting CUDA_VISIBLE_DEVICES could conflict with device_requests
 
 			# Add proxy settings and HF token using shared utility
 			env_vars = setup_proxy_environment(
