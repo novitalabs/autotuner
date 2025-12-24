@@ -135,9 +135,9 @@ class GPUMonitor:
                         memory_used_mb=memory_used,
                         utilization_gpu=int(parts[6]) if parts[6] != "N/A" else 0,
                         utilization_memory=round(memory_used / memory_total * 100, 1) if memory_total > 0 else 0,
-                        temperature=int(parts[7]) if parts[7] != "N/A" else 0,
-                        power_draw=float(parts[8]) if parts[8] != "N/A" else 0.0,
-                        power_limit=float(parts[9]) if parts[9] != "N/A" else 0.0,
+                        temperature=int(parts[7]) if parts[7] != "N/A" else None,
+                        power_draw=float(parts[8]) if parts[8] != "N/A" else None,
+                        power_limit=float(parts[9]) if parts[9] != "N/A" else None,
                         compute_mode=parts[10],
                         processes=processes
                     )

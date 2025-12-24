@@ -5,11 +5,14 @@ Provides functions to discover and select idle GPUs across the Kubernetes cluste
 """
 
 import subprocess
+import logging
 import json
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
 from .gpu_types import ClusterGPUInfo
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,7 +52,7 @@ def get_cluster_gpu_status() -> List[ClusterGPUInfo]:
         )
 
         if result.returncode != 0:
-            print("Warning: kubectl command failed")
+            logger.warning("kubectl command failed")
             return []
 
         nodes_data = json.loads(result.stdout)
@@ -111,7 +114,7 @@ def get_cluster_gpu_status() -> List[ClusterGPUInfo]:
                                     "memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
                                 }
                 except Exception as e:
-                    print(f"Error getting GPU metrics for local node {node_name}: {e}")
+                    logger.error(f"Error getting GPU metrics for local node {node_name}: {e}")
             else:
                 # For remote nodes, find pods with GPU access
                 try:
@@ -183,7 +186,7 @@ def get_cluster_gpu_status() -> List[ClusterGPUInfo]:
                                             "memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
                                         }
                 except Exception as e:
-                    print(f"Warning: Could not get GPU metrics for remote node {node_name}: {e}")
+                    logger.warning(f"Could not get GPU metrics for remote node {node_name}: {e}")
 
             # Get GPU type from labels
             labels = node["metadata"].get("labels", {})
@@ -226,7 +229,7 @@ def get_cluster_gpu_status() -> List[ClusterGPUInfo]:
         return all_gpus
 
     except Exception as e:
-        print(f"Error querying cluster GPU status: {e}")
+        logger.error(f"Error querying cluster GPU status: {e}")
         return []
 
 
@@ -308,7 +311,7 @@ def find_best_node_for_deployment(
     summaries = get_node_gpu_summaries()
 
     if not summaries:
-        print("Warning: No GPU nodes found in cluster")
+        logger.warning("No GPU nodes found in cluster")
         return None
 
     # Filter nodes with enough allocatable GPUs
@@ -318,7 +321,7 @@ def find_best_node_for_deployment(
     ]
 
     if not suitable_nodes:
-        print(f"Warning: No nodes with {required_gpus} allocatable GPU(s)")
+        logger.warning(f"No nodes with {required_gpus} allocatable GPU(s)")
         return None
 
     # Sort by selection criteria
@@ -336,7 +339,7 @@ def find_best_node_for_deployment(
     suitable_nodes.sort(key=node_priority)
     best_node_name, best_summary = suitable_nodes[0]
 
-    print(f"Selected node '{best_node_name}' for deployment:")
+    logger.info(f"Selected node '{best_node_name}' for deployment:")
     print(f"  - Allocatable GPUs: {best_summary.allocatable_gpus}/{best_summary.total_gpus}")
     print(f"  - Idle GPUs: {best_summary.idle_gpu_count}")
     print(f"  - Avg Utilization: {best_summary.avg_utilization:.1f}%")

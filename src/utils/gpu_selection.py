@@ -40,11 +40,11 @@ def validate_memory_balance(
         >>> validate_memory_balance([8000])
         (True, "single GPU")
     """
-    if len(memory_free) <= 1:
+    if not memory_free:
+        return False, "no memory info"
+    if len(memory_free) == 1:
         return True, "single GPU"
         
-    if not memory_free or all(m == 0 for m in memory_free):
-        return False, "no memory info"
         
     min_mem = min(memory_free)
     max_mem = max(memory_free)

@@ -6,8 +6,8 @@ scattered across gpu_discovery.py and gpu_monitor.py, preventing
 import confusion and enabling better code reuse.
 """
 
-from dataclasses import dataclass
-from typing import Optional, List
+from dataclasses import dataclass, field, asdict
+from typing import Optional, List, Dict, Any
 
 
 @dataclass
@@ -24,16 +24,15 @@ class LocalGPUInfo:
     memory_free_mb: int
     memory_used_mb: int
     utilization_gpu: int
-    utilization_memory: int
+    utilization_memory: float
     temperature: Optional[int] = None
     power_draw: Optional[float] = None
     power_limit: Optional[float] = None
     compute_mode: Optional[str] = None
-    processes: List[dict] = None
+    processes: List[dict] = field(default_factory=list)
 
-    def __post_init__(self):
-        if self.processes is None:
-            self.processes = []
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
     @property
     def score(self) -> float:
@@ -70,6 +69,17 @@ class ClusterGPUInfo:
     allocatable: bool = True  # Whether GPU is available for allocation
     pod_name: Optional[str] = None  # Current pod using this GPU (if any)
     namespace: Optional[str] = None
+
+    @property
+    def index(self) -> int:
+        return self.gpu_index
+
+    @property
+    def name(self) -> str:
+        return self.gpu_model
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
     @property
     def score(self) -> float:

@@ -15,8 +15,8 @@ from typing import List, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime
 
-from utils.gpu_monitor import get_gpu_monitor
-from utils.gpu_scheduler import estimate_gpu_requirements
+from .gpu_monitor import get_gpu_monitor
+from .gpu_scheduler import estimate_gpu_requirements
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ class GPUResourcePool:
 
         # Validate memory balance for multi-GPU configurations
         if required_gpus > 1:
-            from utils.gpu_selection import validate_memory_balance
+            from .gpu_selection import validate_memory_balance
 
             memory_amounts = [gpu.memory_free_mb for gpu in selected]
             is_balanced, msg = validate_memory_balance(memory_amounts, min_ratio=0.8)

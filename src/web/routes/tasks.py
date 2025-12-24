@@ -442,7 +442,7 @@ async def get_experiment_logs(
 		Log content as text or streaming response
 	"""
 	# Verify experiment exists
-	from db.models import Experiment
+	from web.db.models import Experiment
 	result = await db.execute(
 		select(Experiment).where(
 			Experiment.task_id == task.id,
