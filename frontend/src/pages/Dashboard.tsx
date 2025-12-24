@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { dashboardApi } from '../services/dashboardApi';
+import type { DistributedWorker } from '../services/dashboardApi';
 import { useTimezone } from '../contexts/TimezoneContext';
 import ExperimentLogViewer from '../components/ExperimentLogViewer';
 import {
@@ -8,6 +9,7 @@ import {
 	ServerIcon,
 	CircleStackIcon,
 	ClockIcon,
+	ServerStackIcon,
 } from '@heroicons/react/24/outline';
 
 function formatBytes(mb: number): string {
@@ -82,6 +84,12 @@ export default function Dashboard() {
 	const { data: workerStatus, isLoading: workerLoading } = useQuery({
 		queryKey: ['workerStatus'],
 		queryFn: dashboardApi.getWorkerStatus,
+		refetchInterval: 5000,
+	});
+
+	const { data: distributedWorkers, isLoading: distributedWorkersLoading } = useQuery({
+		queryKey: ['distributedWorkers'],
+		queryFn: dashboardApi.getDistributedWorkers,
 		refetchInterval: 5000,
 	});
 
@@ -287,51 +295,140 @@ export default function Dashboard() {
 	);
 
 	// Worker Status Card
-	const renderWorkerCard = () => (
-		<div className="bg-white shadow rounded-lg p-6">
-			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-lg font-medium text-gray-900 flex items-center">
-					<ServerIcon className="h-6 w-6 mr-2 text-purple-500" />
-					ARQ Worker
-				</h3>
+	const renderWorkerCard = () => {
+		// Helper to format seconds since heartbeat
+		const formatHeartbeat = (seconds: number) => {
+			if (seconds < 60) return `${Math.round(seconds)}s ago`;
+			if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+			return `${Math.round(seconds / 3600)}h ago`;
+		};
+
+		// Status badge color
+		const getStatusColor = (status: string) => {
+			switch (status) {
+				case 'online': return 'bg-green-100 text-green-800';
+				case 'busy': return 'bg-yellow-100 text-yellow-800';
+				case 'offline': return 'bg-red-100 text-red-800';
+				default: return 'bg-gray-100 text-gray-800';
+			}
+		};
+
+		return (
+			<div className="bg-white shadow rounded-lg p-6">
+				<div className="flex items-center justify-between mb-4">
+					<h3 className="text-lg font-medium text-gray-900 flex items-center">
+						<ServerStackIcon className="h-6 w-6 mr-2 text-purple-500" />
+						Workers
+					</h3>
+					{distributedWorkers && (
+						<div className="flex items-center gap-2">
+							<span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+								{distributedWorkers.online_count} online
+							</span>
+							{distributedWorkers.busy_count > 0 && (
+								<span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+									{distributedWorkers.busy_count} busy
+								</span>
+							)}
+						</div>
+					)}
+				</div>
+
+				{(workerLoading || distributedWorkersLoading) && <p className="text-gray-500">Loading...</p>}
+				{workerStatus?.error && <p className="text-red-500">Error: {workerStatus.error}</p>}
+
+				{/* Local Worker Process Info */}
 				{workerStatus && (
-					<span className={`px-2 py-1 text-xs rounded-full ${workerStatus.worker_running ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-						{workerStatus.worker_running ? 'Running' : 'Stopped'}
-					</span>
+					<div className="mb-4 p-3 bg-gray-50 rounded border">
+						<div className="flex items-center justify-between mb-2">
+							<span className="text-sm font-medium text-gray-700">Local Process</span>
+							<span className={`px-2 py-0.5 text-xs rounded-full ${workerStatus.worker_running ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+								{workerStatus.worker_running ? 'Running' : 'Stopped'}
+							</span>
+						</div>
+						<div className="grid grid-cols-2 gap-2 text-sm">
+							<div className="flex justify-between">
+								<span className="text-gray-500">PID:</span>
+								<span>{workerStatus.worker_pid || 'N/A'}</span>
+							</div>
+							<div className="flex justify-between">
+								<span className="text-gray-500">CPU:</span>
+								<span>{workerStatus.worker_cpu_percent.toFixed(1)}%</span>
+							</div>
+							<div className="flex justify-between">
+								<span className="text-gray-500">Memory:</span>
+								<span>{workerStatus.worker_memory_mb.toFixed(0)} MB</span>
+							</div>
+							<div className="flex justify-between">
+								<span className="text-gray-500">Uptime:</span>
+								<span>{formatUptime(workerStatus.worker_uptime_seconds)}</span>
+							</div>
+						</div>
+						<div className="mt-2 flex justify-between text-sm">
+							<span className="text-gray-500">Redis:</span>
+							<span className={workerStatus.redis_available ? 'text-green-600' : 'text-red-600'}>
+								{workerStatus.redis_available ? 'Connected' : 'Disconnected'}
+							</span>
+						</div>
+					</div>
+				)}
+
+				{/* Distributed Workers */}
+				{distributedWorkers && distributedWorkers.workers.length > 0 && (
+					<div className="space-y-2">
+						<div className="text-sm font-medium text-gray-700 mb-2">
+							Registered Workers ({distributedWorkers.total_count})
+						</div>
+						{distributedWorkers.workers.map((worker: DistributedWorker) => (
+							<div key={worker.worker_id} className="p-3 border rounded bg-white hover:bg-gray-50">
+								<div className="flex items-center justify-between mb-2">
+									<div className="flex items-center gap-2">
+										<ServerIcon className="h-4 w-4 text-gray-400" />
+										<span className="font-medium text-sm truncate max-w-[150px]" title={worker.worker_id}>
+											{worker.hostname}
+										</span>
+									</div>
+									<span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(worker.status)}`}>
+										{worker.status}
+									</span>
+								</div>
+								<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+									<div className="flex items-center gap-1">
+										<CpuChipIcon className="h-3 w-3" />
+										<span>{worker.gpu_count} GPU{worker.gpu_count !== 1 ? 's' : ''}</span>
+									</div>
+									<div>
+										{worker.gpu_model ? (
+											<span className="truncate" title={worker.gpu_model}>
+												{worker.gpu_model.replace('NVIDIA ', '').replace('GeForce ', '')}
+											</span>
+										) : (
+											<span className="text-gray-400">No GPU</span>
+										)}
+									</div>
+									<div>
+										<span className="text-gray-500">Jobs:</span> {worker.current_jobs}/{worker.max_parallel}
+									</div>
+									<div>
+										<span className="text-gray-500">Mode:</span> {worker.deployment_mode}
+									</div>
+									<div className="col-span-2 text-gray-400">
+										<span>Heartbeat: {formatHeartbeat(worker.seconds_since_heartbeat)}</span>
+									</div>
+								</div>
+							</div>
+						))}
+					</div>
+				)}
+
+				{distributedWorkers && distributedWorkers.workers.length === 0 && (
+					<div className="text-sm text-gray-500 text-center py-4">
+						No workers registered yet
+					</div>
 				)}
 			</div>
-
-			{workerLoading && <p className="text-gray-500">Loading...</p>}
-			{workerStatus?.error && <p className="text-red-500">Error: {workerStatus.error}</p>}
-
-			{workerStatus && (
-				<div className="space-y-3">
-					<div className="flex justify-between">
-						<span className="text-gray-600">Process ID:</span>
-						<span className="font-medium">{workerStatus.worker_pid || 'N/A'}</span>
-					</div>
-					<div className="flex justify-between">
-						<span className="text-gray-600">CPU Usage:</span>
-						<span className="font-medium">{workerStatus.worker_cpu_percent.toFixed(1)}%</span>
-					</div>
-					<div className="flex justify-between">
-						<span className="text-gray-600">Memory:</span>
-						<span className="font-medium">{workerStatus.worker_memory_mb.toFixed(1)} MB</span>
-					</div>
-					<div className="flex justify-between">
-						<span className="text-gray-600">Uptime:</span>
-						<span className="font-medium">{formatUptime(workerStatus.worker_uptime_seconds)}</span>
-					</div>
-					<div className="flex justify-between">
-						<span className="text-gray-600">Redis:</span>
-						<span className={`font-medium ${workerStatus.redis_available ? 'text-green-600' : 'text-red-600'}`}>
-							{workerStatus.redis_available ? 'Connected' : 'Disconnected'}
-						</span>
-					</div>
-				</div>
-			)}
-		</div>
-	);
+		);
+	};
 
 	// Database Statistics Card
 	const renderDBStatsCard = () => (
