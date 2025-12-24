@@ -278,12 +278,14 @@ async def run_experiment_with_timeout(
 		raise
 
 
-async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, Any]:
+async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Dict[str, Any] = None) -> Dict[str, Any]:
 	"""Run autotuning task in background.
 
 	Args:
 	    ctx: ARQ context
 	    task_id: Database task ID
+	    task_config: Optional full task configuration for distributed workers.
+	                 If provided, worker can run without database access.
 
 	Returns:
 	    Task summary dict
@@ -291,18 +293,53 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 	# Setup logging for this task
 	logger = setup_task_logging(task_id)
 
-	async with AsyncSessionLocal() as db:
-		# Get task from database
-		result = await db.execute(select(Task).where(Task.id == task_id))
-		task = result.scalar_one_or_none()
+	# Try to connect to database, but continue if task_config is provided
+	db = None
+	task = None
+	try:
+		async with AsyncSessionLocal() as db:
+			result = await db.execute(select(Task).where(Task.id == task_id))
+			task = result.scalar_one_or_none()
+	except Exception as db_err:
+		logger.warning(f"[ARQ Worker] Database not accessible: {db_err}")
+		db = None
 
-		if not task:
-			error_msg = f"Task {task_id} not found"
-			logger.error(error_msg)
-			return {"error": error_msg}
+	# If no task from DB and no task_config provided, fail
+	if not task and not task_config:
+		error_msg = f"Task {task_id} not found and no task_config provided"
+		logger.error(error_msg)
+		return {"error": error_msg}
+
+	# Build task_config from database if not provided
+	if task_config is None and task:
+		task_config = {
+			"task_name": task.task_name,
+			"description": task.description or "",
+			"model": task.model_config,
+			"base_runtime": task.base_runtime,
+			"runtime_image_tag": task.runtime_image_tag,
+			"parameters": task.parameters,
+			"optimization": task.optimization_config,
+			"benchmark": task.benchmark_config,
+			"deployment_mode": task.deployment_mode,
+			"clusterbasemodel_config": task.clusterbasemodel_config,
+			"clusterservingruntime_config": task.clusterservingruntime_config,
+			"slo": task.slo_config,
+		}
+
+	# Now we have task_config, proceed with execution
+	async with AsyncSessionLocal() as db:
+		# Re-fetch task if we have DB access (for status updates)
+		if task is None:
+			try:
+				result = await db.execute(select(Task).where(Task.id == task_id))
+				task = result.scalar_one_or_none()
+			except:
+				pass  # Continue without DB access
 
 		try:
-			logger.info(f"[ARQ Worker] Starting task: {task.task_name}")
+			task_name = task_config.get("task_name", f"task-{task_id}")
+			logger.info(f"[ARQ Worker] Starting task: {task_name}")
 
 			# Get broadcaster instance
 			broadcaster = get_broadcaster()
@@ -311,10 +348,11 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 			publisher = ctx.get("publisher")
 			worker_id = ctx.get("worker_id", "unknown")
 
-			# Update task status
-			task.status = TaskStatus.RUNNING
-			task.started_at = datetime.utcnow()
-			await db.commit()
+			# Update task status if we have DB access
+			if task:
+				task.status = TaskStatus.RUNNING
+				task.started_at = datetime.utcnow()
+				await db.commit()
 
 			# Broadcast task started event
 			broadcaster.broadcast_sync(
@@ -322,28 +360,13 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 				create_event(
 					EventType.TASK_STARTED,
 					task_id=task_id,
-					message=f"Task '{task.task_name}' started"
+					message=f"Task '{task_name}' started"
 				)
 			)
 
-			# Create task configuration dict (similar to JSON task file)
-			task_config = {
-				"task_name": task.task_name,
-				"description": task.description or "",
-				"model": task.model_config,
-				"base_runtime": task.base_runtime,
-				"runtime_image_tag": task.runtime_image_tag,
-				"parameters": task.parameters,
-				"optimization": task.optimization_config,
-				"benchmark": task.benchmark_config,
-				"deployment_mode": task.deployment_mode,
-				"clusterbasemodel_config": task.clusterbasemodel_config,
-				"clusterservingruntime_config": task.clusterservingruntime_config,
-				"slo": task.slo_config,
-			}
-
 			# Check GPU availability before starting task (only for Docker mode)
-			if task.deployment_mode == "docker":
+			deployment_mode = task_config.get("deployment_mode", "docker")
+			if deployment_mode == "docker":
 				logger.info(f"[ARQ Worker] Checking GPU availability for Docker deployment...")
 
 				# Estimate GPU requirements from task configuration
@@ -374,12 +397,16 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						error_msg = f"Insufficient GPUs after waiting: {availability_message}"
 						logger.error(f"[ARQ Worker] {error_msg}")
 
-						# Mark task as failed
-						task.status = TaskStatus.FAILED
-						task.completed_at = datetime.utcnow()
-						elapsed_time = (task.completed_at - task.started_at).total_seconds()
-						task.elapsed_time = elapsed_time
-						await db.commit()
+						# Mark task as failed if we have DB access
+						started_at = task.started_at if task else datetime.utcnow()
+						if task:
+							task.status = TaskStatus.FAILED
+							task.completed_at = datetime.utcnow()
+							elapsed_time = (task.completed_at - started_at).total_seconds()
+							task.elapsed_time = elapsed_time
+							await db.commit()
+						else:
+							elapsed_time = 0
 
 						# Broadcast failure event
 						broadcaster.broadcast_sync(
@@ -401,10 +428,10 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 				else:
 					logger.info(f"[ARQ Worker] ✓ GPU availability confirmed: {availability_message}")
 			else:
-				logger.info(f"[ARQ Worker] Skipping GPU check for {task.deployment_mode} mode")
+				logger.info(f"[ARQ Worker] Skipping GPU check for {deployment_mode} mode")
 
-			# Create optimization strategy
-			optimization_config = task.optimization_config or {}
+			# Create optimization strategy - use task_config
+			optimization_config = task_config.get("optimization") or {}
 			strategy_name = optimization_config.get("strategy", "grid_search")
 			max_iterations = optimization_config.get("max_iterations", 100)
 			timeout_per_iteration = optimization_config.get("timeout_per_iteration", 1800)  # Default 30 minutes
@@ -414,7 +441,8 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 			logger.info(f"[ARQ Worker] Timeout per experiment: {timeout_per_iteration}s")
 
 			# Check for existing checkpoint and resume if available
-			checkpoint = TaskCheckpoint.load_checkpoint(task.task_metadata)
+			task_metadata = task.task_metadata if task else None
+			checkpoint = TaskCheckpoint.load_checkpoint(task_metadata)
 			if checkpoint:
 				logger.info(f"[ARQ Worker] Found checkpoint at iteration {checkpoint['iteration']}")
 				logger.info(f"[ARQ Worker] Resuming from checkpoint...")
@@ -427,10 +455,9 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					logger.error(f"[ARQ Worker] Failed to restore strategy from checkpoint: {e}")
 					logger.info(f"[ARQ Worker] Creating fresh strategy instead")
 					# Merge quant_config with parameters for fresh strategy
-					merged_parameters = merge_parameters_with_quant_config(
-						task.parameters or {},
-						task.quant_config
-					)
+					parameters = task_config.get("parameters") or {}
+					quant_config = task.quant_config if task else None
+					merged_parameters = merge_parameters_with_quant_config(parameters, quant_config)
 					strategy = create_optimization_strategy(optimization_config, merged_parameters)
 
 				# Restore progress from checkpoint
@@ -444,18 +471,15 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 
 				# Merge quant_config and parallel_config with parameters to create full parameter spec
 				# First merge quant_config
-				merged_parameters = merge_parameters_with_quant_config(
-					task.parameters or {},
-					task.quant_config
-				)
+				parameters = task_config.get("parameters") or {}
+				quant_config = task.quant_config if task else None
+				merged_parameters = merge_parameters_with_quant_config(parameters, quant_config)
 				logger.info(f"[ARQ Worker] Merged parameters (base + quant_config): {merged_parameters}")
 
 				# Then merge parallel_config
 				from utils.parallel_integration import merge_parameters_with_parallel_config
-				merged_parameters = merge_parameters_with_parallel_config(
-					merged_parameters,
-					task.parallel_config
-				)
+				parallel_config = task.parallel_config if task else None
+				merged_parameters = merge_parameters_with_parallel_config(merged_parameters, parallel_config)
 				logger.info(f"[ARQ Worker] Merged parameters (base + quant_config + parallel_config): {merged_parameters}")
 
 				# Create fresh strategy with merged parameters
@@ -474,24 +498,24 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 			if strategy_name == "grid_search":
 				# Grid search knows total upfront
 				# Use merged parameters to calculate total
-				merged_parameters = merge_parameters_with_quant_config(
-					task.parameters or {},
-					task.quant_config
-				)
+				parameters = task_config.get("parameters") or {}
+				quant_config = task.quant_config if task else None
+				merged_parameters = merge_parameters_with_quant_config(parameters, quant_config)
 				param_grid = generate_parameter_grid(merged_parameters)
 				total_experiments = min(len(param_grid), max_iterations)
 			else:
 				# Bayesian/random: use max_iterations as upper bound
 				total_experiments = max_iterations
 
-			task.total_experiments = total_experiments
-			await db.commit()
+			if task:
+				task.total_experiments = total_experiments
+				await db.commit()
 
 			logger.info(f"[ARQ Worker] Expected experiments: {total_experiments}")
 
 			# Create orchestrator
 			orchestrator = AutotunerOrchestrator(
-				deployment_mode=task.deployment_mode,
+				deployment_mode=deployment_mode,
 				use_direct_benchmark=True,
 				docker_model_path=settings.docker_model_path,
 				verbose=False,
@@ -765,9 +789,9 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					logger.error(f"[Experiment {iteration}] Timed out after {timeout_per_iteration}s")
 
 					# CRITICAL: Force cleanup of stalled container
-					task_name = task.task_name
-					namespace = task.model_config.get("namespace", "default")
-					service_id = f"{task_name}-exp{iteration}"
+					task_name_for_cleanup = task_config.get("task_name", f"task-{task_id}")
+					namespace = task_config.get("model", {}).get("namespace", "default")
+					service_id = f"{task_name_for_cleanup}-exp{iteration}"
 					logger.info(f"[Cleanup] Forcing cleanup of service '{service_id}' after timeout")
 					try:
 						loop = asyncio.get_event_loop()
@@ -874,63 +898,68 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					except Exception as checkpoint_error:
 						logger.warning(f"[ARQ Worker] Failed to save checkpoint: {checkpoint_error}")
 
-			# Update task total_experiments with actual count
-			task.total_experiments = iteration
+			# Update task total_experiments with actual count (only if we have DB access)
+			if task:
+				task.total_experiments = iteration
 
-			# Update task with final results
-			# Refresh task object to ensure it's properly tracked by the session
-			await db.refresh(task)
+				# Update task with final results
+				# Refresh task object to ensure it's properly tracked by the session
+				await db.refresh(task)
 
-			# Check if any experiments succeeded
-			if task.successful_experiments > 0:
-				task.status = TaskStatus.COMPLETED
-			else:
-				# All experiments failed
-				task.status = TaskStatus.FAILED
-				logger.warning(f"[ARQ Worker] Task {task.task_name} - All {iteration} experiments failed")
+				# Check if any experiments succeeded
+				if task.successful_experiments > 0:
+					task.status = TaskStatus.COMPLETED
+				else:
+					# All experiments failed
+					task.status = TaskStatus.FAILED
+					logger.warning(f"[ARQ Worker] Task {task_name} - All {iteration} experiments failed")
 
-			task.completed_at = datetime.utcnow()
-			task.best_experiment_id = best_experiment_id
+				task.completed_at = datetime.utcnow()
+				task.best_experiment_id = best_experiment_id
 
-			# Clear checkpoint after successful completion
-			task.task_metadata = TaskCheckpoint.clear_checkpoint(task.task_metadata)
+				# Clear checkpoint after successful completion
+				task.task_metadata = TaskCheckpoint.clear_checkpoint(task.task_metadata)
 
-			if task.started_at:
-				elapsed = (task.completed_at - task.started_at).total_seconds()
-				task.elapsed_time = elapsed
-				logger.info(f"[ARQ Worker] Task completed in {elapsed:.2f}s - Best experiment: {best_experiment_id}")
+				if task.started_at:
+					elapsed = (task.completed_at - task.started_at).total_seconds()
+					task.elapsed_time = elapsed
+					logger.info(f"[ARQ Worker] Task completed in {elapsed:.2f}s - Best experiment: {best_experiment_id}")
 
-			await db.commit()
-			await db.refresh(task)  # Ensure changes are reflected
+				await db.commit()
+				await db.refresh(task)  # Ensure changes are reflected
 
-			# Broadcast task completion event
-			broadcaster.broadcast_sync(
-				task_id,
-				create_event(
-					EventType.TASK_COMPLETED if task.status == TaskStatus.COMPLETED else EventType.TASK_FAILED,
-					task_id=task_id,
-					data={
-						"status": task.status.value,
-						"total_experiments": iteration,
-						"successful_experiments": task.successful_experiments,
-						"best_experiment_id": best_experiment_id,
-						"best_score": best_score if best_score != float("inf") else None,
-						"elapsed_time": elapsed if task.started_at else None
-					},
-					message=f"Task completed: {task.successful_experiments}/{iteration} experiments successful"
+				# Broadcast task completion event
+				broadcaster.broadcast_sync(
+					task_id,
+					create_event(
+						EventType.TASK_COMPLETED if task.status == TaskStatus.COMPLETED else EventType.TASK_FAILED,
+						task_id=task_id,
+						data={
+							"status": task.status.value,
+							"total_experiments": iteration,
+							"successful_experiments": task.successful_experiments,
+							"best_experiment_id": best_experiment_id,
+							"best_score": best_score if best_score != float("inf") else None,
+							"elapsed_time": elapsed if task.started_at else None
+						},
+						message=f"Task completed: {task.successful_experiments}/{iteration} experiments successful"
+					)
 				)
-			)
+			else:
+				# No DB access - just log completion
+				logger.info(f"[ARQ Worker] Task completed (no DB access) - {iteration} experiments run")
 
 			logger.info(
-				f"[ARQ Worker] Task finished: {task.task_name} - {task.successful_experiments}/{total_experiments} successful"
+				f"[ARQ Worker] Task finished: {task_name} - {task.successful_experiments if task else 0}/{total_experiments} successful"
 			)
-			return {"task_id": task_id, "task_name": task.task_name, "status": "completed"}
+			return {"task_id": task_id, "task_name": task_name, "status": "completed"}
 
 		except Exception as e:
 			logger.error(f"[ARQ Worker] Task failed: {e}", exc_info=True)
-			task.status = TaskStatus.FAILED
-			task.completed_at = datetime.utcnow()
-			await db.commit()
+			if task:
+				task.status = TaskStatus.FAILED
+				task.completed_at = datetime.utcnow()
+				await db.commit()
 			return {"task_id": task_id, "error": str(e)}
 		finally:
 			# Restore stdout and stderr
@@ -1041,13 +1070,15 @@ class WorkerSettings:
 				memory_total_gb=g["memory_total_gb"]
 			) for g in gpu_details]
 
-		# Determine deployment mode
+		# Determine deployment mode and alias from environment
 		deployment_mode = os.environ.get("DEPLOYMENT_MODE", settings.deployment_mode)
+		worker_alias = os.environ.get("WORKER_ALIAS", None)
 
 		# Create registration
 		registration = WorkerRegister(
 			worker_id=worker_id,
 			hostname=hostname,
+			alias=worker_alias,
 			ip_address=None,  # Could detect local IP if needed
 			gpu_count=gpu_count,
 			gpu_model=gpu_model,
@@ -1067,7 +1098,8 @@ class WorkerSettings:
 			worker_info = await registry.register(registration)
 			ctx["worker_id"] = worker_id
 			ctx["registry"] = registry
-			logging.info(f"✅ Worker registered: {worker_id} ({hostname}, {gpu_count} GPUs)")
+			alias_info = f" alias={worker_alias}" if worker_alias else ""
+			logging.info(f"✅ Worker registered: {worker_id} ({hostname},{alias_info} {gpu_count} GPUs)")
 		except Exception as e:
 			logging.error(f"❌ Failed to register worker: {e}")
 			# Continue anyway - worker can still process jobs

@@ -283,46 +283,54 @@ export default function Dashboard() {
 												const gpuUtilHistory = workerHistory
 													.map(h => h.gpus.find(g => g.index === gpu.index)?.utilization)
 													.filter((v): v is number => v !== null && v !== undefined);
+												const memoryPercent = gpu.memory_used_gb !== null && gpu.memory_total_gb !== null
+													? (gpu.memory_used_gb / gpu.memory_total_gb) * 100
+													: 0;
 
 												return (
-													<div key={gpu.index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-1.5 py-0.5">
-														<span className="text-gray-600">GPU {gpu.index}</span>
-														<div className="flex items-center gap-2">
-															{/* Utilization History Sparkline */}
-															{gpuUtilHistory.length > 1 && (
-																<div className="flex items-end gap-px" style={{ height: '14px' }} title={`Last ${gpuUtilHistory.length} heartbeats`}>
-																	{gpuUtilHistory.map((util, idx) => (
-																		<div
-																			key={idx}
-																			className={`${
-																				util > 80 ? 'bg-red-400' : util > 50 ? 'bg-yellow-400' : 'bg-green-400'
-																			}`}
-																			style={{
-																				width: '3px',
-																				height: `${Math.max(util * 0.14, 1)}px`,
-																				minHeight: '1px'
-																			}}
-																			title={`${util.toFixed(0)}%`}
-																		></div>
-																	))}
-																</div>
-															)}
-															{gpu.utilization_percent !== null && (
-																<span className={`${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
-																	{gpu.utilization_percent.toFixed(0)}%
+													<div key={gpu.index} className="flex items-center gap-2 text-xs">
+														<span className="text-gray-600 w-12 flex-shrink-0">GPU {gpu.index}</span>
+														{/* Utilization History Sparkline */}
+														{gpuUtilHistory.length > 1 && (
+															<div className="flex items-end gap-px flex-shrink-0" style={{ height: '14px' }} title={`Last ${gpuUtilHistory.length} heartbeats`}>
+																{gpuUtilHistory.map((util, idx) => (
+																	<div
+																		key={idx}
+																		className={`${
+																			util > 80 ? 'bg-red-400' : util > 50 ? 'bg-yellow-400' : 'bg-green-400'
+																		}`}
+																		style={{
+																			width: '3px',
+																			height: `${Math.max(util * 0.14, 1)}px`,
+																			minHeight: '1px'
+																		}}
+																		title={`${util.toFixed(0)}%`}
+																	></div>
+																))}
+															</div>
+														)}
+														{gpu.utilization_percent !== null && (
+															<span className={`w-8 text-right flex-shrink-0 ${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
+																{gpu.utilization_percent.toFixed(0)}%
+															</span>
+														)}
+														{/* Memory bar with text overlay */}
+														{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
+															<div className="flex-1 relative h-4 bg-gray-200 rounded overflow-hidden min-w-[80px]">
+																<div
+																	className={`absolute inset-y-0 left-0 ${memoryPercent > 90 ? 'bg-red-300' : memoryPercent > 70 ? 'bg-yellow-300' : 'bg-blue-300'}`}
+																	style={{ width: `${memoryPercent}%` }}
+																></div>
+																<span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-700 font-medium">
+																	{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}G
 																</span>
-															)}
-															{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
-																<span className="text-gray-500">
-																	{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}GB
-																</span>
-															)}
-															{gpu.temperature_c !== null && (
-																<span className={`${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
-																	{gpu.temperature_c}°C
-																</span>
-															)}
-														</div>
+															</div>
+														)}
+														{gpu.temperature_c !== null && (
+															<span className={`w-8 text-right flex-shrink-0 ${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
+																{gpu.temperature_c}°C
+															</span>
+														)}
 													</div>
 												);
 											})}
@@ -712,16 +720,20 @@ export default function Dashboard() {
 			</div>
 
 			{/* Grid layout */}
-			{/* First row: Worker Status, DB Statistics, Running Tasks */}
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+			{/* First row: Worker Status, DB Statistics */}
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 				{renderWorkerCard()}
 				{renderDBStatsCard()}
-				{renderRunningTasksCard()}
 			</div>
 
-			{/* Second row: Timeline (full width) */}
-			<div className="mb-6">
-				{renderTimelineChart()}
+			{/* Second row: Running Tasks (left) + Timeline (right) */}
+			<div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+				<div className="lg:col-span-1">
+					{renderRunningTasksCard()}
+				</div>
+				<div className="lg:col-span-3">
+					{renderTimelineChart()}
+				</div>
 			</div>
 
 			{/* Experiment Log Viewer Modal */}
