@@ -143,7 +143,7 @@ class DockerController(BaseModelController):
 				# Local model exists - use volume mount
 				use_local_model = True
 				model_identifier = "/model"
-				volumes = {str(model_path): {"bind": "/model", "mode": "ro"}}
+				volumes[str(model_path)] = {"bind": "/model", "mode": "ro"}
 				print(f"[Docker] Using local model at {model_path}")
 			else:
 				# Local path doesn't exist - fail early
