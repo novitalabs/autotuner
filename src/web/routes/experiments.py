@@ -2,7 +2,7 @@
 Experiment API endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -10,7 +10,7 @@ from typing import List
 from web.db.session import get_db
 from web.db.models import Experiment
 from web.schemas import ExperimentResponse
-
+from web.routes.deps import get_experiment_or_404
 router = APIRouter()
 
 
@@ -26,14 +26,8 @@ async def list_all_experiments(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{experiment_id}", response_model=ExperimentResponse)
-async def get_experiment(experiment_id: int, db: AsyncSession = Depends(get_db)):
+async def get_experiment(experiment: Experiment = Depends(get_experiment_or_404)):
 	"""Get experiment by ID."""
-	result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
-	experiment = result.scalar_one_or_none()
-
-	if not experiment:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Experiment {experiment_id} not found")
-
 	return experiment
 
 

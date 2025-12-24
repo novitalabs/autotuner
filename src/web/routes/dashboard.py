@@ -5,6 +5,7 @@ Dashboard API endpoints.
 import subprocess
 import psutil
 import os
+import logging
 from pathlib import Path
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends
@@ -17,6 +18,7 @@ from ..db.models import Task, Experiment, TaskStatus, ExperimentStatus
 from ..config import get_settings
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -308,7 +310,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 										"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
 									}
 					except Exception as e:
-						print(f"Error getting local GPU metrics: {e}")
+						logger.error(f"Error getting local GPU metrics: {e}")
 				else:
 					# For remote nodes, try to find a pod with GPU access (has nvidia.com/gpu resource request)
 					try:
@@ -390,7 +392,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 												"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
 											}
 					except Exception as e:
-						print(f"Could not get GPU metrics for remote node {node_name}: {e}")
+						logger.warning(f"Could not get GPU metrics for remote node {node_name}: {e}")
 
 				# Get node labels for GPU type
 				labels = node["metadata"].get("labels", {})

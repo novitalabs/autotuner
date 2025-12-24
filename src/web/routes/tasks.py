@@ -16,6 +16,7 @@ from web.db.session import get_db
 from web.db.models import Task, TaskStatus, Experiment
 from web.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskListResponse
 from web.services import TaskService
+from web.routes.deps import get_task_or_404
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,14 +69,8 @@ async def list_tasks(skip: int = 0, limit: int = 100, status_filter: str = None,
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def get_task(task: Task = Depends(get_task_or_404)):
 	"""Get task by ID."""
-	# Use TaskService for business logic
-	task = await TaskService.get_task_by_id(db, task_id)
-
-	if not task:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
-
 	return task
 
 
@@ -92,14 +87,8 @@ async def get_task_by_name(task_name: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
-async def update_task(task_id: int, task_update: TaskUpdate, db: AsyncSession = Depends(get_db)):
+async def update_task(task_update: TaskUpdate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
 	"""Update task."""
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-
-	if not task:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
-
 	# Update fields
 	if task_update.description is not None:
 		task.description = task_update.description
@@ -113,14 +102,8 @@ async def update_task(task_id: int, task_update: TaskUpdate, db: AsyncSession = 
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
-async def replace_task(task_id: int, task_data: TaskCreate, db: AsyncSession = Depends(get_db)):
+async def replace_task(task_data: TaskCreate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
 	"""Replace task configuration (for editing)."""
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-
-	if not task:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
-
 	# Check if new task name conflicts with another task (not this one)
 	if task_data.task_name != task.task_name:
 		result = await db.execute(select(Task).where(Task.task_name == task_data.task_name))
@@ -169,14 +152,8 @@ async def replace_task(task_id: int, task_data: TaskCreate, db: AsyncSession = D
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_task(task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
 	"""Delete task from database (does not clean up log files - use /clear endpoint instead)."""
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-
-	if not task:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
-
 	# Don't allow deletion of running tasks
 	if task.status == TaskStatus.RUNNING:
 		raise HTTPException(
@@ -187,7 +164,7 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	await db.delete(task)
 	await db.commit()
 
-	logger.info("Deleted task %d from database", task_id)
+	logger.info("Deleted task %d from database", task.id)
 
 
 @router.post("/{task_id}/start", response_model=TaskResponse)
@@ -288,7 +265,7 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{task_id}/clear", response_model=TaskResponse)
-async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def clear_task(task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
 	"""Clear task experiments and logs without deleting the task configuration.
 
 	This endpoint:
@@ -297,12 +274,6 @@ async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	- Resets task status and counters
 	- Keeps the task configuration for future runs
 	"""
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-
-	if not task:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found")
-
 	# Don't allow clearing running tasks
 	if task.status == TaskStatus.RUNNING:
 		raise HTTPException(
@@ -311,9 +282,9 @@ async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
 		)
 
 	# Delete all experiments for this task
-	delete_result = await db.execute(delete(Experiment).where(Experiment.task_id == task_id))
+	delete_result = await db.execute(delete(Experiment).where(Experiment.task_id == task.id))
 	experiments_deleted = delete_result.rowcount
-	logger.info("Deleted %d experiments for task %d", experiments_deleted, task_id)
+	logger.info("Deleted %d experiments for task %d", experiments_deleted, task.id)
 
 	# Reset task fields
 	task.completed_at = None
@@ -329,15 +300,15 @@ async def clear_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	await db.refresh(task)
 
 	# Clear log file (delete it entirely)
-	log_file = get_task_log_file(task_id)
+	log_file = get_task_log_file(task.id)
 	if log_file.exists():
 		try:
 			log_file.unlink()
-			logger.info("Deleted log file for task %d: %s", task_id, log_file)
+			logger.info("Deleted log file for task %d: %s", task.id, log_file)
 		except Exception as e:
 			logger.warning("Failed to delete log file %s: %s", log_file, e)
 
-	logger.info("Cleared task %d: deleted %d experiments and reset task state", task_id, experiments_deleted)
+	logger.info("Cleared task %d: deleted %d experiments and reset task state", task.id, experiments_deleted)
 	return task
 
 
@@ -406,31 +377,20 @@ async def stream_log_file(log_file: Path, follow: bool = False):
 
 @router.get("/{task_id}/logs")
 async def get_task_logs(
-	task_id: int,
-	follow: bool = False,
-	db: AsyncSession = Depends(get_db)
+	task: Task = Depends(get_task_or_404),
+	follow: bool = False
 ):
 	"""
 	Get task execution logs.
-	
+
 	Args:
 		task_id: Task ID
 		follow: If True, streams logs in real-time (Server-Sent Events)
-	
+
 	Returns:
 		Log content as text or streaming response
 	"""
-	# Verify task exists
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-	
-	if not task:
-		raise HTTPException(
-			status_code=status.HTTP_404_NOT_FOUND,
-			detail=f"Task {task_id} not found"
-		)
-	
-	log_file = get_task_log_file(task_id)
+	log_file = get_task_log_file(task.id)
 	
 	# If follow mode, return streaming response (Server-Sent Events)
 	if follow:
@@ -455,19 +415,9 @@ async def get_task_logs(
 
 
 @router.delete("/{task_id}/logs", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_task_logs(task_id: int, db: AsyncSession = Depends(get_db)):
+async def clear_task_logs(task: Task = Depends(get_task_or_404)):
 	"""Clear task logs (empty the file content, but keep the file)."""
-	# Verify task exists
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-
-	if not task:
-		raise HTTPException(
-			status_code=status.HTTP_404_NOT_FOUND,
-			detail=f"Task {task_id} not found"
-		)
-
-	log_file = get_task_log_file(task_id)
+	log_file = get_task_log_file(task.id)
 	if log_file.exists():
 		# Clear file content by opening in write mode with truncation
 		with open(log_file, 'w') as f:
@@ -475,49 +425,39 @@ async def clear_task_logs(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{task_id}/experiments/{experiment_id}/logs")
 async def get_experiment_logs(
-	task_id: int,
 	experiment_id: int,
 	follow: bool = False,
+	task: Task = Depends(get_task_or_404),
 	db: AsyncSession = Depends(get_db)
 ):
 	"""
 	Get experiment-specific execution logs.
-	
+
 	Args:
 		task_id: Task ID
 		experiment_id: Experiment ID
 		follow: If True, streams logs in real-time (Server-Sent Events)
-	
+
 	Returns:
 		Log content as text or streaming response
 	"""
-	# Verify task exists
-	result = await db.execute(select(Task).where(Task.id == task_id))
-	task = result.scalar_one_or_none()
-	
-	if not task:
-		raise HTTPException(
-			status_code=status.HTTP_404_NOT_FOUND,
-			detail=f"Task {task_id} not found"
-		)
-	
 	# Verify experiment exists
 	from db.models import Experiment
 	result = await db.execute(
 		select(Experiment).where(
-			Experiment.task_id == task_id,
+			Experiment.task_id == task.id,
 			Experiment.experiment_id == experiment_id
 		).order_by(Experiment.created_at.desc())
 	)
 	experiment = result.scalars().first()
-	
+
 	if not experiment:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
-			detail=f"Experiment {experiment_id} not found for task {task_id}"
+			detail=f"Experiment {experiment_id} not found for task {task.id}"
 		)
-	
-	log_file = get_experiment_log_file(task_id, experiment_id)
+
+	log_file = get_experiment_log_file(task.id, experiment_id)
 	
 	# If follow mode, return streaming response (Server-Sent Events)
 	if follow:
