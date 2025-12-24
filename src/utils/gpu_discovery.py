@@ -9,21 +9,7 @@ import json
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
-
-@dataclass
-class GPUInfo:
-    """GPU information for a single GPU on a node."""
-    node_name: str
-    gpu_index: int
-    gpu_name: str
-    memory_total_mb: int
-    memory_used_mb: int
-    memory_free_mb: int
-    memory_usage_percent: float
-    utilization_percent: int
-    temperature_c: int
-    is_allocatable: bool
-    has_metrics: bool
+from .gpu_types import ClusterGPUInfo
 
 
 @dataclass
@@ -32,13 +18,13 @@ class NodeGPUSummary:
     node_name: str
     total_gpus: int
     allocatable_gpus: int
-    gpus_with_metrics: List[GPUInfo]
+    gpus_with_metrics: List[ClusterGPUInfo]
     avg_utilization: float
     avg_memory_usage: float
     idle_gpu_count: int  # GPUs with low utilization
 
 
-def get_cluster_gpu_status() -> List[GPUInfo]:
+def get_cluster_gpu_status() -> List[ClusterGPUInfo]:
     """
     Query cluster-wide GPU status using kubectl and nvidia-smi.
 
@@ -210,33 +196,29 @@ def get_cluster_gpu_status() -> List[GPUInfo]:
 
                 if has_metrics:
                     metrics = gpu_metrics[i]
-                    gpu_info = GPUInfo(
+                    gpu_info = ClusterGPUInfo(
                         node_name=node_name,
                         gpu_index=i,
-                        gpu_name=metrics["name"],
+                        gpu_model=metrics["name"],
                         memory_total_mb=metrics["memory_total_mb"],
                         memory_used_mb=metrics["memory_used_mb"],
                         memory_free_mb=metrics["memory_free_mb"],
-                        memory_usage_percent=metrics["memory_usage_percent"],
-                        utilization_percent=metrics["utilization_percent"],
-                        temperature_c=metrics["temperature_c"],
-                        is_allocatable=is_allocatable,
-                        has_metrics=True
+                        utilization_gpu=metrics["utilization_percent"],
+                        has_metrics=True,
+                        allocatable=is_allocatable
                     )
                 else:
                     # GPU without metrics - create placeholder
-                    gpu_info = GPUInfo(
+                    gpu_info = ClusterGPUInfo(
                         node_name=node_name,
                         gpu_index=i,
-                        gpu_name=gpu_type,
+                        gpu_model=gpu_type,
                         memory_total_mb=0,
                         memory_used_mb=0,
                         memory_free_mb=0,
-                        memory_usage_percent=0.0,
-                        utilization_percent=0,
-                        temperature_c=0,
-                        is_allocatable=is_allocatable,
-                        has_metrics=False
+                        utilization_gpu=0,
+                        has_metrics=False,
+                        allocatable=is_allocatable
                     )
 
                 all_gpus.append(gpu_info)
@@ -268,14 +250,18 @@ def get_node_gpu_summaries() -> Dict[str, NodeGPUSummary]:
     # Create summaries
     for node_name, gpus in nodes.items():
         gpus_with_metrics = [g for g in gpus if g.has_metrics]
-        allocatable_gpus = sum(1 for g in gpus if g.is_allocatable)
+        allocatable_gpus = sum(1 for g in gpus if g.allocatable)
 
         if gpus_with_metrics:
-            avg_utilization = sum(g.utilization_percent for g in gpus_with_metrics) / len(gpus_with_metrics)
-            avg_memory_usage = sum(g.memory_usage_percent for g in gpus_with_metrics) / len(gpus_with_metrics)
+            avg_utilization = sum(g.utilization_gpu for g in gpus_with_metrics) / len(gpus_with_metrics)
+            # Calculate memory usage percentage
+            avg_memory_usage = sum(
+                (g.memory_used_mb / g.memory_total_mb * 100) if g.memory_total_mb > 0 else 0
+                for g in gpus_with_metrics
+            ) / len(gpus_with_metrics)
             # Define "idle" as allocatable (not reserved by K8s) AND < 30% utilization AND < 50% memory
             idle_count = sum(1 for g in gpus_with_metrics
-                           if g.is_allocatable and g.utilization_percent < 30 and g.memory_usage_percent < 50)
+                           if g.allocatable and g.utilization_gpu < 30 and (g.memory_used_mb / g.memory_total_mb * 100 if g.memory_total_mb > 0 else 0) < 50)
         else:
             # No metrics available - assume GPUs are idle if allocatable
             # This happens when no GPU pods are running on the node

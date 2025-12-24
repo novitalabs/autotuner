@@ -12,60 +12,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
+from .gpu_types import LocalGPUInfo
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class GPUInfo:
-    """Comprehensive GPU information."""
-    index: int
-    name: str
-    uuid: str
-    memory_total_mb: int
-    memory_used_mb: int
-    memory_free_mb: int
-    memory_usage_percent: float
-    utilization_percent: int
-    temperature_c: int
-    power_draw_w: float
-    power_limit_w: float
-    compute_mode: str
-    processes: List[Dict[str, Any]]
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return asdict(self)
-
-    @property
-    def is_available(self) -> bool:
-        """Check if GPU is available for new workload."""
-        # Consider available if utilization < 50% and memory usage < 80%
-        return (self.utilization_percent < 50 and
-                self.memory_usage_percent < 80)
-
-    @property
-    def available_memory_mb(self) -> int:
-        """Get available memory in MB."""
-        return self.memory_free_mb
-
-    @property
-    def score(self) -> float:
-        """
-        Calculate availability score for GPU allocation.
-        Higher score = better for allocation.
-        Range: 0.0 (fully used) to 1.0 (completely free)
-        """
-        memory_score = self.memory_free_mb / self.memory_total_mb
-        util_score = (100 - self.utilization_percent) / 100
-        # Weighted average: memory (60%), utilization (40%)
-        return 0.6 * memory_score + 0.4 * util_score
 
 
 @dataclass
 class GPUSnapshot:
     """Snapshot of all GPUs at a point in time."""
     timestamp: datetime
-    gpus: List[GPUInfo]
+    gpus: List[LocalGPUInfo]
     total_gpus: int
     available_gpus: int
 
@@ -170,18 +126,18 @@ class GPUMonitor:
                     memory_total = int(parts[3])
                     memory_used = int(parts[4])
 
-                    gpu_info = GPUInfo(
+                    gpu_info = LocalGPUInfo(
                         index=index,
-                        name=parts[1],
                         uuid=parts[2],
+                        name=parts[1],
                         memory_total_mb=memory_total,
-                        memory_used_mb=memory_used,
                         memory_free_mb=int(parts[5]),
-                        memory_usage_percent=round(memory_used / memory_total * 100, 1) if memory_total > 0 else 0,
-                        utilization_percent=int(parts[6]) if parts[6] != "N/A" else 0,
-                        temperature_c=int(parts[7]) if parts[7] != "N/A" else 0,
-                        power_draw_w=float(parts[8]) if parts[8] != "N/A" else 0.0,
-                        power_limit_w=float(parts[9]) if parts[9] != "N/A" else 0.0,
+                        memory_used_mb=memory_used,
+                        utilization_gpu=int(parts[6]) if parts[6] != "N/A" else 0,
+                        utilization_memory=round(memory_used / memory_total * 100, 1) if memory_total > 0 else 0,
+                        temperature=int(parts[7]) if parts[7] != "N/A" else 0,
+                        power_draw=float(parts[8]) if parts[8] != "N/A" else 0.0,
+                        power_limit=float(parts[9]) if parts[9] != "N/A" else 0.0,
                         compute_mode=parts[10],
                         processes=processes
                     )
@@ -191,7 +147,7 @@ class GPUMonitor:
                 timestamp=datetime.now(),
                 gpus=gpus,
                 total_gpus=len(gpus),
-                available_gpus=sum(1 for gpu in gpus if gpu.is_available)
+                available_gpus=sum(1 for gpu in gpus if gpu.utilization_gpu < 50 and gpu.utilization_memory < 80)
             )
 
             # Update cache
@@ -259,11 +215,11 @@ class GPUMonitor:
         available = []
         for gpu in snapshot.gpus:
             # Check utilization
-            if gpu.utilization_percent > max_utilization:
+            if gpu.utilization_gpu > max_utilization:
                 continue
 
             # Check memory if specified
-            if min_memory_mb and gpu.available_memory_mb < min_memory_mb:
+            if min_memory_mb and gpu.memory_free_mb < min_memory_mb:
                 continue
 
             available.append(gpu)
@@ -299,42 +255,31 @@ class GPUMonitor:
         allocated = available[:count]
 
         # Validate memory balance for multi-GPU configurations (TP > 1)
-        # SGLang and other runtimes require balanced memory across all GPUs
         if count > 1 and min_memory_mb:
+            from .gpu_selection import validate_memory_balance
+
             # Get detailed info for allocated GPUs
             snapshot = self.query_gpus(use_cache=False)
             if snapshot:
                 allocated_gpu_info = [gpu for gpu in snapshot.gpus if gpu.index in allocated]
                 if allocated_gpu_info:
                     memory_amounts = [gpu.memory_free_mb for gpu in allocated_gpu_info]
-                    min_memory = min(memory_amounts)
-                    max_memory = max(memory_amounts)
+                    is_balanced, msg = validate_memory_balance(memory_amounts, min_ratio=0.8)
 
-                    # Check if memory imbalance is too large
-                    # SGLang formula: min(gpu_memory) * 0.9 >= min_required_memory
-                    # We use an 80% threshold: min_memory should be at least 80% of max_memory
-                    if min_memory < max_memory * 0.8:
+                    if not is_balanced:
                         logger.error(
-                            f"GPU memory imbalance detected: "
-                            f"min={min_memory}MB, max={max_memory}MB "
-                            f"(min is only {min_memory/max_memory*100:.1f}% of max)"
-                        )
-                        logger.warning(
-                            f"Rejecting allocation due to memory imbalance. "
-                            f"For multi-GPU (TP > 1) configurations, all GPUs must have similar available memory."
+                            f"GPU memory imbalance detected: {msg}. "
+                            f"Rejecting allocation due to memory imbalance."
                         )
                         return ([], False)
 
-                    logger.info(
-                        f"GPU memory balance validated: min={min_memory}MB, max={max_memory}MB "
-                        f"(variance: {(max_memory-min_memory)/max_memory*100:.1f}%)"
-                    )
+                    logger.info(f"GPU memory balance validated: {msg}")
 
         logger.info(f"Allocated GPUs: {allocated}")
 
         return (allocated, True)
 
-    def get_gpu_info(self, gpu_index: int) -> Optional[GPUInfo]:
+    def get_gpu_info(self, gpu_index: int) -> Optional[LocalGPUInfo]:
         """Get information for specific GPU."""
         snapshot = self.query_gpus()
         if not snapshot:
@@ -373,7 +318,7 @@ class GPUMonitor:
                     timestamp=snapshot.timestamp,
                     gpus=filtered_gpus,
                     total_gpus=len(filtered_gpus),
-                    available_gpus=sum(1 for gpu in filtered_gpus if gpu.is_available)
+                    available_gpus=sum(1 for gpu in filtered_gpus if gpu.utilization_gpu < 50 and gpu.utilization_memory < 80)
                 )
                 snapshots.append(filtered_snapshot)
 
@@ -409,11 +354,11 @@ class GPUMonitor:
                         "power_draw": []
                     }
 
-                gpu_stats[gpu.index]["utilization"].append(gpu.utilization_percent)
+                gpu_stats[gpu.index]["utilization"].append(gpu.utilization_gpu)
                 gpu_stats[gpu.index]["memory_used"].append(gpu.memory_used_mb)
-                gpu_stats[gpu.index]["memory_usage_percent"].append(gpu.memory_usage_percent)
-                gpu_stats[gpu.index]["temperature"].append(gpu.temperature_c)
-                gpu_stats[gpu.index]["power_draw"].append(gpu.power_draw_w)
+                gpu_stats[gpu.index]["memory_usage_percent"].append(gpu.utilization_memory)
+                gpu_stats[gpu.index]["temperature"].append(gpu.temperature if gpu.temperature else 0)
+                gpu_stats[gpu.index]["power_draw"].append(gpu.power_draw if gpu.power_draw else 0.0)
 
         # Calculate statistics
         summary = {}
