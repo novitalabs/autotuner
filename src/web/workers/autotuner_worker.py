@@ -1117,7 +1117,7 @@ class WorkerSettings:
 	@staticmethod
 	async def _heartbeat_loop(ctx: Dict[str, Any]) -> None:
 		"""Background task to send periodic heartbeats."""
-		from src.web.schemas.worker import WorkerHeartbeat
+		from src.web.schemas.worker import WorkerHeartbeat, GPUInfo
 		from src.web.workers.registry import HEARTBEAT_INTERVAL
 
 		worker_id = ctx.get("worker_id")
@@ -1135,16 +1135,67 @@ class WorkerSettings:
 				current_jobs = ctx.get("current_jobs", 0)
 				current_job_ids = ctx.get("current_job_ids", [])
 
+				# Collect GPU metrics
+				gpu_metrics = WorkerSettings._get_gpu_metrics()
+
 				heartbeat = WorkerHeartbeat(
 					worker_id=worker_id,
 					current_jobs=current_jobs,
 					current_job_ids=current_job_ids,
+					gpus=gpu_metrics,
 				)
 
 				await registry.heartbeat(heartbeat)
-				logging.debug(f"💓 Heartbeat sent: {worker_id} (jobs: {current_jobs})")
+				logging.debug(f"💓 Heartbeat sent: {worker_id} (jobs: {current_jobs}, gpus: {len(gpu_metrics) if gpu_metrics else 0})")
 
 			except asyncio.CancelledError:
 				break
 			except Exception as e:
 				logging.warning(f"Heartbeat failed: {e}")
+
+	@staticmethod
+	def _get_gpu_metrics() -> Optional[List["GPUInfo"]]:
+		"""Get current GPU metrics using nvidia-smi.
+
+		Returns:
+			List of GPUInfo objects or None if unavailable
+		"""
+		from src.web.schemas.worker import GPUInfo
+		try:
+			result = subprocess.run(
+				[
+					"nvidia-smi",
+					"--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
+					"--format=csv,noheader,nounits"
+				],
+				capture_output=True,
+				text=True,
+				timeout=10
+			)
+			if result.returncode != 0:
+				return None
+
+			gpus = []
+			for line in result.stdout.strip().split("\n"):
+				if not line.strip():
+					continue
+				parts = [p.strip() for p in line.split(",")]
+				if len(parts) >= 7:
+					try:
+						gpus.append(GPUInfo(
+							index=int(parts[0]),
+							name=parts[1],
+							memory_total_gb=round(float(parts[2]) / 1024, 2),
+							memory_used_gb=round(float(parts[3]) / 1024, 2),
+							memory_free_gb=round(float(parts[4]) / 1024, 2),
+							utilization_percent=float(parts[5]) if parts[5] != "[N/A]" else None,
+							temperature_c=int(parts[6]) if parts[6] != "[N/A]" else None,
+						))
+					except (ValueError, IndexError):
+						continue
+
+			return gpus if gpus else None
+
+		except Exception as e:
+			logging.debug(f"Failed to get GPU metrics: {e}")
+			return None

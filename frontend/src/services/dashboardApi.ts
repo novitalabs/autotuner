@@ -34,13 +34,25 @@ export interface ClusterGPUStatus {
 	timestamp: string;
 }
 
+export interface WorkerGPUInfo {
+	index: number;
+	name: string;
+	memory_total_gb: number;
+	memory_free_gb: number | null;
+	memory_used_gb: number | null;
+	utilization_percent: number | null;
+	temperature_c: number | null;
+}
+
 export interface DistributedWorker {
 	worker_id: string;
 	hostname: string;
+	alias: string | null;
 	ip_address: string | null;
 	gpu_count: number;
 	gpu_model: string | null;
 	gpu_memory_gb: number | null;
+	gpus: WorkerGPUInfo[] | null;
 	deployment_mode: string;
 	max_parallel: number;
 	current_jobs: number;
@@ -76,6 +88,14 @@ export const dashboardApi = {
 
 	async getDistributedWorkers(): Promise<DistributedWorkersStatus> {
 		const response = await axios.get<DistributedWorkersStatus>(`${API_BASE_URL}/workers`);
+		return response.data;
+	},
+
+	async renameWorker(workerId: string, alias: string | null): Promise<DistributedWorker> {
+		const response = await axios.patch<DistributedWorker>(
+			`${API_BASE_URL}/workers/${encodeURIComponent(workerId)}/alias`,
+			{ alias }
+		);
 		return response.data;
 	},
 

@@ -164,6 +164,10 @@ class WorkerRegistry:
 		worker_info.current_jobs = heartbeat.current_jobs
 		worker_info.current_job_ids = heartbeat.current_job_ids
 
+		# Update GPU status if provided
+		if heartbeat.gpus:
+			worker_info.gpus = heartbeat.gpus
+
 		# Update status based on jobs
 		if heartbeat.status:
 			worker_info.status = heartbeat.status
@@ -302,6 +306,37 @@ class WorkerRegistry:
 		)
 		return True
 
+	async def set_worker_alias(self, worker_id: str, alias: Optional[str]) -> Optional[WorkerInfo]:
+		"""Set or clear worker alias.
+
+		Args:
+			worker_id: Worker identifier
+			alias: New alias or None to clear
+
+		Returns:
+			Updated WorkerInfo or None if worker not found
+		"""
+		worker = await self.get_worker(worker_id)
+		if not worker:
+			return None
+
+		worker.alias = alias.strip() if alias else None
+
+		worker_key = self._worker_key(worker_id)
+		# Get current TTL to preserve it
+		ttl = await self.redis.ttl(worker_key)
+		if ttl < 0:
+			ttl = HEARTBEAT_TTL
+
+		await self.redis.setex(
+			worker_key,
+			ttl,
+			worker.model_dump_json(),
+		)
+
+		logger.info(f"Worker alias updated: {worker_id} -> {alias}")
+		return worker
+
 
 def worker_info_to_response(worker: WorkerInfo) -> WorkerResponse:
 	"""Convert WorkerInfo to WorkerResponse with computed fields."""
@@ -311,10 +346,12 @@ def worker_info_to_response(worker: WorkerInfo) -> WorkerResponse:
 	return WorkerResponse(
 		worker_id=worker.worker_id,
 		hostname=worker.hostname,
+		alias=worker.alias,
 		ip_address=worker.ip_address,
 		gpu_count=worker.gpu_count,
 		gpu_model=worker.gpu_model,
 		gpu_memory_gb=worker.gpu_memory_gb,
+		gpus=worker.gpus,
 		deployment_mode=worker.deployment_mode,
 		max_parallel=worker.max_parallel,
 		current_jobs=worker.current_jobs,

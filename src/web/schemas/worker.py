@@ -23,6 +23,9 @@ class GPUInfo(BaseModel):
 	name: str = Field(..., description="GPU model name (e.g., 'NVIDIA RTX 4090')")
 	memory_total_gb: float = Field(..., description="Total GPU memory in GB")
 	memory_free_gb: Optional[float] = Field(None, description="Free GPU memory in GB")
+	memory_used_gb: Optional[float] = Field(None, description="Used GPU memory in GB")
+	utilization_percent: Optional[float] = Field(None, description="GPU utilization percentage")
+	temperature_c: Optional[int] = Field(None, description="GPU temperature in Celsius")
 
 
 class WorkerCapabilities(BaseModel):
@@ -54,6 +57,7 @@ class WorkerInfo(BaseModel):
 
 	worker_id: str
 	hostname: str
+	alias: Optional[str] = Field(None, description="User-defined worker nickname")
 	ip_address: Optional[str] = None
 	gpu_count: int = 0
 	gpu_model: Optional[str] = None
@@ -75,7 +79,7 @@ class WorkerHeartbeat(BaseModel):
 	worker_id: str
 	current_jobs: int = 0
 	current_job_ids: List[int] = Field(default_factory=list)
-	gpu_memory_free_gb: Optional[float] = Field(None, description="Current free GPU memory")
+	gpus: Optional[List[GPUInfo]] = Field(None, description="Current GPU status with metrics")
 	status: Optional[WorkerStatus] = None
 
 
@@ -84,10 +88,12 @@ class WorkerResponse(BaseModel):
 
 	worker_id: str
 	hostname: str
+	alias: Optional[str] = None
 	ip_address: Optional[str] = None
 	gpu_count: int = 0
 	gpu_model: Optional[str] = None
 	gpu_memory_gb: Optional[float] = None
+	gpus: Optional[List[GPUInfo]] = None
 	deployment_mode: str
 	max_parallel: int
 	current_jobs: int
@@ -95,6 +101,12 @@ class WorkerResponse(BaseModel):
 	registered_at: datetime
 	last_heartbeat: datetime
 	seconds_since_heartbeat: float = Field(..., description="Seconds since last heartbeat")
+
+
+class WorkerRenameRequest(BaseModel):
+	"""Schema for renaming a worker."""
+
+	alias: Optional[str] = Field(None, description="New alias for the worker (null to clear)")
 
 
 class WorkerListResponse(BaseModel):
