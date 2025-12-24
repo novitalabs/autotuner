@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
-from typing import List
+from typing import List, Optional
 import asyncio
 from pathlib import Path
 import os
@@ -61,7 +61,7 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/", response_model=List[TaskListResponse])
-async def list_tasks(skip: int = 0, limit: int = 100, status_filter: str = None, db: AsyncSession = Depends(get_db)):
+async def list_tasks(skip: int = 0, limit: int = 100, status_filter: Optional[str] = None, db: AsyncSession = Depends(get_db)):
 	"""List all autotuning tasks."""
 	# Use TaskService for business logic
 	tasks = await TaskService.list_tasks(db, status=status_filter, skip=skip, limit=limit)

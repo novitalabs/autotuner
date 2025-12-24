@@ -41,7 +41,11 @@ class ExperimentService:
 			query = query.where(Experiment.task_id == task_id)
 
 		if status:
-			query = query.where(Experiment.status == status.upper())
+			try:
+				status_enum = ExperimentStatus[status.upper()]
+				query = query.where(Experiment.status == status_enum)
+			except KeyError:
+				raise ValueError(f"Invalid status: {status}")
 
 		query = query.offset(skip).limit(limit)
 		result = await db.execute(query)

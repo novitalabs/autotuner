@@ -36,7 +36,11 @@ class TaskService:
 		query = select(Task).order_by(Task.created_at.desc())
 
 		if status:
-			query = query.where(Task.status == status.upper())
+			try:
+				status_enum = TaskStatus[status.upper()]
+				query = query.where(Task.status == status_enum)
+			except KeyError:
+				raise ValueError(f"Invalid status: {status}")
 
 		query = query.offset(skip).limit(limit)
 		result = await db.execute(query)

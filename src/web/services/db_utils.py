@@ -7,6 +7,7 @@ in service layer code, particularly for create/commit/refresh operations.
 
 from typing import TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 
 T = TypeVar("T")
 
@@ -27,7 +28,11 @@ async def create_and_refresh(db: AsyncSession, obj: T) -> T:
         task = await create_and_refresh(db, task)
     """
     db.add(obj)
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
     await db.refresh(obj)
     return obj
 
@@ -49,7 +54,11 @@ async def commit_and_refresh(db: AsyncSession, obj: T) -> T:
         task.status = TaskStatus.COMPLETED
         task = await commit_and_refresh(db, task)
     """
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
     await db.refresh(obj)
     return obj
 
@@ -72,5 +81,9 @@ async def create_many_and_commit(db: AsyncSession, *objs: T) -> list[T]:
     """
     for obj in objs:
         db.add(obj)
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
     return list(objs)

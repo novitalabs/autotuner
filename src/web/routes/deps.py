@@ -5,7 +5,7 @@ This module provides reusable dependencies that eliminate repeated patterns
 in route handlers, particularly get-by-id-or-404 operations.
 """
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -40,7 +40,7 @@ async def get_task_or_404(
 
     if not task:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found"
         )
 
@@ -76,7 +76,7 @@ async def get_experiment_or_404(
 
     if not experiment:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Experiment {experiment_id} not found"
         )
 
