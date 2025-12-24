@@ -126,3 +126,21 @@ async def rename_worker(worker_id: str, request: WorkerRenameRequest):
 		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
 
 	return worker_info_to_response(worker)
+
+
+@router.get("/{worker_id}/gpu-history")
+async def get_worker_gpu_history(worker_id: str):
+	"""Get GPU metrics history for a worker.
+
+	Returns historical GPU utilization, memory, and temperature data
+	for building charts (last 20 heartbeats, ~10 minutes at 30s interval).
+	"""
+	registry = await get_worker_registry()
+	worker = await registry.get_worker(worker_id)
+
+	if not worker:
+		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	history = await registry.get_gpu_history(worker_id)
+	# Reverse to get oldest first (for chart display)
+	return {"worker_id": worker_id, "history": list(reversed(history))}

@@ -28,10 +28,12 @@ settings = get_settings()
 WORKER_KEY_PREFIX = "worker:"
 WORKERS_SET_KEY = "workers:active"
 WORKER_JOBS_PREFIX = "worker:jobs:"
+WORKER_HISTORY_PREFIX = "worker:history:"
 
 # Heartbeat configuration
 HEARTBEAT_INTERVAL = 30  # seconds
 HEARTBEAT_TTL = 90  # seconds (3 missed heartbeats = offline)
+MAX_HISTORY_LENGTH = 20  # Keep last 20 heartbeats (~10 minutes at 30s interval)
 
 
 class WorkerRegistry:
@@ -63,6 +65,10 @@ class WorkerRegistry:
 	def _worker_jobs_key(self, worker_id: str) -> str:
 		"""Get Redis key for worker's current jobs."""
 		return f"{WORKER_JOBS_PREFIX}{worker_id}"
+
+	def _worker_history_key(self, worker_id: str) -> str:
+		"""Get Redis key for worker's heartbeat history."""
+		return f"{WORKER_HISTORY_PREFIX}{worker_id}"
 
 	async def register(self, registration: WorkerRegister) -> WorkerInfo:
 		"""Register a new worker or update existing registration.
@@ -167,6 +173,8 @@ class WorkerRegistry:
 		# Update GPU status if provided
 		if heartbeat.gpus:
 			worker_info.gpus = heartbeat.gpus
+			# Store GPU metrics history
+			await self._store_gpu_history(heartbeat.worker_id, heartbeat.gpus)
 
 		# Update status based on jobs
 		if heartbeat.status:
@@ -184,6 +192,49 @@ class WorkerRegistry:
 		)
 
 		return worker_info
+
+	async def _store_gpu_history(self, worker_id: str, gpus: list) -> None:
+		"""Store GPU metrics in history list.
+
+		Args:
+			worker_id: Worker identifier
+			gpus: List of GPUInfo objects with current metrics
+		"""
+		history_key = self._worker_history_key(worker_id)
+		timestamp = datetime.utcnow().isoformat()
+
+		# Build history entry with per-GPU metrics
+		entry = {
+			"timestamp": timestamp,
+			"gpus": [
+				{
+					"index": g.index if hasattr(g, 'index') else g.get('index'),
+					"utilization": g.utilization_percent if hasattr(g, 'utilization_percent') else g.get('utilization_percent'),
+					"memory_used": g.memory_used_gb if hasattr(g, 'memory_used_gb') else g.get('memory_used_gb'),
+					"temperature": g.temperature_c if hasattr(g, 'temperature_c') else g.get('temperature_c'),
+				}
+				for g in gpus
+			]
+		}
+
+		# Push to list and trim to max length
+		await self.redis.lpush(history_key, json.dumps(entry))
+		await self.redis.ltrim(history_key, 0, MAX_HISTORY_LENGTH - 1)
+		# Set TTL on history (expire after 1 hour of no updates)
+		await self.redis.expire(history_key, 3600)
+
+	async def get_gpu_history(self, worker_id: str) -> list:
+		"""Get GPU metrics history for a worker.
+
+		Args:
+			worker_id: Worker identifier
+
+		Returns:
+			List of historical GPU metrics entries (newest first)
+		"""
+		history_key = self._worker_history_key(worker_id)
+		entries = await self.redis.lrange(history_key, 0, -1)
+		return [json.loads(e) for e in entries]
 
 	async def deregister(self, worker_id: str) -> bool:
 		"""Deregister a worker (graceful shutdown).

@@ -34,6 +34,21 @@ export interface ClusterGPUStatus {
 	timestamp: string;
 }
 
+export interface GPUHistoryEntry {
+	timestamp: string;
+	gpus: Array<{
+		index: number;
+		utilization: number | null;
+		memory_used: number | null;
+		temperature: number | null;
+	}>;
+}
+
+export interface WorkerGPUHistory {
+	worker_id: string;
+	history: GPUHistoryEntry[];
+}
+
 export interface WorkerGPUInfo {
 	index: number;
 	name: string;
@@ -95,6 +110,13 @@ export const dashboardApi = {
 		const response = await axios.patch<DistributedWorker>(
 			`${API_BASE_URL}/workers/${encodeURIComponent(workerId)}/alias`,
 			{ alias }
+		);
+		return response.data;
+	},
+
+	async getWorkerGPUHistory(workerId: string): Promise<WorkerGPUHistory> {
+		const response = await axios.get<WorkerGPUHistory>(
+			`${API_BASE_URL}/workers/${encodeURIComponent(workerId)}/gpu-history`
 		);
 		return response.data;
 	},
