@@ -1191,6 +1191,7 @@ class WorkerSettings:
 			worker_info = await registry.register(registration)
 			ctx["worker_id"] = worker_id
 			ctx["registry"] = registry
+			ctx["deployment_mode"] = deployment_mode  # Store for heartbeat loop
 			alias_info = f" alias={worker_alias}" if worker_alias else ""
 			logging.info(f"✅ Worker registered: {worker_id} ({hostname},{alias_info} {gpu_count} GPUs)")
 		except Exception as e:
@@ -1247,6 +1248,7 @@ class WorkerSettings:
 
 		worker_id = ctx.get("worker_id")
 		registry = ctx.get("registry")
+		deployment_mode = ctx.get("deployment_mode", "docker")
 
 		if not worker_id or not registry:
 			return
@@ -1260,8 +1262,11 @@ class WorkerSettings:
 				current_jobs = ctx.get("current_jobs", 0)
 				current_job_ids = ctx.get("current_job_ids", [])
 
-				# Collect GPU metrics
-				gpu_metrics = WorkerSettings._get_gpu_metrics()
+				# Collect GPU metrics - use cluster metrics for OME mode
+				if deployment_mode == "ome":
+					gpu_metrics = WorkerSettings._get_cluster_gpu_metrics()
+				else:
+					gpu_metrics = WorkerSettings._get_gpu_metrics()
 
 				heartbeat = WorkerHeartbeat(
 					worker_id=worker_id,
@@ -1326,3 +1331,216 @@ class WorkerSettings:
 		except Exception as e:
 			logging.debug(f"Failed to get GPU metrics: {e}")
 			return None
+
+	@staticmethod
+	def _get_cluster_gpu_metrics() -> Optional[List["GPUInfo"]]:
+		"""Get GPU metrics from all cluster nodes using kubectl exec.
+
+		For OME/cluster mode, this method:
+		1. Gets all nodes with GPUs
+		2. Finds a GPU pod on each node
+		3. Executes nvidia-smi in those pods to collect metrics
+
+		Returns:
+			List of GPUInfo objects from all cluster nodes, or None if unavailable
+		"""
+		from src.web.schemas.worker import GPUInfo
+		import json as json_module
+
+		try:
+			# First get local metrics as fallback and for local node
+			local_gpus = WorkerSettings._get_gpu_metrics() or []
+			local_hostname = socket.gethostname()
+
+			# Get all nodes with GPU capacity
+			result = subprocess.run(
+				["kubectl", "get", "nodes", "-o", "json"],
+				capture_output=True,
+				text=True,
+				timeout=15
+			)
+			if result.returncode != 0:
+				logging.warning(f"kubectl get nodes failed: {result.stderr}")
+				return local_gpus if local_gpus else None
+
+			nodes_data = json_module.loads(result.stdout)
+			gpu_nodes = []
+
+			for node in nodes_data.get("items", []):
+				node_name = node["metadata"]["name"]
+				capacity = node["status"].get("capacity", {})
+
+				# Check for GPU capacity
+				for key in capacity:
+					if "nvidia.com/gpu" in key:
+						gpu_count = int(capacity[key])
+						if gpu_count > 0:
+							gpu_nodes.append(node_name)
+						break
+
+			if not gpu_nodes:
+				return local_gpus if local_gpus else None
+
+			# Get all pods across all namespaces that might have GPUs
+			result = subprocess.run(
+				["kubectl", "get", "pods", "-A", "-o", "json"],
+				capture_output=True,
+				text=True,
+				timeout=15
+			)
+			if result.returncode != 0:
+				logging.warning(f"kubectl get pods failed: {result.stderr}")
+				return local_gpus if local_gpus else None
+
+			pods_data = json_module.loads(result.stdout)
+
+			# Build a map of node -> pod that can run nvidia-smi
+			node_to_pod = {}
+			for pod in pods_data.get("items", []):
+				pod_name = pod["metadata"]["name"]
+				namespace = pod["metadata"]["namespace"]
+				node_name = pod["spec"].get("nodeName")
+				phase = pod["status"].get("phase")
+
+				# Skip if not running or no node assigned
+				if phase != "Running" or not node_name:
+					continue
+
+				# Skip if node already has a pod assigned
+				if node_name in node_to_pod:
+					continue
+
+				# Check if pod has GPU resources
+				containers = pod["spec"].get("containers", [])
+				for container in containers:
+					resources = container.get("resources", {})
+					limits = resources.get("limits", {})
+					requests = resources.get("requests", {})
+
+					has_gpu = any(
+						"nvidia.com/gpu" in key
+						for key in list(limits.keys()) + list(requests.keys())
+					)
+
+					if has_gpu:
+						node_to_pod[node_name] = {
+							"pod": pod_name,
+							"namespace": namespace,
+							"container": container["name"]
+						}
+						break
+
+			# Collect metrics from all nodes
+			all_gpus = []
+			gpu_idx = 0
+
+			for node_name in sorted(gpu_nodes):
+				# For local node, use local nvidia-smi (already collected)
+				if node_name == local_hostname:
+					for gpu in local_gpus:
+						# Re-index GPUs for consistent cluster-wide indexing
+						all_gpus.append(GPUInfo(
+							index=gpu_idx,
+							name=gpu.name,
+							memory_total_gb=gpu.memory_total_gb,
+							memory_used_gb=gpu.memory_used_gb,
+							memory_free_gb=gpu.memory_free_gb,
+							utilization_percent=gpu.utilization_percent,
+							temperature_c=gpu.temperature_c,
+							node_name=node_name,
+						))
+						gpu_idx += 1
+					continue
+
+				# For remote nodes, use kubectl exec
+				pod_info = node_to_pod.get(node_name)
+				if not pod_info:
+					logging.debug(f"No GPU pod found on node {node_name}, skipping metrics")
+					# Add placeholder GPUs without metrics
+					# We need to know how many GPUs this node has
+					for node in nodes_data.get("items", []):
+						if node["metadata"]["name"] == node_name:
+							capacity = node["status"].get("capacity", {})
+							for key in capacity:
+								if "nvidia.com/gpu" in key:
+									node_gpu_count = int(capacity[key])
+									for i in range(node_gpu_count):
+										all_gpus.append(GPUInfo(
+											index=gpu_idx,
+											name="GPU",
+											memory_total_gb=0,
+											node_name=node_name,
+										))
+										gpu_idx += 1
+									break
+							break
+					continue
+
+				# Execute nvidia-smi in the pod
+				try:
+					exec_result = subprocess.run(
+						[
+							"kubectl", "exec", "-n", pod_info["namespace"],
+							pod_info["pod"], "-c", pod_info["container"],
+							"--", "nvidia-smi",
+							"--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
+							"--format=csv,noheader,nounits"
+						],
+						capture_output=True,
+						text=True,
+						timeout=10
+					)
+
+					if exec_result.returncode == 0:
+						for line in exec_result.stdout.strip().split("\n"):
+							if not line.strip():
+								continue
+							parts = [p.strip() for p in line.split(",")]
+							if len(parts) >= 7:
+								try:
+									all_gpus.append(GPUInfo(
+										index=gpu_idx,
+										name=parts[1],
+										memory_total_gb=round(float(parts[2]) / 1024, 2),
+										memory_used_gb=round(float(parts[3]) / 1024, 2),
+										memory_free_gb=round(float(parts[4]) / 1024, 2),
+										utilization_percent=float(parts[5]) if parts[5] != "[N/A]" else None,
+										temperature_c=int(parts[6]) if parts[6] != "[N/A]" else None,
+										node_name=node_name,
+									))
+									gpu_idx += 1
+								except (ValueError, IndexError):
+									continue
+					else:
+						logging.debug(f"nvidia-smi exec failed on {node_name}: {exec_result.stderr}")
+						# Add placeholder GPUs without metrics for this node
+						for node in nodes_data.get("items", []):
+							if node["metadata"]["name"] == node_name:
+								capacity = node["status"].get("capacity", {})
+								for key in capacity:
+									if "nvidia.com/gpu" in key:
+										node_gpu_count = int(capacity[key])
+										for i in range(node_gpu_count):
+											all_gpus.append(GPUInfo(
+												index=gpu_idx,
+												name="GPU",
+												memory_total_gb=0,
+												node_name=node_name,
+											))
+											gpu_idx += 1
+										break
+								break
+
+				except subprocess.TimeoutExpired:
+					logging.warning(f"kubectl exec timed out for node {node_name}")
+				except Exception as e:
+					logging.warning(f"Failed to get GPU metrics from {node_name}: {e}")
+
+			return all_gpus if all_gpus else local_gpus
+
+		except FileNotFoundError:
+			logging.debug("kubectl not found, falling back to local metrics")
+			return WorkerSettings._get_gpu_metrics()
+		except Exception as e:
+			logging.warning(f"Failed to get cluster GPU metrics: {e}")
+			return WorkerSettings._get_gpu_metrics()
