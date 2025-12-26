@@ -66,7 +66,7 @@ Access at http://localhost:5173
 
 ## Documentation
 
-[**Full Documentation**](https://novitalabs.github.io/inference-autotuner/)
+[**Full Documentation**](https://novitalabs.github.io/autotuner/)
 
 ### Project Overview
 - [ROADMAP.md](docs/architecture/roadmap.md) - **Product roadmap with completed milestones and future plans**
