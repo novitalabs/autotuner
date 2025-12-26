@@ -2,7 +2,7 @@
 
 ## reset_db.py
 
-A comprehensive database management tool for resetting and managing the Inference Autotuner database.
+A comprehensive database management tool for resetting and managing the Autotuner database.
 
 ### Features
 
@@ -39,7 +39,7 @@ python scripts/reset_db.py --delete-db
 
 ## Architecture Overview
 
-The Inference Autotuner uses **ARQ (Async Redis Queue)** for background job processing:
+The Autotuner uses **ARQ (Async Redis Queue)** for background job processing:
 
 ```
 ┌──────────────┐    Enqueue Job    ┌───────────┐
@@ -88,7 +88,7 @@ Start both web server and ARQ worker with one command:
 
 **Example output:**
 ```
-🚀 Starting Inference Autotuner Development Environment...
+🚀 Starting Autotuner Development Environment...
 
 📋 Starting ARQ worker...
    Worker PID: 12345

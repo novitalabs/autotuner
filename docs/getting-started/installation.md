@@ -1,6 +1,6 @@
 # Installation Guide
 
-Complete installation instructions for the LLM Inference Autotuner.
+Complete installation instructions for the LLM Autotuner.
 
 ## System Requirements
 

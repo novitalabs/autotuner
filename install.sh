@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# LLM Inference Autotuner - Environment Installation Script
+# LLM Autotuner - Environment Installation Script
 #
 # This script installs all prerequisites for the autotuner project.
 # It sets up:

@@ -2,7 +2,7 @@
 GPU Monitoring and Management Utilities
 
 Provides comprehensive GPU tracking, allocation, and monitoring capabilities
-for the LLM Inference Autotuner.
+for the LLM Autotuner.
 """
 
 import subprocess

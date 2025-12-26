@@ -37,7 +37,7 @@ class CustomORJSONResponse(ORJSONResponse):
 async def lifespan(app: FastAPI):
 	"""Application lifespan events."""
 	# Startup
-	print("🚀 Starting LLM Inference Autotuner API...")
+	print("🚀 Starting LLM Autotuner API...")
 	await init_db()
 	print("✅ Database initialized")
 

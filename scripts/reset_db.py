@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database reset tool for LLM Inference Autotuner.
+Database reset tool for LLM Autotuner.
 
 This script provides utilities to reset the database:
 - Drop all tables and recreate them
@@ -133,7 +133,7 @@ async def list_tasks():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Database reset tool for LLM Inference Autotuner",
+        description="Database reset tool for LLM Autotuner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

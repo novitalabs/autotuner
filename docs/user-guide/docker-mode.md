@@ -1,6 +1,6 @@
 # Docker Deployment Mode
 
-This document describes the standalone Docker deployment mode for the Inference Autotuner.
+This document describes the standalone Docker deployment mode for the Autotuner.
 
 ## Overview
 

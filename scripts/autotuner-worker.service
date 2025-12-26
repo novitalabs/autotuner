@@ -1,4 +1,4 @@
-# Systemd service file for Inference Autotuner ARQ Worker
+# Systemd service file for Autotuner ARQ Worker
 # Install: sudo cp scripts/autotuner-worker.service /etc/systemd/system/
 # Enable: sudo systemctl enable autotuner-worker
 # Start: sudo systemctl start autotuner-worker
@@ -6,7 +6,7 @@
 # Logs: sudo journalctl -u autotuner-worker -f
 
 [Unit]
-Description=Inference Autotuner ARQ Worker
+Description=Autotuner ARQ Worker
 After=network.target redis.service
 Wants=redis.service
 

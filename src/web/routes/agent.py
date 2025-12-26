@@ -37,7 +37,7 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 logger = logging.getLogger(__name__)
 
 # System prompt for agent - shared between streaming and non-streaming endpoints
-AGENT_SYSTEM_PROMPT = """You are a helpful AI assistant for the LLM Inference Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results.
+AGENT_SYSTEM_PROMPT = """You are a helpful AI assistant for the LLM Autotuner. You help users optimize their LLM inference parameters and analyze benchmark results.
 
 You have access to various tools for managing and querying the autotuner system. Use these tools when needed to provide accurate, data-driven responses.
 

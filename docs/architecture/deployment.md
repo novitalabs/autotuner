@@ -12,7 +12,7 @@ The autotuner is a prototype LLM inference parameter optimization system that us
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Inference Autotuner (Python)                 │
+│                    Autotuner (Python)                 │
 │              src/run_autotuner.py (Orchestrator)                │
 └────────────────────────────────────────────────────────────────┘
                               │

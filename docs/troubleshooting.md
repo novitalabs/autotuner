@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This document covers common issues and their solutions when using the LLM Inference Autotuner.
+This document covers common issues and their solutions when using the LLM Autotuner.
 
 ## Common Issues and Solutions
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Inference Autotuner - CLI Entry Point
+Autotuner - CLI Entry Point
 
 Command-line interface for running parameter tuning experiments.
 """
@@ -39,7 +39,7 @@ def main():
 	import argparse
 
 	parser = argparse.ArgumentParser(
-		description="Inference Autotuner - Find optimal parameters for LLM inference",
+		description="Autotuner - Find optimal parameters for LLM inference",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		epilog="""
 Examples:

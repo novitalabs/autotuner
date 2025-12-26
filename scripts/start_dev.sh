@@ -69,7 +69,7 @@ fi
 unset HF_HUB_OFFLINE
 
 
-echo "🚀 Starting Inference Autotuner Development Environment..."
+echo "🚀 Starting Autotuner Development Environment..."
 echo ""
 
 # Start ARQ worker in background with nohup

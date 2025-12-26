@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get started with the LLM Inference Autotuner in 5 minutes using Docker mode.
+Get started with the LLM Autotuner in 5 minutes using Docker mode.
 
 ## Prerequisites
 

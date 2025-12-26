@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 	)
 
 	# Application
-	app_name: str = "LLM Inference Autotuner API"
+	app_name: str = "LLM Autotuner API"
 	app_version: str = "0.2.0"
 	debug: bool = True
 

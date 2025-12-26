@@ -1,4 +1,4 @@
-# Systemd service file for Inference Autotuner Web Server
+# Systemd service file for Autotuner Web Server
 # Install: sudo cp scripts/autotuner-web.service /etc/systemd/system/
 # Enable: sudo systemctl enable autotuner-web
 # Start: sudo systemctl start autotuner-web
@@ -6,7 +6,7 @@
 # Logs: sudo journalctl -u autotuner-web -f
 
 [Unit]
-Description=Inference Autotuner Web Server
+Description=Autotuner Web Server
 After=network.target redis.service
 Wants=redis.service
 

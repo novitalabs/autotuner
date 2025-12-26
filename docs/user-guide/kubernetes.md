@@ -1,6 +1,6 @@
 # OME Installation Guide
 
-This guide provides step-by-step instructions for installing OME (Open Model Engine), which is a **required prerequisite** for the LLM Inference Autotuner.
+This guide provides step-by-step instructions for installing OME (Open Model Engine), which is a **required prerequisite** for the LLM Autotuner.
 
 ## Table of Contents
 

@@ -1,6 +1,6 @@
 # GPU Resource Tracking
 
-Comprehensive GPU monitoring, allocation, and scheduling system for the LLM Inference Autotuner.
+Comprehensive GPU monitoring, allocation, and scheduling system for the LLM Autotuner.
 
 ## Table of Contents
 
