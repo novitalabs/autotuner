@@ -170,7 +170,7 @@ Step 3: Provide recommendations:
 Alternative: Use get_task_results(task_id=10, include_all_experiments=True) for manual analysis
 
 **Scenario 6: Quick locate experiment failure cause**
-User: "experiment 156为什么失败了？"
+User: "Why experiment 156 failed?"
 Step 1: get_experiment_details(experiment_id=156) - Get experiment details, task_id, and error_message
 Step 2: get_experiment_logs(task_id=<from step 1>, experiment_id=<experiment sequence number>, tail_lines=100) - Get detailed container logs
    Note: experiment_id in get_experiment_logs is the sequence number (1, 2, 3...), not the database ID
@@ -185,7 +185,7 @@ Analysis:
    - Compare parameters with successful experiments to identify problematic values
 
 **Scenario 7: Report autotuner bug to GitHub**
-User: "日志里看到KeyError: timeout_per_iteration错误，帮我提一个issue"
+User: "There is an error in log: KeyError: timeout_per_iteration, post an issue for me."
 Step 1: search_known_issues(query="KeyError timeout_per_iteration") - Check if issue already exists
 Step 2: If no match found, get_task_logs(task_id=X) - Get full error context
 Step 3: create_issue(
@@ -194,6 +194,30 @@ Step 3: create_issue(
    labels="bug"
 )
 Step 4: Return issue URL to user
+
+**Scenario 8: Deploy remote worker**
+User: "Deploy a worker on ssh -p 18022 root@192.168.1.100"
+Step 1: deploy_worker(
+   ssh_command="ssh -p 18022 root@192.168.1.100",
+   name="GPU-Server-100",
+   mode="docker",
+   auto_install=True,
+   manager_ssh="ssh -p 33773 user@manager-external-ip"  # Required if REDIS_HOST=localhost
+)
+Note: The tool will automatically:
+- Install project if not present (sync files, create venv, install deps)
+- Configure worker with Redis connection (via SSH tunnel if manager_ssh provided)
+- Start worker and wait for registration
+
+If REDIS_HOST=localhost, you MUST provide manager_ssh parameter with the SSH command
+that the remote worker can use to connect back to the manager machine for Redis tunnel.
+
+Example response to user:
+"Worker deployed successfully!
+- Worker ID: gpu-server-100-xxx
+- GPUs: 8x NVIDIA A100
+- Status: online
+The worker is now connected via SSH tunnel and ready to accept tasks."
 
 High-level tools provide better error handling, formatted output, and business logic."""
 

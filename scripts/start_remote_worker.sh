@@ -8,6 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
+# Create log directory early (needed for SSH tunnel logs)
+mkdir -p logs
+
 # Load environment variables
 if [ -f ".env" ]; then
     set -a
@@ -23,20 +26,61 @@ if [ -f ".env.worker" ]; then
     echo "Loaded worker config from .env.worker"
 fi
 
-# Check if Redis is reachable
+# Default Redis settings
 REDIS_HOST="${REDIS_HOST:-localhost}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
-echo "Checking Redis connection at $REDIS_HOST:$REDIS_PORT..."
-if ! nc -z "$REDIS_HOST" "$REDIS_PORT" 2>/dev/null; then
-    echo "ERROR: Cannot connect to Redis at $REDIS_HOST:$REDIS_PORT"
-    echo "Make sure the manager's Redis is accessible from this machine."
-    echo ""
-    echo "Options:"
-    echo "  1. Expose Redis on manager: bind 0.0.0.0 in redis.conf"
-    echo "  2. Use SSH tunnel: ssh -L 6379:localhost:6379 manager-host"
-    exit 1
+# Setup SSH tunnel if MANAGER_SSH is configured
+if [ -n "$MANAGER_SSH" ]; then
+    echo "Setting up SSH tunnel to manager..."
+
+    # Kill any existing tunnel
+    pkill -f "ssh.*-L.*:6379:localhost:6379" 2>/dev/null || true
+    sleep 1
+
+    # Parse SSH command for tunnel (e.g., "ssh -p 33773 user@host")
+    # Start SSH tunnel in background
+    TUNNEL_CMD="$MANAGER_SSH -N -L 16379:localhost:6379 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+    nohup $TUNNEL_CMD > logs/ssh_tunnel.log 2>&1 &
+    TUNNEL_PID=$!
+    echo $TUNNEL_PID > logs/tunnel.pid
+
+    # Wait for tunnel to establish
+    sleep 3
+
+    # Check if tunnel is running
+    if ! ps -p $TUNNEL_PID > /dev/null 2>&1; then
+        echo "ERROR: SSH tunnel failed to start. Check logs/ssh_tunnel.log"
+        cat logs/ssh_tunnel.log 2>/dev/null || true
+        exit 1
+    fi
+
+    # Use localhost through tunnel
+    REDIS_HOST="localhost"
+    REDIS_PORT="16379"
+    export REDIS_HOST REDIS_PORT
+    echo "✓ SSH tunnel established (PID: $TUNNEL_PID)"
+    echo "  Forwarding localhost:16379 -> manager:6379"
 fi
+
+# Check if Redis is reachable
+echo "Checking Redis connection at $REDIS_HOST:$REDIS_PORT..."
+RETRY=0
+MAX_RETRY=5
+while ! nc -z "$REDIS_HOST" "$REDIS_PORT" 2>/dev/null; do
+    RETRY=$((RETRY + 1))
+    if [ $RETRY -ge $MAX_RETRY ]; then
+        echo "ERROR: Cannot connect to Redis at $REDIS_HOST:$REDIS_PORT"
+        echo "Make sure the manager's Redis is accessible from this machine."
+        echo ""
+        echo "Options:"
+        echo "  1. Expose Redis on manager: bind 0.0.0.0 in redis.conf"
+        echo "  2. Use SSH tunnel: set MANAGER_SSH in .env.worker"
+        exit 1
+    fi
+    echo "  Waiting for Redis... ($RETRY/$MAX_RETRY)"
+    sleep 2
+done
 echo "✓ Redis connection OK"
 
 # Check for existing worker process
@@ -49,9 +93,6 @@ if [ -f "logs/worker.pid" ]; then
     fi
     rm -f logs/worker.pid
 fi
-
-# Create log directory
-mkdir -p logs
 
 # Activate virtual environment if it exists
 if [ -f "env/bin/activate" ]; then
