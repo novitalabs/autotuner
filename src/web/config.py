@@ -11,7 +11,7 @@ import os
 
 def get_default_database_url() -> str:
 	"""Get default database URL in user's home directory."""
-	return f"sqlite+aiosqlite:///{Path.home()}/.local/share/inference-autotuner/autotuner.db"
+	return f"sqlite+aiosqlite:///{Path.home()}/.local/share/autotuner/autotuner.db"
 
 
 class Settings(BaseSettings):

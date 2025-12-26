@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The inference-autotuner is a prototype LLM inference parameter optimization system that uses **Kubernetes-native deployment** through the OME (Open Model Engine) framework. It supports two benchmark execution modes and dynamically deploys InferenceServices with different parameter configurations for automated tuning.
+The autotuner is a prototype LLM inference parameter optimization system that uses **Kubernetes-native deployment** through the OME (Open Model Engine) framework. It supports two benchmark execution modes and dynamically deploys InferenceServices with different parameter configurations for automated tuning.
 
 ---
 

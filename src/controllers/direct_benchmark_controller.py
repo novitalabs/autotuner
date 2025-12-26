@@ -38,7 +38,7 @@ class DirectBenchmarkController:
 		if not genai_bench_path_obj.is_absolute():
 			# Try to find project root (where src/ directory is located)
 			current_file = Path(__file__).resolve()  # controllers/direct_benchmark_controller.py
-			project_root = current_file.parent.parent.parent  # Go up to inference-autotuner/
+			project_root = current_file.parent.parent.parent  # Go up to autotuner/
 			genai_bench_path_obj = project_root / genai_bench_path_obj
 
 		self.genai_bench_path = genai_bench_path_obj
@@ -49,7 +49,7 @@ class DirectBenchmarkController:
 
 		# Results directory - always resolve relative to project root
 		current_file = Path(__file__).resolve()  # controllers/direct_benchmark_controller.py
-		project_root = current_file.parent.parent.parent  # Go up to inference-autotuner/
+		project_root = current_file.parent.parent.parent  # Go up to autotuner/
 		self.results_dir = project_root / "benchmark_results"
 		self.results_dir.mkdir(exist_ok=True)
 

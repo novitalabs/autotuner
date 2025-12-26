@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Database location (XDG-compliant)
-DB_PATH = Path.home() / ".local/share/inference-autotuner/autotuner.db"
+DB_PATH = Path.home() / ".local/share/autotuner/autotuner.db"
 
 
 def migrate_add_quant_config():

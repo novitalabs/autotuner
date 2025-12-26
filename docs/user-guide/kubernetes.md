@@ -16,7 +16,7 @@ This guide provides step-by-step instructions for installing OME (Open Model Eng
 
 ## Why OME is Required
 
-The inference-autotuner depends on OME for core functionality:
+The autotuner depends on OME for core functionality:
 
 - **InferenceService Deployment**: OME creates and manages SGLang inference servers with configurable parameters
 - **Parameter Control**: Allows programmatic control of runtime parameters (tp_size, mem_frac, batch_size, etc.)
@@ -74,7 +74,7 @@ git submodule update --init --recursive
 **Recommended Method:** Use the autotuner installation script with the `--install-ome` flag:
 
 ```bash
-cd /path/to/inference-autotuner
+cd /path/to/autotuner
 ./install.sh --install-ome
 ```
 
@@ -532,7 +532,7 @@ Once OME is installed and verified:
 
 1. **Run the autotuner installation**:
    ```bash
-   cd /root/work/inference-autotuner
+   cd /root/work/autotuner
    ./install.sh
    ```
 

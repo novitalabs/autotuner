@@ -467,7 +467,7 @@ EXTENSION OPPORTUNITIES FOR PRODUCTION
 
 CONCLUSION
 ==========
-The inference-autotuner is a functional prototype that orchestrates Kubernetes
+The autotuner is a functional prototype that orchestrates Kubernetes
 resources (via OME CRDs) to run parameter tuning experiments. It demonstrates
 a clean separation between orchestration logic (Python), infrastructure
 management (Kubernetes), and deployment configuration (JSON + Jinja2).
@@ -477,6 +477,6 @@ optimization platform by adding scheduling, persistence, advanced algorithms,
 and a comprehensive UI.
 
 Full documentation available in:
-  /root/work/inference-autotuner/DEPLOYMENT_ARCHITECTURE.md
-  /root/work/inference-autotuner/DEPLOYMENT_QUICK_REFERENCE.md
+  /root/work/autotuner/DEPLOYMENT_ARCHITECTURE.md
+  /root/work/autotuner/DEPLOYMENT_QUICK_REFERENCE.md
 ================================================================================

@@ -1,4 +1,4 @@
-# LLM Autotuner
+# LLM Autotuner (for inference)
 
 <p align="center">
   <img src="frontend/public/favicon.svg" width="256" height="256" alt="Autotuner Logo" />
@@ -66,7 +66,7 @@ Access at http://localhost:5173
 
 ## Documentation
 
-**Full Documentation**: https://novitalabs.github.io/inference-autotuner/
+[**Full Documentation**](https://novitalabs.github.io/inference-autotuner/)
 
 ### Project Overview
 - [ROADMAP.md](docs/architecture/roadmap.md) - **Product roadmap with completed milestones and future plans**

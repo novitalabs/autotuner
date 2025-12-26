@@ -62,7 +62,7 @@ def setup_task_logging(task_id: int):
 	    Logger instance configured for this task
 	"""
 	# Create log directory
-	log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+	log_dir = Path.home() / ".local/share/autotuner/logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
 	log_file = log_dir / f"task_{task_id}.log"
 
@@ -111,7 +111,7 @@ def setup_experiment_logging(task_id: int, experiment_id: int):
 	    Logger instance configured for this experiment
 	"""
 	# Create log directory
-	log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+	log_dir = Path.home() / ".local/share/autotuner/logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
 
 	# Create separate log files for task and experiment

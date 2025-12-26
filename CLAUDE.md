@@ -75,7 +75,7 @@ pkill -f arq && ./scripts/start_worker.sh
 
 ### Data Location
 ```
-~/.local/share/inference-autotuner/
+~/.local/share/autotuner/
 ├── autotuner.db       # SQLite database
 ├── logs/task_*.log    # Task logs
 └── datasets/          # Cached remote datasets

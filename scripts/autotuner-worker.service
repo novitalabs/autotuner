@@ -13,9 +13,9 @@ Wants=redis.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/work/inference-autotuner
-Environment="PYTHONPATH=/root/work/inference-autotuner/src"
-ExecStart=/root/work/inference-autotuner/env/bin/arq web.workers.autotuner_worker.WorkerSettings --verbose
+WorkingDirectory=/root/work/autotuner
+Environment="PYTHONPATH=/root/work/autotuner/src"
+ExecStart=/root/work/autotuner/env/bin/arq web.workers.autotuner_worker.WorkerSettings --verbose
 
 # Restart policy
 Restart=always

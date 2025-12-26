@@ -16,7 +16,7 @@ from ...config import get_settings
 
 
 # Cache file location
-CACHE_DIR = Path.home() / ".local" / "share" / "inference-autotuner"
+CACHE_DIR = Path.home() / ".local" / "share" / "autotuner"
 CACHE_FILE = CACHE_DIR / "issues_cache.json"
 
 # GitHub API headers
@@ -226,7 +226,7 @@ async def create_issue(title: str, body: str, labels: Optional[str] = None) -> s
 		return json.dumps({
 			"success": False,
 			"error": "GH_REPO not configured",
-			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/inference-autotuner')."
+			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner')."
 		}, indent=2)
 
 	# Parse labels
@@ -435,7 +435,7 @@ async def add_issue_comment(issue_number: int, body: str) -> str:
 		return json.dumps({
 			"success": False,
 			"error": "GH_REPO not configured",
-			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/inference-autotuner')."
+			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner')."
 		}, indent=2)
 
 	if not body or not body.strip():

@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-This document outlines a comprehensive refactoring plan to address DRY (Don't Repeat Yourself) violations and code quality issues identified in the inference-autotuner codebase. The plan is designed to minimize conflicts with the ongoing distributed worker development on the `develop` branch.
+This document outlines a comprehensive refactoring plan to address DRY (Don't Repeat Yourself) violations and code quality issues identified in the autotuner codebase. The plan is designed to minimize conflicts with the ongoing distributed worker development on the `develop` branch.
 
 **Estimated Impact**:
 - **LOC Reduction**: 350-700 lines

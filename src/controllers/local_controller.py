@@ -57,7 +57,7 @@ class LocalController(BaseModelController):
 		self.hf_token = hf_token
 
 		# Log directory
-		self.log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+		self.log_dir = Path.home() / ".local/share/autotuner/logs"
 		self.log_dir.mkdir(parents=True, exist_ok=True)
 
 		print(f"[Local] Initialized LocalController")

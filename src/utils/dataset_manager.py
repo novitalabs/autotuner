@@ -28,10 +28,10 @@ class DatasetManager:
 
         Args:
             cache_dir: Directory for caching datasets. Defaults to
-                       ~/.local/share/inference-autotuner/datasets/
+                       ~/.local/share/autotuner/datasets/
         """
         if cache_dir is None:
-            data_home = Path.home() / ".local" / "share" / "inference-autotuner"
+            data_home = Path.home() / ".local" / "share" / "autotuner"
             cache_dir = data_home / "datasets"
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)

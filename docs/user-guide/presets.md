@@ -270,7 +270,7 @@ For issues or questions:
 2. Review implementation guide for debugging steps
 3. Check backend logs: `logs/worker.log`
 4. Check frontend console: Browser DevTools
-5. Verify database state: `sqlite3 ~/.local/share/inference-autotuner/autotuner.db`
+5. Verify database state: `sqlite3 ~/.local/share/autotuner/autotuner.db`
 
 ---
 

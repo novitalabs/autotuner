@@ -3,13 +3,13 @@
 ##############################################################################
 # LLM Inference Autotuner - Environment Installation Script
 #
-# This script installs all prerequisites for the inference-autotuner project.
+# This script installs all prerequisites for the autotuner project.
 # It sets up:
 #   - Python dependencies
 #   - genai-bench CLI
 #   - Kubernetes resources (optional)
 #   - Web API dependencies (FastAPI, SQLAlchemy, ARQ)
-#   - Database directory (~/.local/share/inference-autotuner/)
+#   - Database directory (~/.local/share/autotuner/)
 #
 # Usage:
 #   ./install.sh [OPTIONS]
@@ -248,7 +248,7 @@ mkdir -p "$SCRIPT_DIR/results"
 mkdir -p "$SCRIPT_DIR/benchmark_results"
 
 # Create database directory (XDG Base Directory standard)
-DB_DIR="$HOME/.local/share/inference-autotuner"
+DB_DIR="$HOME/.local/share/autotuner"
 mkdir -p "$DB_DIR"
 log_success "Database directory created at: $DB_DIR"
 
@@ -441,7 +441,7 @@ if [ "$SKIP_K8S" = false ]; then
                 echo "ERROR: OME (Open Model Engine) is a required prerequisite for this autotuner"
                 echo "================================================================================"
                 echo ""
-                echo "The inference-autotuner requires OME to:"
+                echo "The autotuner requires OME to:"
                 echo "  - Deploy InferenceServices with different parameter configurations"
                 echo "  - Manage SGLang runtime instances"
                 echo "  - Execute automated parameter tuning experiments"

@@ -218,7 +218,7 @@ sudo systemctl stop autotuner-web
 
 **Fix:**
 ```bash
-export PYTHONPATH="/root/work/inference-autotuner/src:$PYTHONPATH"
+export PYTHONPATH="/path/to/autotuner/src:$PYTHONPATH"
 ```
 
 Or use the provided scripts which set this automatically.
@@ -291,5 +291,5 @@ Use `start_dev.sh` for quick development - it handles both processes but keeps t
 
 The database is stored at:
 ```
-~/.local/share/inference-autotuner/autotuner.db
+~/.local/share/autotuner/autotuner.db
 ```

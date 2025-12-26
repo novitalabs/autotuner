@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # Database path
-DB_PATH = Path.home() / ".local/share/inference-autotuner/autotuner.db"
+DB_PATH = Path.home() / ".local/share/autotuner/autotuner.db"
 
 def migrate():
     """Add new columns to tasks table."""

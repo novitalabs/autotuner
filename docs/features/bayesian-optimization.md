@@ -230,7 +230,7 @@ Bayesian optimization: ~30 experiments (81% reduction)
 
 ```bash
 # Watch for "New best score" messages
-tail -f ~/.local/share/inference-autotuner/logs/task_<id>.log | grep "best score"
+tail -f ~/.local/share/autotuner/logs/task_<id>.log | grep "best score"
 ```
 
 ### 3. Use SLO Configuration

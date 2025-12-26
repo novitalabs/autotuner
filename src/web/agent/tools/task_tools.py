@@ -312,7 +312,7 @@ async def clear_task_data(task_id: int, db: AsyncSession = None) -> str:
 
     # Clear log file (delete it entirely)
     from pathlib import Path
-    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_dir = Path.home() / ".local/share/autotuner/logs"
     log_file = log_dir / f"task_{task_id}.log"
     if log_file.exists():
         try:
@@ -709,7 +709,7 @@ async def get_task_logs(
 
     # Locate log file
     from pathlib import Path
-    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_dir = Path.home() / ".local/share/autotuner/logs"
     log_file = log_dir / f"task_{task_id}.log"
 
     if not log_file.exists():
@@ -790,7 +790,7 @@ async def get_experiment_logs(
 
     # Locate experiment log file
     from pathlib import Path
-    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_dir = Path.home() / ".local/share/autotuner/logs"
     log_file = log_dir / f"task_{task_id}_exp_{experiment_id}.log"
 
     # Also check for alternative naming patterns
@@ -1173,7 +1173,7 @@ async def search_experiment_logs(
 
     # Get log file
     from pathlib import Path
-    log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+    log_dir = Path.home() / ".local/share/autotuner/logs"
     log_file = log_dir / f"task_{task_id}.log"
 
     if not log_file.exists():

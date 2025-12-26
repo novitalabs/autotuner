@@ -181,7 +181,7 @@ GET    /api/system/health   - Health check
 ```
 
 **Database Migration:**
-- Moved from local `autotuner.db` to XDG-compliant `~/.local/share/inference-autotuner/`
+- Moved from local `autotuner.db` to XDG-compliant `~/.local/share/autotuner/`
 - SQLite WAL mode for concurrent writes
 - Proper session management with async context
 
@@ -225,7 +225,7 @@ GET    /api/system/health   - Health check
 - [x] Worker management scripts
 
 **Log Management:**
-- Task logs: `~/.local/share/inference-autotuner/logs/task_<id>.log`
+- Task logs: `~/.local/share/autotuner/logs/task_<id>.log`
 - Worker logs: `logs/worker.log`
 - Python logging library integration
 - StreamToLogger for real-time capture
@@ -744,7 +744,7 @@ gpu_info = {
 #### 5.6 Dataset URL Support ✅
 - [x] Remote URL dataset loading (CSV, JSONL, compressed archives)
 - [x] Automatic format detection and conversion
-- [x] URL-hash based caching in `~/.local/share/inference-autotuner/datasets/`
+- [x] URL-hash based caching in `~/.local/share/autotuner/datasets/`
 - [x] Deduplication option for prompt datasets
 - [x] genai-bench submodule updated to fork with URL support
 

@@ -314,14 +314,14 @@ async def clear_task(task: Task = Depends(get_task_or_404), db: AsyncSession = D
 
 def get_task_log_file(task_id: int) -> Path:
 	"""Get the log file path for a task."""
-	log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+	log_dir = Path.home() / ".local/share/autotuner/logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
 	return log_dir / f"task_{task_id}.log"
 
 
 def get_experiment_log_file(task_id: int, experiment_id: int) -> Path:
 	"""Get the log file path for a specific experiment."""
-	log_dir = Path.home() / ".local/share/inference-autotuner/logs"
+	log_dir = Path.home() / ".local/share/autotuner/logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
 	return log_dir / f"task_{task_id}_exp_{experiment_id}.log"
 

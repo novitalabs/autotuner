@@ -16,7 +16,7 @@ Use the installation script for automated setup:
 ```bash
 # Clone repository
 git clone <repository-url>
-cd inference-autotuner
+cd autotuner
 
 # Run installation script
 ./install.sh
@@ -34,7 +34,7 @@ cd inference-autotuner
 - Creates Python virtual environment (`env/`)
 - Installs Python dependencies from requirements.txt
 - Installs genai-bench CLI
-- Creates data directories (`~/.local/share/inference-autotuner/`)
+- Creates data directories (`~/.local/share/autotuner/`)
 - Verifies installation
 
 ## Manual Install
@@ -44,7 +44,7 @@ If you prefer manual installation:
 ```bash
 # Clone repository
 git clone <repository-url>
-cd inference-autotuner
+cd autotuner
 
 # Create virtual environment
 python3 -m venv env
@@ -58,7 +58,7 @@ pip install genai-bench
 cd frontend && npm install && cd ..
 
 # Create data directory
-mkdir -p ~/.local/share/inference-autotuner
+mkdir -p ~/.local/share/autotuner
 
 # Start Redis (for background jobs)
 docker run -d -p 6379:6379 redis:alpine
@@ -130,7 +130,7 @@ HF_TOKEN=your_token_here
 
 SQLite database is auto-created at:
 ```
-~/.local/share/inference-autotuner/autotuner.db
+~/.local/share/autotuner/autotuner.db
 ```
 
 ## Starting Services

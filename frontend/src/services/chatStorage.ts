@@ -70,7 +70,7 @@ export interface MessageData {
 
 class ChatStorageService {
 	private dbPromise: Promise<IDBPDatabase<ChatDB>>;
-	private readonly DB_NAME = 'inference-autotuner-chats';
+	private readonly DB_NAME = 'autotuner-chats';
 	private readonly DB_VERSION = 1;
 
 	constructor() {

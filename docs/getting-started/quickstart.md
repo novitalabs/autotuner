@@ -25,7 +25,7 @@ Get started with the LLM Inference Autotuner in 5 minutes using Docker mode.
 
 ```bash
 git clone <repository-url>
-cd inference-autotuner
+cd autotuner
 
 pip install -r requirements.txt
 pip install genai-bench

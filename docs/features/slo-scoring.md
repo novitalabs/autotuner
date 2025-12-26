@@ -1,6 +1,6 @@
 # SLO-Aware Objective Scoring
 
-The inference-autotuner now supports sophisticated Service Level Objective (SLO) aware scoring with **exponential penalties** for violations and **tiered enforcement** (soft penalties vs hard failures).
+The autotuner now supports sophisticated Service Level Objective (SLO) aware scoring with **exponential penalties** for violations and **tiered enforcement** (soft penalties vs hard failures).
 
 ## Overview
 

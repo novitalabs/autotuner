@@ -8,7 +8,7 @@ This document describes the PVC (Persistent Volume Claim) storage implementation
 
 The OME (Open Model Engine) project has a design document (OEP-0004) for PVC storage support. However, based on testing with the current OME version, the full `pvc://` URI-based implementation is not yet complete in the controller.
 
-The current OME InferenceService controller only supports hostPath volumes for model storage (see `/root/work/inference-autotuner/third_party/ome/pkg/controller/v1beta1/inferenceservice/components/base.go:262-274`).
+The current OME InferenceService controller only supports hostPath volumes for model storage (see `third_party/ome/pkg/controller/v1beta1/inferenceservice/components/base.go:262-274`).
 
 ## What Was Implemented
 
@@ -164,6 +164,6 @@ Continue using the hostPath storage approach with the model-agent:
 
 ## References
 
-- OEP-0004 Document: `/root/work/inference-autotuner/third_party/ome/oeps/0004-pvc-storage-support/README.md`
-- OME InferenceService Components: `/root/work/inference-autotuner/third_party/ome/pkg/controller/v1beta1/inferenceservice/components/base.go`
-- Storage Utils: `/root/work/inference-autotuner/third_party/ome/pkg/utils/storage/storage.go`
+- OEP-0004 Document: `third_party/ome/oeps/0004-pvc-storage-support/README.md`
+- OME InferenceService Components: `third_party/ome/pkg/controller/v1beta1/inferenceservice/components/base.go`
+- Storage Utils: `third_party/ome/pkg/utils/storage/storage.go`

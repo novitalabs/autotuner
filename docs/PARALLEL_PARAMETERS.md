@@ -404,7 +404,7 @@ print(engine.config.mapping)
 
 ## Autotuner Integration
 
-The inference-autotuner supports the following parallel parameters:
+The autotuner supports the following parallel parameters:
 
 ### Supported Parameters (All Engines)
 
