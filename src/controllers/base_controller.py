@@ -8,7 +8,7 @@ Supports multiple deployment modes (OME/Kubernetes, Docker, etc.)
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from .utils import parse_parallel_config
-from utils.gpu_monitor import get_gpu_monitor
+from ..utils.gpu_monitor import get_gpu_monitor
 
 
 class BaseModelController(ABC):
