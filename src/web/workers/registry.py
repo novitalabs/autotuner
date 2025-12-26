@@ -175,7 +175,41 @@ class WorkerRegistry:
 
 		# Update GPU status if provided
 		if heartbeat.gpus:
-			worker_info.gpus = heartbeat.gpus
+			# For OME/cluster workers, merge metrics instead of replacing
+			# This preserves the full cluster GPU list while updating metrics for local GPUs
+			if worker_info.deployment_mode == "ome" and worker_info.gpus:
+				# Build a map of heartbeat GPUs by node_name
+				heartbeat_by_node = {}
+				for hb_gpu in heartbeat.gpus:
+					gpu_dict = hb_gpu.model_dump() if hasattr(hb_gpu, 'model_dump') else hb_gpu
+					node = gpu_dict.get('node_name')
+					if node:
+						if node not in heartbeat_by_node:
+							heartbeat_by_node[node] = []
+						heartbeat_by_node[node].append(gpu_dict)
+
+				# Update metrics for GPUs that match heartbeat node_name
+				updated_gpus = []
+				for existing_gpu in worker_info.gpus:
+					gpu_dict = existing_gpu if isinstance(existing_gpu, dict) else existing_gpu.model_dump() if hasattr(existing_gpu, 'model_dump') else existing_gpu
+					node = gpu_dict.get('node_name')
+					local_idx = gpu_dict.get('index', 0) % 8  # GPU index within node
+
+					if node in heartbeat_by_node and local_idx < len(heartbeat_by_node[node]):
+						# Update with fresh metrics from heartbeat
+						hb_gpu = heartbeat_by_node[node][local_idx]
+						gpu_dict.update({
+							'memory_total_gb': hb_gpu.get('memory_total_gb', gpu_dict.get('memory_total_gb', 0)),
+							'memory_used_gb': hb_gpu.get('memory_used_gb'),
+							'memory_free_gb': hb_gpu.get('memory_free_gb'),
+							'utilization_percent': hb_gpu.get('utilization_percent'),
+							'temperature_c': hb_gpu.get('temperature_c'),
+						})
+					updated_gpus.append(gpu_dict)
+				worker_info.gpus = updated_gpus
+			else:
+				# For non-OME workers, replace GPU list as before
+				worker_info.gpus = heartbeat.gpus
 			# Store GPU metrics history
 			await self._store_gpu_history(heartbeat.worker_id, heartbeat.gpus)
 

@@ -276,65 +276,138 @@ export default function Dashboard() {
 								{worker.gpus && worker.gpus.length > 0 && (
 									<div className="mt-2 pt-2 border-t">
 										<div className="text-xs text-gray-500 mb-1">GPU Status</div>
-										<div className="grid gap-1">
-											{worker.gpus.map((gpu) => {
-												// Get history for this GPU from worker's history
-												const workerHistory = gpuHistories[worker.worker_id]?.history || [];
-												const gpuUtilHistory = workerHistory
-													.map(h => h.gpus.find(g => g.index === gpu.index)?.utilization)
-													.filter((v): v is number => v !== null && v !== undefined);
-												const memoryPercent = gpu.memory_used_gb !== null && gpu.memory_total_gb !== null
-													? (gpu.memory_used_gb / gpu.memory_total_gb) * 100
-													: 0;
+										{/* For OME mode workers, group GPUs by node */}
+										{worker.deployment_mode === 'ome' ? (
+											(() => {
+												// Group GPUs by node_name
+												const nodeMap: Record<string, typeof worker.gpus> = {};
+												worker.gpus.forEach((gpu) => {
+													const nodeName = gpu.node_name || 'unknown';
+													if (!nodeMap[nodeName]) nodeMap[nodeName] = [];
+													nodeMap[nodeName].push(gpu);
+												});
+												const nodes = Object.entries(nodeMap).sort(([a], [b]) => a.localeCompare(b));
 
 												return (
-													<div key={gpu.index} className="flex items-center gap-2 text-xs">
-														<span className="text-gray-600 w-12 flex-shrink-0">GPU {gpu.index}</span>
-														{/* Utilization History Sparkline */}
-														{gpuUtilHistory.length > 1 && (
-															<div className="flex items-end gap-px flex-shrink-0" style={{ height: '14px' }} title={`Last ${gpuUtilHistory.length} heartbeats`}>
-																{gpuUtilHistory.map((util, idx) => (
-																	<div
-																		key={idx}
-																		className={`${
-																			util > 80 ? 'bg-red-400' : util > 50 ? 'bg-yellow-400' : 'bg-green-400'
-																		}`}
-																		style={{
-																			width: '3px',
-																			height: `${Math.max(util * 0.14, 1)}px`,
-																			minHeight: '1px'
-																		}}
-																		title={`${util.toFixed(0)}%`}
-																	></div>
-																))}
-															</div>
-														)}
-														{gpu.utilization_percent !== null && (
-															<span className={`w-8 text-right flex-shrink-0 ${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
-																{gpu.utilization_percent.toFixed(0)}%
-															</span>
-														)}
-														{/* Memory bar with text overlay */}
-														{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
-															<div className="flex-1 relative h-4 bg-gray-200 rounded overflow-hidden min-w-[80px]">
-																<div
-																	className={`absolute inset-y-0 left-0 ${memoryPercent > 90 ? 'bg-red-300' : memoryPercent > 70 ? 'bg-yellow-300' : 'bg-blue-300'}`}
-																	style={{ width: `${memoryPercent}%` }}
-																></div>
-																<span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-700 font-medium">
-																	{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}G
-																</span>
-															</div>
-														)}
-														{gpu.temperature_c !== null && (
-															<span className={`w-8 text-right flex-shrink-0 ${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
-																{gpu.temperature_c}°C
-															</span>
-														)}
+													<div className="space-y-2">
+														{nodes.map(([nodeName, nodeGpus]) => {
+															const hasMetrics = nodeGpus.some(g => g.memory_used_gb !== null);
+															const avgUtil = hasMetrics
+																? nodeGpus.reduce((sum, g) => sum + (g.utilization_percent || 0), 0) / nodeGpus.length
+																: 0;
+															const totalMem = nodeGpus.reduce((sum, g) => sum + (g.memory_total_gb || 0), 0);
+															const usedMem = nodeGpus.reduce((sum, g) => sum + (g.memory_used_gb || 0), 0);
+															const memPercent = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+
+															return (
+																<div key={nodeName} className={`p-2 rounded ${hasMetrics ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}>
+																	<div className="flex items-center justify-between mb-1">
+																		<span className="text-xs font-medium text-gray-700 truncate" title={nodeName}>
+																			{nodeName.replace('host-', '')}
+																		</span>
+																		<span className="text-xs text-gray-500">{nodeGpus.length} GPUs</span>
+																	</div>
+																	{hasMetrics ? (
+																		<>
+																			<div className="flex items-center gap-2 text-xs mb-1">
+																				<span className="text-gray-500">Util:</span>
+																				<span className={`font-medium ${avgUtil > 80 ? 'text-red-600' : avgUtil > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
+																					{avgUtil.toFixed(0)}%
+																				</span>
+																				<span className="text-gray-300">|</span>
+																				<span className="text-gray-500">Mem:</span>
+																				<span className={`${memPercent > 90 ? 'text-red-600' : memPercent > 70 ? 'text-yellow-600' : 'text-blue-600'}`}>
+																					{usedMem.toFixed(0)}/{totalMem.toFixed(0)}G ({memPercent.toFixed(0)}%)
+																				</span>
+																			</div>
+																			{/* Per-GPU mini display */}
+																			<div className="grid grid-cols-4 gap-0.5">
+																				{nodeGpus.map((gpu, idx) => (
+																					<div
+																						key={idx}
+																						className={`text-center text-[10px] py-0.5 rounded ${
+																							(gpu.utilization_percent || 0) > 80 ? 'bg-red-200 text-red-800' :
+																							(gpu.utilization_percent || 0) > 50 ? 'bg-yellow-200 text-yellow-800' :
+																							'bg-green-200 text-green-800'
+																						}`}
+																						title={`GPU ${gpu.index}: ${gpu.utilization_percent?.toFixed(0) || 0}% util, ${gpu.memory_used_gb?.toFixed(1) || 0}/${gpu.memory_total_gb?.toFixed(0) || 0}G, ${gpu.temperature_c || 'N/A'}°C`}
+																					>
+																						{gpu.utilization_percent?.toFixed(0) || 0}%
+																					</div>
+																				))}
+																			</div>
+																		</>
+																	) : (
+																		<div className="text-xs text-gray-400">No metrics (remote node)</div>
+																	)}
+																</div>
+															);
+														})}
 													</div>
 												);
-											})}
-										</div>
+											})()
+										) : (
+											/* Non-OME mode: original GPU display */
+											<div className="grid gap-1">
+												{worker.gpus.map((gpu) => {
+													// Get history for this GPU from worker's history
+													const workerHistory = gpuHistories[worker.worker_id]?.history || [];
+													const gpuUtilHistory = workerHistory
+														.map(h => h.gpus.find(g => g.index === gpu.index)?.utilization)
+														.filter((v): v is number => v !== null && v !== undefined);
+													const memoryPercent = gpu.memory_used_gb !== null && gpu.memory_total_gb !== null
+														? (gpu.memory_used_gb / gpu.memory_total_gb) * 100
+														: 0;
+
+													return (
+														<div key={gpu.index} className="flex items-center gap-2 text-xs">
+															<span className="text-gray-600 w-12 flex-shrink-0">GPU {gpu.index}</span>
+															{/* Utilization History Sparkline */}
+															{gpuUtilHistory.length > 1 && (
+																<div className="flex items-end gap-px flex-shrink-0" style={{ height: '14px' }} title={`Last ${gpuUtilHistory.length} heartbeats`}>
+																	{gpuUtilHistory.map((util, idx) => (
+																		<div
+																			key={idx}
+																			className={`${
+																				util > 80 ? 'bg-red-400' : util > 50 ? 'bg-yellow-400' : 'bg-green-400'
+																			}`}
+																			style={{
+																				width: '3px',
+																				height: `${Math.max(util * 0.14, 1)}px`,
+																				minHeight: '1px'
+																			}}
+																			title={`${util.toFixed(0)}%`}
+																		></div>
+																	))}
+																</div>
+															)}
+															{gpu.utilization_percent !== null && (
+																<span className={`w-8 text-right flex-shrink-0 ${gpu.utilization_percent > 80 ? 'text-red-600' : gpu.utilization_percent > 50 ? 'text-yellow-600' : 'text-green-600'}`}>
+																	{gpu.utilization_percent.toFixed(0)}%
+																</span>
+															)}
+															{/* Memory bar with text overlay */}
+															{gpu.memory_used_gb !== null && gpu.memory_total_gb !== null && (
+																<div className="flex-1 relative h-4 bg-gray-200 rounded overflow-hidden min-w-[80px]">
+																	<div
+																		className={`absolute inset-y-0 left-0 ${memoryPercent > 90 ? 'bg-red-300' : memoryPercent > 70 ? 'bg-yellow-300' : 'bg-blue-300'}`}
+																		style={{ width: `${memoryPercent}%` }}
+																	></div>
+																	<span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-700 font-medium">
+																		{gpu.memory_used_gb.toFixed(1)}/{gpu.memory_total_gb.toFixed(0)}G
+																	</span>
+																</div>
+															)}
+															{gpu.temperature_c !== null && (
+																<span className={`w-8 text-right flex-shrink-0 ${gpu.temperature_c > 80 ? 'text-red-600' : gpu.temperature_c > 60 ? 'text-yellow-600' : 'text-gray-500'}`}>
+																	{gpu.temperature_c}°C
+																</span>
+															)}
+														</div>
+													);
+												})}
+											</div>
+										)}
 									</div>
 								)}
 							</div>
@@ -462,6 +535,7 @@ export default function Dashboard() {
 			)}
 		</div>
 	);
+
 
 	// Experiment Timeline Chart (Gantt-style)
 	const renderTimelineChart = () => {
