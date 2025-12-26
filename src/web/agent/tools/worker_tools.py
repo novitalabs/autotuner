@@ -14,6 +14,548 @@ import os
 from pathlib import Path
 
 
+# ============================================================================
+# DISTRIBUTED WORKER TOOLS - For monitoring cluster-wide workers
+# ============================================================================
+
+@tool
+@register_tool(ToolCategory.SYSTEM)
+async def list_distributed_workers() -> str:
+    """
+    List all distributed ARQ workers registered in the cluster.
+
+    Returns information about all workers including:
+    - Worker ID and hostname
+    - GPU count and model
+    - Current status (online/busy/offline)
+    - Deployment mode (docker/ome)
+    - Current job count
+
+    This is useful for monitoring cluster capacity and worker health.
+
+    Returns:
+        JSON string with list of all registered workers
+    """
+    try:
+        from web.workers.registry import get_worker_registry, worker_info_to_response
+
+        registry = await get_worker_registry()
+        workers = await registry.get_all_workers(include_offline=True)
+
+        worker_list = []
+        online_count = 0
+        busy_count = 0
+        offline_count = 0
+        total_gpus = 0
+
+        for worker in workers:
+            response = worker_info_to_response(worker)
+            status = response.status.value if hasattr(response.status, 'value') else response.status
+
+            if status == "online":
+                online_count += 1
+            elif status == "busy":
+                busy_count += 1
+            elif status == "offline":
+                offline_count += 1
+
+            total_gpus += response.gpu_count
+
+            worker_list.append({
+                "worker_id": response.worker_id,
+                "hostname": response.hostname,
+                "alias": response.alias,
+                "gpu_count": response.gpu_count,
+                "gpu_model": response.gpu_model,
+                "deployment_mode": response.deployment_mode,
+                "status": status,
+                "current_jobs": response.current_jobs,
+                "max_parallel": response.max_parallel,
+                "seconds_since_heartbeat": round(response.seconds_since_heartbeat, 1),
+            })
+
+        return json.dumps({
+            "success": True,
+            "total_workers": len(worker_list),
+            "online_count": online_count,
+            "busy_count": busy_count,
+            "offline_count": offline_count,
+            "total_gpus": total_gpus,
+            "workers": worker_list
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to list distributed workers: {str(e)}"
+        })
+
+
+@tool
+@register_tool(ToolCategory.SYSTEM)
+async def get_distributed_worker_status(worker_id: str) -> str:
+    """
+    Get detailed status of a specific distributed worker.
+
+    Returns comprehensive information including:
+    - Worker configuration and capabilities
+    - GPU status with real-time metrics (utilization, memory, temperature)
+    - Per-node GPU breakdown for cluster (OME) mode workers
+    - Current job information
+
+    Args:
+        worker_id: Worker ID to get status for (e.g., "bj-7.67-worker")
+
+    Returns:
+        JSON string with detailed worker status including GPU metrics
+    """
+    try:
+        from web.workers.registry import get_worker_registry, worker_info_to_response
+
+        registry = await get_worker_registry()
+        worker = await registry.get_worker(worker_id)
+
+        if not worker:
+            return json.dumps({
+                "success": False,
+                "error": f"Worker '{worker_id}' not found"
+            })
+
+        response = worker_info_to_response(worker)
+
+        # Format GPU information
+        gpus_info = []
+        if worker.gpus:
+            # Group by node for OME mode
+            if worker.deployment_mode == "ome":
+                node_map = {}
+                for gpu in worker.gpus:
+                    gpu_dict = gpu if isinstance(gpu, dict) else gpu.model_dump() if hasattr(gpu, 'model_dump') else gpu
+                    node_name = gpu_dict.get('node_name', 'unknown')
+                    if node_name not in node_map:
+                        node_map[node_name] = []
+                    node_map[node_name].append(gpu_dict)
+
+                for node_name, node_gpus in sorted(node_map.items()):
+                    has_metrics = any(g.get('utilization_percent') is not None for g in node_gpus)
+                    gpus_info.append({
+                        "node_name": node_name,
+                        "gpu_count": len(node_gpus),
+                        "has_metrics": has_metrics,
+                        "gpus": [
+                            {
+                                "index": g.get('index'),
+                                "name": g.get('name'),
+                                "memory_total_gb": g.get('memory_total_gb'),
+                                "memory_used_gb": g.get('memory_used_gb'),
+                                "utilization_percent": g.get('utilization_percent'),
+                                "temperature_c": g.get('temperature_c'),
+                            }
+                            for g in node_gpus
+                        ]
+                    })
+            else:
+                # Non-OME mode: flat list
+                for gpu in worker.gpus:
+                    gpu_dict = gpu if isinstance(gpu, dict) else gpu.model_dump() if hasattr(gpu, 'model_dump') else gpu
+                    gpus_info.append({
+                        "index": gpu_dict.get('index'),
+                        "name": gpu_dict.get('name'),
+                        "memory_total_gb": gpu_dict.get('memory_total_gb'),
+                        "memory_used_gb": gpu_dict.get('memory_used_gb'),
+                        "utilization_percent": gpu_dict.get('utilization_percent'),
+                        "temperature_c": gpu_dict.get('temperature_c'),
+                    })
+
+        return json.dumps({
+            "success": True,
+            "worker": {
+                "worker_id": response.worker_id,
+                "hostname": response.hostname,
+                "alias": response.alias,
+                "ip_address": response.ip_address,
+                "deployment_mode": response.deployment_mode,
+                "status": response.status.value if hasattr(response.status, 'value') else response.status,
+                "current_jobs": response.current_jobs,
+                "max_parallel": response.max_parallel,
+                "gpu_count": response.gpu_count,
+                "gpu_model": response.gpu_model,
+                "registered_at": response.registered_at.isoformat() if response.registered_at else None,
+                "last_heartbeat": response.last_heartbeat.isoformat() if response.last_heartbeat else None,
+                "seconds_since_heartbeat": round(response.seconds_since_heartbeat, 1),
+            },
+            "gpu_status": gpus_info
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to get worker status: {str(e)}"
+        })
+
+
+@tool
+@register_tool(ToolCategory.SYSTEM)
+async def rename_distributed_worker(worker_id: str, alias: str = None) -> str:
+    """
+    Set or clear an alias for a distributed worker.
+
+    Aliases make it easier to identify workers in the dashboard.
+    Pass empty string or null to clear the alias.
+
+    Args:
+        worker_id: Worker ID to rename
+        alias: New alias for the worker, or empty/null to clear
+
+    Returns:
+        JSON string with updated worker information
+    """
+    try:
+        from web.workers.registry import get_worker_registry
+
+        registry = await get_worker_registry()
+
+        # Clear alias if empty string
+        if alias == "":
+            alias = None
+
+        worker = await registry.set_worker_alias(worker_id, alias)
+
+        if not worker:
+            return json.dumps({
+                "success": False,
+                "error": f"Worker '{worker_id}' not found"
+            })
+
+        return json.dumps({
+            "success": True,
+            "message": f"Worker alias {'set to ' + repr(alias) if alias else 'cleared'}",
+            "worker": {
+                "worker_id": worker.worker_id,
+                "hostname": worker.hostname,
+                "alias": worker.alias,
+            }
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to rename worker: {str(e)}"
+        })
+
+
+@tool
+@register_tool(ToolCategory.SYSTEM)
+async def get_cluster_gpu_summary() -> str:
+    """
+    Get a summary of GPU resources across all distributed workers.
+
+    Provides cluster-wide view of:
+    - Total GPU count and models
+    - Available capacity (workers with free slots)
+    - GPU utilization statistics (for workers reporting metrics)
+
+    Useful for understanding cluster capacity before starting new tasks.
+
+    Returns:
+        JSON string with cluster GPU summary
+    """
+    try:
+        from web.workers.registry import get_worker_registry, worker_info_to_response
+
+        registry = await get_worker_registry()
+        workers = await registry.get_all_workers(include_offline=False)
+
+        total_gpus = 0
+        total_capacity = 0
+        used_capacity = 0
+        gpu_models = {}
+        nodes_with_metrics = 0
+        total_utilization = 0
+        total_memory_used = 0
+        total_memory_total = 0
+
+        for worker in workers:
+            total_gpus += worker.gpu_count
+            total_capacity += worker.max_parallel
+            used_capacity += worker.current_jobs
+
+            # Count GPU models
+            if worker.gpu_model:
+                model = worker.gpu_model.replace('NVIDIA ', '').replace('GeForce ', '')
+                gpu_models[model] = gpu_models.get(model, 0) + worker.gpu_count
+
+            # Aggregate GPU metrics
+            if worker.gpus:
+                for gpu in worker.gpus:
+                    gpu_dict = gpu if isinstance(gpu, dict) else gpu.model_dump() if hasattr(gpu, 'model_dump') else gpu
+                    util = gpu_dict.get('utilization_percent')
+                    mem_used = gpu_dict.get('memory_used_gb')
+                    mem_total = gpu_dict.get('memory_total_gb')
+
+                    if util is not None:
+                        nodes_with_metrics += 1
+                        total_utilization += util
+                    if mem_used is not None and mem_total is not None:
+                        total_memory_used += mem_used
+                        total_memory_total += mem_total
+
+        avg_utilization = total_utilization / nodes_with_metrics if nodes_with_metrics > 0 else None
+        memory_usage_percent = (total_memory_used / total_memory_total * 100) if total_memory_total > 0 else None
+
+        return json.dumps({
+            "success": True,
+            "cluster_summary": {
+                "total_workers": len(workers),
+                "total_gpus": total_gpus,
+                "gpu_models": gpu_models,
+                "job_capacity": {
+                    "total_slots": total_capacity,
+                    "used_slots": used_capacity,
+                    "available_slots": total_capacity - used_capacity,
+                },
+                "gpu_metrics": {
+                    "gpus_with_metrics": nodes_with_metrics,
+                    "average_utilization_percent": round(avg_utilization, 1) if avg_utilization else None,
+                    "total_memory_used_gb": round(total_memory_used, 1) if total_memory_used else None,
+                    "total_memory_total_gb": round(total_memory_total, 1) if total_memory_total else None,
+                    "memory_usage_percent": round(memory_usage_percent, 1) if memory_usage_percent else None,
+                }
+            }
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to get cluster GPU summary: {str(e)}"
+        })
+
+
+# ============================================================================
+# REMOTE WORKER DEPLOYMENT TOOLS
+# ============================================================================
+
+import re
+
+
+def _parse_ssh_command(ssh_command: str) -> dict:
+    """Parse SSH command to extract host, port, user.
+
+    Args:
+        ssh_command: SSH command like "ssh -p 18022 root@192.168.1.100"
+
+    Returns:
+        Dict with user, host, port or None if invalid
+    """
+    # Extract port if specified with -p
+    port_match = re.search(r'-p\s+(\d+)', ssh_command)
+    port = port_match.group(1) if port_match else "22"
+
+    # Extract user@host
+    user_host = re.search(r'(\w+)@([\w\.\-]+)', ssh_command)
+    if user_host:
+        return {"user": user_host.group(1), "host": user_host.group(2), "port": port}
+    return None
+
+
+def _run_ssh(ssh_cmd: str, command: str, timeout: int = 60) -> tuple:
+    """Execute command on remote host via SSH.
+
+    Args:
+        ssh_cmd: Base SSH command (e.g., "ssh -p 18022 root@host")
+        command: Command to execute on remote host
+        timeout: Command timeout in seconds
+
+    Returns:
+        Tuple of (return_code, stdout, stderr)
+    """
+    # Escape double quotes in command
+    escaped_cmd = command.replace('"', '\\"')
+    full_cmd = f'{ssh_cmd} "{escaped_cmd}"'
+    result = subprocess.run(
+        full_cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+        timeout=timeout
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+@tool
+@register_tool(
+    ToolCategory.SYSTEM,
+    requires_auth=True,
+    auth_scope=AuthorizationScope.ARQ_CONTROL
+)
+async def deploy_worker(ssh_command: str, name: str = None, mode: str = "docker") -> str:
+    """
+    Deploy an ARQ worker to a remote machine via SSH.
+
+    This tool will:
+    1. Test SSH connectivity to the remote machine
+    2. Verify project is installed at /opt/inference-autotuner
+    3. Create worker configuration (.env.worker) with Redis connection
+    4. Start the worker using start_remote_worker.sh
+    5. Wait for worker to register with the manager
+
+    Prerequisites:
+    - SSH key-based authentication configured (no password prompt)
+    - Project installed on remote machine at /opt/inference-autotuner
+    - REDIS_HOST in .env must be set to an externally accessible IP (not localhost)
+
+    Args:
+        ssh_command: SSH connection command (e.g., "ssh -p 18022 root@192.168.1.100")
+        name: Worker alias/name for identification in dashboard (optional)
+        mode: Deployment mode - "docker" or "ome" (default: "docker")
+
+    Returns:
+        JSON string with deployment status and worker info
+    """
+    PROJECT_PATH = "/opt/inference-autotuner"
+
+    try:
+        from web.config import get_settings
+        from web.workers.registry import get_worker_registry
+
+        # 1. Parse SSH command
+        ssh_info = _parse_ssh_command(ssh_command)
+        if not ssh_info:
+            return json.dumps({
+                "success": False,
+                "error": "Invalid SSH command format. Expected: ssh [-p port] user@host"
+            })
+
+        # 2. Test SSH connectivity
+        try:
+            ret, out, err = _run_ssh(ssh_command, "echo ok", timeout=10)
+            if ret != 0:
+                return json.dumps({
+                    "success": False,
+                    "error": f"SSH connection failed: {err.strip() or 'Connection refused'}"
+                })
+        except subprocess.TimeoutExpired:
+            return json.dumps({
+                "success": False,
+                "error": "SSH connection timed out"
+            })
+
+        # 3. Get Redis config from local settings
+        settings = get_settings()
+        redis_host = settings.redis_host
+        redis_port = settings.redis_port
+
+        # 4. Check Redis is externally accessible
+        if redis_host in ("localhost", "127.0.0.1"):
+            return json.dumps({
+                "success": False,
+                "error": (
+                    "REDIS_HOST is set to localhost. Remote workers cannot connect. "
+                    "Please set REDIS_HOST to Manager's external IP in .env file."
+                )
+            })
+
+        # 5. Check if project exists on remote
+        ret, out, _ = _run_ssh(ssh_command, f"test -d {PROJECT_PATH} && echo exists", timeout=10)
+        if "exists" not in out:
+            return json.dumps({
+                "success": False,
+                "error": f"Project not found at {PROJECT_PATH} on remote machine. Please install first."
+            })
+
+        # 6. Check if virtual environment exists
+        ret, out, _ = _run_ssh(ssh_command, f"test -f {PROJECT_PATH}/env/bin/activate && echo exists", timeout=10)
+        if "exists" not in out:
+            return json.dumps({
+                "success": False,
+                "error": f"Virtual environment not found at {PROJECT_PATH}/env. Please run install.sh first."
+            })
+
+        # 7. Create .env.worker on remote
+        worker_config = f"""REDIS_HOST={redis_host}
+REDIS_PORT={redis_port}
+WORKER_ALIAS={name or ''}
+DEPLOYMENT_MODE={mode}
+"""
+        # Use heredoc to write config file
+        write_cmd = f"cat > {PROJECT_PATH}/.env.worker << 'ENVEOF'\n{worker_config}ENVEOF"
+        ret, out, err = _run_ssh(ssh_command, write_cmd, timeout=10)
+        if ret != 0:
+            return json.dumps({
+                "success": False,
+                "error": f"Failed to create .env.worker: {err}"
+            })
+
+        # 8. Stop any existing worker
+        _run_ssh(ssh_command, f"cd {PROJECT_PATH} && pkill -f 'arq.*autotuner_worker' || true", timeout=10)
+        await asyncio.sleep(2)
+
+        # 9. Start worker on remote
+        start_cmd = f"cd {PROJECT_PATH} && nohup ./scripts/start_remote_worker.sh > /tmp/worker_deploy.log 2>&1 &"
+        ret, out, err = _run_ssh(ssh_command, start_cmd, timeout=30)
+
+        # Give worker time to start
+        await asyncio.sleep(5)
+
+        # 10. Check if worker process is running on remote
+        ret, out, _ = _run_ssh(ssh_command, "pgrep -f 'arq.*autotuner_worker'", timeout=10)
+        if ret != 0:
+            # Worker not running, get logs
+            _, log_out, _ = _run_ssh(ssh_command, f"tail -30 {PROJECT_PATH}/logs/worker.log 2>/dev/null || cat /tmp/worker_deploy.log", timeout=10)
+            return json.dumps({
+                "success": False,
+                "error": "Worker process failed to start",
+                "remote_logs": log_out.strip()[-500:] if log_out else "No logs available"
+            })
+
+        # 11. Wait for worker registration (up to 30s)
+        registry = await get_worker_registry()
+        for _ in range(10):
+            await asyncio.sleep(3)
+            workers = await registry.get_all_workers(include_offline=True)
+            for w in workers:
+                # Match by alias or hostname
+                hostname_match = ssh_info["host"] in (w.hostname or "")
+                alias_match = name and w.alias == name
+                if alias_match or hostname_match:
+                    return json.dumps({
+                        "success": True,
+                        "message": "Worker deployed and registered successfully",
+                        "worker": {
+                            "worker_id": w.worker_id,
+                            "hostname": w.hostname,
+                            "alias": w.alias,
+                            "gpu_count": w.gpu_count,
+                            "gpu_model": w.gpu_model,
+                            "deployment_mode": w.deployment_mode,
+                            "status": w.status.value if hasattr(w.status, 'value') else w.status,
+                        }
+                    }, indent=2)
+
+        # Worker started but not registered yet
+        return json.dumps({
+            "success": True,
+            "message": "Worker started but not yet registered. It may take a moment to connect.",
+            "check_command": f"{ssh_command} 'tail -50 {PROJECT_PATH}/logs/worker.log'"
+        }, indent=2)
+
+    except subprocess.TimeoutExpired:
+        return json.dumps({
+            "success": False,
+            "error": "Command timed out during deployment"
+        })
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to deploy worker: {str(e)}"
+        })
+
+
+# ============================================================================
+# LOCAL ARQ WORKER TOOLS - For local worker process management
+# ============================================================================
+
+
 @tool
 @register_tool(ToolCategory.SYSTEM)
 async def get_arq_worker_status() -> str:
