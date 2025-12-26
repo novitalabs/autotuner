@@ -382,37 +382,234 @@ def _run_ssh(ssh_cmd: str, command: str, timeout: int = 60) -> tuple:
     return result.returncode, result.stdout, result.stderr
 
 
+def _build_rsync_command(ssh_command: str, local_path: str, remote_path: str) -> str:
+    """Build rsync command with proper SSH options.
+
+    Args:
+        ssh_command: SSH command (e.g., "ssh -p 18022 root@host")
+        local_path: Local source path
+        remote_path: Remote destination path
+
+    Returns:
+        Full rsync command string
+    """
+    ssh_info = _parse_ssh_command(ssh_command)
+    if not ssh_info:
+        return None
+
+    # Build SSH options for rsync
+    ssh_opts = f"ssh -p {ssh_info['port']} -o StrictHostKeyChecking=no"
+
+    # Build rsync command - exclude venv, cache, logs, etc.
+    excludes = [
+        "env/", ".venv/", "__pycache__/", "*.pyc", ".git/",
+        "logs/", "*.log", ".env", ".env.*", "node_modules/",
+        "frontend/node_modules/", "frontend/dist/", ".pytest_cache/",
+        "autotuner.db", "*.db", ".mypy_cache/"
+    ]
+    exclude_args = " ".join([f"--exclude='{e}'" for e in excludes])
+
+    remote_dest = f"{ssh_info['user']}@{ssh_info['host']}:{remote_path}"
+
+    return f"rsync -avz --delete {exclude_args} -e \"{ssh_opts}\" {local_path}/ {remote_dest}/"
+
+
+async def _auto_install_worker(ssh_command: str, project_path: str, local_project: str) -> dict:
+    """Auto-install the worker on a remote machine.
+
+    Args:
+        ssh_command: SSH command for remote connection
+        project_path: Target installation path on remote
+        local_project: Local project path to sync from
+
+    Returns:
+        Dict with success status and optional error message
+    """
+    try:
+        # Step 1: Install system dependencies
+        print(f"[Deploy] Installing system dependencies on remote...")
+        install_deps_cmd = """
+        if command -v apt-get &>/dev/null; then
+            apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv netcat-openbsd tar >/dev/null 2>&1
+        elif command -v dnf &>/dev/null; then
+            dnf install -y -q python3 python3-pip tar nc >/dev/null 2>&1
+        elif command -v yum &>/dev/null; then
+            yum install -y -q python3 python3-pip tar nc >/dev/null 2>&1
+        fi
+        echo done
+        """
+        ret, out, err = _run_ssh(ssh_command, install_deps_cmd, timeout=120)
+        if "done" not in out:
+            return {"success": False, "error": f"Failed to install system dependencies: {err}"}
+
+        # Step 2: Create project directory
+        print(f"[Deploy] Creating project directory at {project_path}...")
+        ret, out, err = _run_ssh(ssh_command, f"mkdir -p {project_path} && echo ok", timeout=10)
+        if "ok" not in out:
+            return {"success": False, "error": f"Failed to create directory: {err}"}
+
+        # Step 3: Sync project files
+        print(f"[Deploy] Syncing project files to remote...")
+
+        # Check if rsync is available locally
+        rsync_available = subprocess.run(
+            ["which", "rsync"],
+            capture_output=True
+        ).returncode == 0
+
+        if rsync_available:
+            # Use rsync
+            rsync_cmd = _build_rsync_command(ssh_command, local_project, project_path)
+            if not rsync_cmd:
+                return {"success": False, "error": "Failed to build rsync command"}
+
+            result = subprocess.run(
+                rsync_cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                return {"success": False, "error": f"Failed to sync files: {result.stderr[:500]}"}
+        else:
+            # Fallback: use tar + ssh
+            print(f"[Deploy] rsync not available, using tar + ssh...")
+            ssh_info = _parse_ssh_command(ssh_command)
+            if not ssh_info:
+                return {"success": False, "error": "Failed to parse SSH command"}
+
+            # Excludes for tar
+            excludes = [
+                "--exclude=env", "--exclude=.venv", "--exclude=__pycache__",
+                "--exclude=.git", "--exclude=logs", "--exclude=*.log",
+                "--exclude=.env", "--exclude=.env.*", "--exclude=node_modules",
+                "--exclude=frontend/node_modules", "--exclude=frontend/dist",
+                "--exclude=.pytest_cache", "--exclude=*.db", "--exclude=.mypy_cache"
+            ]
+            exclude_str = " ".join(excludes)
+
+            # Create tar and pipe to remote
+            ssh_opts = f"-p {ssh_info['port']} -o StrictHostKeyChecking=no"
+            tar_cmd = f"cd {local_project} && tar czf - {exclude_str} . | ssh {ssh_opts} {ssh_info['user']}@{ssh_info['host']} 'cd {project_path} && tar xzf -'"
+
+            result = subprocess.run(
+                tar_cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                return {"success": False, "error": f"Failed to sync files via tar: {result.stderr[:500]}"}
+
+        # Step 4: Make scripts executable
+        ret, out, err = _run_ssh(
+            ssh_command,
+            f"chmod +x {project_path}/scripts/*.sh 2>/dev/null; echo ok",
+            timeout=10
+        )
+
+        print(f"[Deploy] Project files synced successfully")
+        return {"success": True, "message": "Project installed"}
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Installation timed out"}
+    except Exception as e:
+        return {"success": False, "error": f"Installation failed: {str(e)}"}
+
+
+async def _setup_venv_and_deps(ssh_command: str, project_path: str) -> dict:
+    """Create virtual environment and install dependencies.
+
+    Args:
+        ssh_command: SSH command for remote connection
+        project_path: Project path on remote
+
+    Returns:
+        Dict with success status and optional error message
+    """
+    try:
+        # Find Python 3.9+ - use simple detection
+        print(f"[Deploy] Setting up Python virtual environment...")
+
+        # Try python3 first, check version
+        ret, out, err = _run_ssh(ssh_command, "python3 -c 'import sys; print(sys.version_info.minor)'", timeout=10)
+        if ret == 0:
+            try:
+                minor = int(out.strip())
+                if minor >= 9:
+                    python_cmd = "python3"
+                else:
+                    return {"success": False, "error": f"Python 3.{minor} found, but Python 3.9+ required"}
+            except ValueError:
+                return {"success": False, "error": f"Failed to parse Python version: {out}"}
+        else:
+            return {"success": False, "error": "Python 3 not found on remote machine"}
+
+        # Create virtual environment
+        venv_cmd = f"cd {project_path} && {python_cmd} -m venv env && echo ok"
+        ret, out, err = _run_ssh(ssh_command, venv_cmd, timeout=60)
+        if "ok" not in out:
+            return {"success": False, "error": f"Failed to create venv: {err}"}
+
+        # Install dependencies
+        print(f"[Deploy] Installing Python dependencies...")
+        pip_cmd = f"cd {project_path} && ./env/bin/pip install --upgrade pip -q && ./env/bin/pip install -r requirements.txt -q && echo ok"
+        ret, out, err = _run_ssh(ssh_command, pip_cmd, timeout=300)
+        if "ok" not in out:
+            return {"success": False, "error": f"Failed to install dependencies: {err[:500]}"}
+
+        print(f"[Deploy] Virtual environment ready")
+        return {"success": True, "message": "Virtual environment created"}
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Setup timed out"}
+    except Exception as e:
+        return {"success": False, "error": f"Setup failed: {str(e)}"}
+
+
 @tool
 @register_tool(
     ToolCategory.SYSTEM,
     requires_auth=True,
     auth_scope=AuthorizationScope.ARQ_CONTROL
 )
-async def deploy_worker(ssh_command: str, name: str = None, mode: str = "docker") -> str:
+async def deploy_worker(
+    ssh_command: str,
+    name: str = None,
+    mode: str = "docker",
+    auto_install: bool = True,
+    manager_ssh: str = None
+) -> str:
     """
     Deploy an ARQ worker to a remote machine via SSH.
 
     This tool will:
     1. Test SSH connectivity to the remote machine
-    2. Verify project is installed at /opt/inference-autotuner
+    2. Auto-install the project if not present (install deps, sync files)
     3. Create worker configuration (.env.worker) with Redis connection
     4. Start the worker using start_remote_worker.sh
     5. Wait for worker to register with the manager
 
     Prerequisites:
     - SSH key-based authentication configured (no password prompt)
-    - Project installed on remote machine at /opt/inference-autotuner
-    - REDIS_HOST in .env must be set to an externally accessible IP (not localhost)
+    - Either: REDIS_HOST accessible from remote, OR manager_ssh for SSH tunnel
+    - Root/sudo access on remote machine (for auto-install)
 
     Args:
         ssh_command: SSH connection command (e.g., "ssh -p 18022 root@192.168.1.100")
         name: Worker alias/name for identification in dashboard (optional)
         mode: Deployment mode - "docker" or "ome" (default: "docker")
+        auto_install: Automatically install project if not found (default: True)
+        manager_ssh: SSH command for worker to connect back to manager for Redis tunnel
+                    (e.g., "ssh -p 33773 user@manager-ip"). Required if Redis not directly accessible.
 
     Returns:
         JSON string with deployment status and worker info
     """
     PROJECT_PATH = "/opt/inference-autotuner"
+    LOCAL_PROJECT = str(Path(__file__).parent.parent.parent.parent.parent)
 
     try:
         from web.config import get_settings
@@ -445,38 +642,59 @@ async def deploy_worker(ssh_command: str, name: str = None, mode: str = "docker"
         redis_host = settings.redis_host
         redis_port = settings.redis_port
 
-        # 4. Check Redis is externally accessible
-        if redis_host in ("localhost", "127.0.0.1"):
+        # 4. Check Redis is externally accessible (skip if using SSH tunnel)
+        if redis_host in ("localhost", "127.0.0.1") and not manager_ssh:
             return json.dumps({
                 "success": False,
                 "error": (
-                    "REDIS_HOST is set to localhost. Remote workers cannot connect. "
-                    "Please set REDIS_HOST to Manager's external IP in .env file."
+                    "REDIS_HOST is set to localhost. Remote workers cannot connect directly. "
+                    "Either set REDIS_HOST to Manager's external IP, or provide manager_ssh "
+                    "parameter for SSH tunnel (e.g., 'ssh -p 33773 user@manager-ip')."
                 )
             })
 
         # 5. Check if project exists on remote
-        ret, out, _ = _run_ssh(ssh_command, f"test -d {PROJECT_PATH} && echo exists", timeout=10)
-        if "exists" not in out:
-            return json.dumps({
-                "success": False,
-                "error": f"Project not found at {PROJECT_PATH} on remote machine. Please install first."
-            })
+        ret, out, _ = _run_ssh(ssh_command, f"test -d {PROJECT_PATH}/src && echo exists", timeout=10)
+        project_exists = "exists" in out
 
-        # 6. Check if virtual environment exists
+        # 6. Auto-install if project doesn't exist
+        if not project_exists:
+            if not auto_install:
+                return json.dumps({
+                    "success": False,
+                    "error": f"Project not found at {PROJECT_PATH} on remote machine. Set auto_install=True to install."
+                })
+
+            # Run auto-installation
+            install_result = await _auto_install_worker(ssh_command, PROJECT_PATH, LOCAL_PROJECT)
+            if not install_result["success"]:
+                return json.dumps(install_result)
+
+        # 7. Check if virtual environment exists (may have been created by auto-install)
         ret, out, _ = _run_ssh(ssh_command, f"test -f {PROJECT_PATH}/env/bin/activate && echo exists", timeout=10)
         if "exists" not in out:
-            return json.dumps({
-                "success": False,
-                "error": f"Virtual environment not found at {PROJECT_PATH}/env. Please run install.sh first."
-            })
+            if auto_install:
+                # Create venv and install deps
+                install_result = await _setup_venv_and_deps(ssh_command, PROJECT_PATH)
+                if not install_result["success"]:
+                    return json.dumps(install_result)
+            else:
+                return json.dumps({
+                    "success": False,
+                    "error": f"Virtual environment not found at {PROJECT_PATH}/env. Set auto_install=True to create."
+                })
 
-        # 7. Create .env.worker on remote
-        worker_config = f"""REDIS_HOST={redis_host}
-REDIS_PORT={redis_port}
-WORKER_ALIAS={name or ''}
-DEPLOYMENT_MODE={mode}
-"""
+        # 8. Create .env.worker on remote
+        worker_config_lines = [
+            f"REDIS_HOST={redis_host}",
+            f"REDIS_PORT={redis_port}",
+            f'WORKER_ALIAS="{name or ""}"',
+            f"DEPLOYMENT_MODE={mode}",
+        ]
+        if manager_ssh:
+            # Quote the MANAGER_SSH value since it may contain special characters
+            worker_config_lines.append(f'MANAGER_SSH="{manager_ssh}"')
+        worker_config = "\n".join(worker_config_lines) + "\n"
         # Use heredoc to write config file
         write_cmd = f"cat > {PROJECT_PATH}/.env.worker << 'ENVEOF'\n{worker_config}ENVEOF"
         ret, out, err = _run_ssh(ssh_command, write_cmd, timeout=10)
@@ -486,18 +704,18 @@ DEPLOYMENT_MODE={mode}
                 "error": f"Failed to create .env.worker: {err}"
             })
 
-        # 8. Stop any existing worker
+        # 9. Stop any existing worker
         _run_ssh(ssh_command, f"cd {PROJECT_PATH} && pkill -f 'arq.*autotuner_worker' || true", timeout=10)
         await asyncio.sleep(2)
 
-        # 9. Start worker on remote
+        # 10. Start worker on remote
         start_cmd = f"cd {PROJECT_PATH} && nohup ./scripts/start_remote_worker.sh > /tmp/worker_deploy.log 2>&1 &"
         ret, out, err = _run_ssh(ssh_command, start_cmd, timeout=30)
 
         # Give worker time to start
         await asyncio.sleep(5)
 
-        # 10. Check if worker process is running on remote
+        # 11. Check if worker process is running on remote
         ret, out, _ = _run_ssh(ssh_command, "pgrep -f 'arq.*autotuner_worker'", timeout=10)
         if ret != 0:
             # Worker not running, get logs
@@ -508,7 +726,7 @@ DEPLOYMENT_MODE={mode}
                 "remote_logs": log_out.strip()[-500:] if log_out else "No logs available"
             })
 
-        # 11. Wait for worker registration (up to 30s)
+        # 12. Wait for worker registration (up to 30s)
         registry = await get_worker_registry()
         for _ in range(10):
             await asyncio.sleep(3)
