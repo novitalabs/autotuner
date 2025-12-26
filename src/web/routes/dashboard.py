@@ -250,6 +250,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 		nodes_data = json.loads(result.stdout)
 
 		cluster_gpus = []
+		node_summaries = []
 		total_gpus = 0
 		total_allocatable_gpus = 0
 
@@ -399,6 +400,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 				gpu_type = labels.get("nvidia.com/gpu.product", "Unknown")
 
 				# Create GPU entries for this node
+				node_gpu_list = []
 				for i in range(gpu_capacity):
 					gpu_entry = {
 						"index": i,
@@ -424,13 +426,46 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 						gpu_entry["has_metrics"] = False
 
 					node_gpus.append(gpu_entry)
+					node_gpu_list.append(gpu_entry)
 
 				cluster_gpus.extend(node_gpus)
+
+				# Create node summary
+				gpus_with_metrics = [g for g in node_gpu_list if g.get("has_metrics")]
+				if gpus_with_metrics:
+					avg_util = sum(g.get("utilization_percent", 0) for g in gpus_with_metrics) / len(gpus_with_metrics)
+					avg_mem = sum(g.get("memory_usage_percent", 0) for g in gpus_with_metrics) / len(gpus_with_metrics)
+					total_mem = sum(g.get("memory_total_mb", 0) for g in gpus_with_metrics)
+					used_mem = sum(g.get("memory_used_mb", 0) for g in gpus_with_metrics)
+				else:
+					avg_util = 0
+					avg_mem = 0
+					total_mem = 0
+					used_mem = 0
+
+				# Get GPU model from first GPU with metrics or label
+				gpu_model = gpu_type
+				if gpus_with_metrics:
+					gpu_model = gpus_with_metrics[0].get("name", gpu_type)
+
+				node_summaries.append({
+					"node_name": node_name,
+					"gpu_count": gpu_capacity,
+					"allocatable_gpus": gpu_allocatable,
+					"gpu_model": gpu_model,
+					"gpus": node_gpu_list,
+					"avg_utilization": round(avg_util, 1),
+					"avg_memory_usage": round(avg_mem, 1),
+					"total_memory_mb": total_mem,
+					"used_memory_mb": used_mem,
+					"is_local": node_name == local_hostname
+				})
 
 		return {
 			"available": True,
 			"mode": "cluster",
 			"nodes": cluster_gpus,
+			"node_summaries": node_summaries,
 			"total_gpus": total_gpus,
 			"total_allocatable_gpus": total_allocatable_gpus,
 			"local_hostname": local_hostname,

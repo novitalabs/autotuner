@@ -1049,6 +1049,95 @@ class WorkerSettings:
 			return 0, None, None, None
 
 	@staticmethod
+	def get_cluster_gpu_info() -> tuple[int, Optional[str], Optional[float], Optional[List[Dict]]]:
+		"""Get cluster-wide GPU information using kubectl for OME mode.
+
+		Returns:
+			Tuple of (total_gpu_count, gpu_model, total_memory_gb, gpu_details)
+		"""
+		try:
+			# Get nodes with GPU info from Kubernetes
+			result = subprocess.run(
+				["kubectl", "get", "nodes", "-o", "json"],
+				capture_output=True,
+				text=True,
+				timeout=15
+			)
+			if result.returncode != 0:
+				logging.warning(f"kubectl failed: {result.stderr}")
+				return WorkerSettings.get_gpu_info()  # Fallback to local
+
+			import json as json_module
+			nodes_data = json_module.loads(result.stdout)
+
+			# Get local GPU info for model name and memory (fallback for missing labels)
+			local_gpu_count, local_gpu_model, local_gpu_memory, local_gpu_details = WorkerSettings.get_gpu_info()
+			local_hostname = socket.gethostname()
+
+			total_gpus = 0
+			gpu_model = None
+			gpus = []
+			gpu_idx = 0
+
+			for node in nodes_data.get("items", []):
+				node_name = node["metadata"]["name"]
+				capacity = node["status"].get("capacity", {})
+				labels = node["metadata"].get("labels", {})
+
+				# Find GPU count
+				node_gpu_count = 0
+				for key in capacity:
+					if "nvidia.com/gpu" in key:
+						node_gpu_count = int(capacity[key])
+						break
+
+				if node_gpu_count > 0:
+					# Get GPU model from node labels, fallback to local nvidia-smi
+					node_gpu_model = labels.get("nvidia.com/gpu.product")
+					if not node_gpu_model or node_gpu_model == "Unknown GPU":
+						node_gpu_model = local_gpu_model or "GPU"
+
+					if gpu_model is None:
+						gpu_model = node_gpu_model
+
+					# For local node, use detailed GPU info from nvidia-smi
+					if node_name == local_hostname and local_gpu_details:
+						for g in local_gpu_details:
+							gpus.append({
+								"index": gpu_idx,
+								"name": g.get("name", node_gpu_model),
+								"memory_total_gb": g.get("memory_total_gb", 0),
+								"node_name": node_name
+							})
+							gpu_idx += 1
+					else:
+						# For remote nodes, use count from kubectl
+						for i in range(node_gpu_count):
+							gpus.append({
+								"index": gpu_idx,
+								"name": node_gpu_model,
+								"memory_total_gb": 0,  # Not available from kubectl
+								"node_name": node_name
+							})
+							gpu_idx += 1
+
+					total_gpus += node_gpu_count
+
+			if total_gpus == 0:
+				logging.warning("No GPUs found in cluster, falling back to local")
+				return WorkerSettings.get_gpu_info()
+
+			logging.info(f"Cluster GPU info: {total_gpus} GPUs across {len(set(g['node_name'] for g in gpus))} nodes")
+			return total_gpus, gpu_model, None, gpus
+
+		except FileNotFoundError:
+			logging.warning("kubectl not found, falling back to local GPU info")
+			return WorkerSettings.get_gpu_info()
+		except Exception as e:
+			logging.warning(f"Failed to get cluster GPU info: {e}, falling back to local")
+			return WorkerSettings.get_gpu_info()
+
+	@staticmethod
 	async def on_startup(ctx: Dict[str, Any]) -> None:
 		"""Called when worker starts. Register with the manager."""
 		import os
@@ -1058,8 +1147,15 @@ class WorkerSettings:
 		worker_id = WorkerSettings.get_worker_id()
 		hostname = socket.gethostname()
 
-		# Get GPU information
-		gpu_count, gpu_model, gpu_memory_gb, gpu_details = WorkerSettings.get_gpu_info()
+		# Determine deployment mode from environment
+		deployment_mode = os.environ.get("DEPLOYMENT_MODE", settings.deployment_mode)
+		worker_alias = os.environ.get("WORKER_ALIAS", None)
+
+		# Get GPU information - use cluster info for OME mode
+		if deployment_mode == "ome":
+			gpu_count, gpu_model, gpu_memory_gb, gpu_details = WorkerSettings.get_cluster_gpu_info()
+		else:
+			gpu_count, gpu_model, gpu_memory_gb, gpu_details = WorkerSettings.get_gpu_info()
 
 		# Convert GPU details to GPUInfo objects
 		gpus = None
@@ -1067,12 +1163,9 @@ class WorkerSettings:
 			gpus = [GPUInfo(
 				index=g["index"],
 				name=g["name"],
-				memory_total_gb=g["memory_total_gb"]
+				memory_total_gb=g.get("memory_total_gb", 0),
+				node_name=g.get("node_name")  # Include node_name for OME mode
 			) for g in gpu_details]
-
-		# Determine deployment mode and alias from environment
-		deployment_mode = os.environ.get("DEPLOYMENT_MODE", settings.deployment_mode)
-		worker_alias = os.environ.get("WORKER_ALIAS", None)
 
 		# Create registration
 		registration = WorkerRegister(
@@ -1207,6 +1300,7 @@ class WorkerSettings:
 			if result.returncode != 0:
 				return None
 
+			hostname = socket.gethostname()
 			gpus = []
 			for line in result.stdout.strip().split("\n"):
 				if not line.strip():
@@ -1222,6 +1316,7 @@ class WorkerSettings:
 							memory_free_gb=round(float(parts[4]) / 1024, 2),
 							utilization_percent=float(parts[5]) if parts[5] != "[N/A]" else None,
 							temperature_c=int(parts[6]) if parts[6] != "[N/A]" else None,
+							node_name=hostname,  # Include node_name for cluster mode
 						))
 					except (ValueError, IndexError):
 						continue

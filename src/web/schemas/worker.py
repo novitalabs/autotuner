@@ -26,6 +26,7 @@ class GPUInfo(BaseModel):
 	memory_used_gb: Optional[float] = Field(None, description="Used GPU memory in GB")
 	utilization_percent: Optional[float] = Field(None, description="GPU utilization percentage")
 	temperature_c: Optional[int] = Field(None, description="GPU temperature in Celsius")
+	node_name: Optional[str] = Field(None, description="K8s node name (for OME/cluster mode)")
 
 
 class WorkerCapabilities(BaseModel):
