@@ -418,3 +418,60 @@ kubectl logs -n ome deployment/ome-controller-manager --tail=100
      "mem_frac": {"type": "choice", "values": [0.85, 0.9]}  // Just 2 values
    }
    ```
+
+---
+
+## Viewing GenAI-Bench Logs
+
+### Verbose Mode for Real-Time Output
+
+Use the `--verbose` or `-v` flag to stream genai-bench output in real-time:
+
+```bash
+python src/run_autotuner.py examples/docker_task.json --mode docker --direct --verbose
+```
+
+**Benefits**:
+- Real-time feedback during benchmarks
+- See progress during long runs
+- Useful for debugging connection/API issues
+- Detect problems early
+
+**Default mode** (no flag) shows output only after completion.
+
+### Usage Examples
+
+**Debugging connection issues:**
+```bash
+python src/run_autotuner.py examples/docker_task.json --mode docker --direct --verbose
+```
+
+**Long-running benchmarks with log file:**
+```bash
+python src/run_autotuner.py examples/docker_task.json --mode docker --direct --verbose 2>&1 | tee autotuner.log
+```
+
+### Manual Log Inspection
+
+View benchmark results directly:
+```bash
+# List all benchmark results
+ls -R benchmark_results/
+
+# View specific experiment metadata
+cat benchmark_results/docker-simple-tune-exp1/experiment_metadata.json
+```
+
+### When to Use Verbose Mode
+
+**Use verbose for**:
+- Initial testing of new configurations
+- Debugging connection/API issues  
+- Long-running benchmarks (>5 minutes)
+- Monitoring progress
+
+**Use default mode for**:
+- Production runs
+- CI/CD pipelines
+- Multiple parallel experiments
+

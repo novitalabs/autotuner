@@ -891,3 +891,63 @@ class Orchestrator:
 3. **Validation Layer**: Add compatibility checks before experiment submission
 4. **Testing**: Benchmark all presets on available hardware
 5. **Documentation**: Update user guide with preset usage examples
+## Quick Start
+
+Add `quant_config` to your task JSON:
+
+```json
+{"quant_config": {"preset": "kv-cache-fp8"}}
+```
+
+### Four Control Fields
+
+| Field | Controls | Options |
+|-------|----------|---------|
+| `gemm_dtype` | Linear layers, MLPs | `auto`, `fp8`, `int8`, `float16`, `bfloat16` |
+| `kvcache_dtype` | KV cache storage | `auto`, `fp8_e5m2`, `fp8_e4m3`, `int8`, `int4` |
+| `attention_dtype` | Attention computation | `auto`, `fp8`, `fp8_e5m2`, `fp8_block` |
+| `moe_dtype` | MoE experts | `auto`, `fp8`, `w4afp8`, `mxfp4` |
+
+### Presets
+
+```json
+"default"          // No quantization
+"kv-cache-fp8"     // ⭐ RECOMMENDED: FP8 KV cache only (25-50% memory)
+"dynamic-fp8"      // Full FP8 (Hopper GPU, 50% memory, 2x throughput)
+"bf16-stable"      // BF16 + FP8 KV cache
+"aggressive-moe"   // MoE quantization (SGLang)
+```
+
+### Examples
+
+**Preset (Easy)**:
+```json
+{"quant_config": {"preset": "kv-cache-fp8"}}
+```
+
+**Custom (Advanced)**:
+```json
+{
+  "quant_config": {
+    "gemm_dtype": "fp8",
+    "kvcache_dtype": "fp8_e5m2",
+    "attention_dtype": "fp8",
+    "moe_dtype": "auto"
+  }
+}
+```
+
+**Compare Multiple**:
+```json
+{"quant_config": {"presets": ["default", "kv-cache-fp8", "dynamic-fp8"]}}
+```
+
+### Best Practices
+
+- 🎯 **Most users**: `"preset": "kv-cache-fp8"` (<0.1% quality loss)
+- 🚀 **Hopper GPU**: `"preset": "dynamic-fp8"`
+- 🧠 **MoE models**: SGLang with `"moe_dtype": "w4afp8"`
+
+### Priority Rules
+
+User parameters override quant_config:

@@ -943,3 +943,42 @@ Potential areas for improvement:
 - **GPU Affinity**: Pin specific experiments to specific GPUs
 - **Power Capping**: Enforce power limits for energy efficiency
 - **Historical Analytics**: Track GPU utilization trends over time
+
+---
+
+## Intelligent GPU Allocation (OME/Kubernetes)
+
+For Kubernetes deployments, the system includes cluster-wide GPU discovery and intelligent node selection.
+
+### Features
+
+1. **Cluster-wide GPU Discovery**
+   - Queries all nodes in Kubernetes cluster
+   - Collects GPU capacity, utilization, memory, temperature
+   - Node-level GPU availability tracking
+
+2. **Intelligent Node Selection**
+   - Determines GPU requirements from task parameters (tp-size)
+   - Ranks nodes based on idle GPU availability
+   - Idle criteria: <30% utilization AND <50% memory
+   - Applies node affinity to InferenceService deployments
+
+3. **Automatic Fallback**
+   - Falls back to K8s scheduler if no metrics available
+   - Graceful degradation if no idle GPUs found
+   - Can disable with `enable_gpu_selection=False`
+
+### Implementation
+
+See `src/controllers/gpu_allocator.py`:
+- `get_cluster_gpu_status()`: Cluster-wide discovery
+- `select_best_node()`: Node ranking algorithm
+- Integrates with OMEController for deployments
+
+### Benefits
+
+- Balanced GPU utilization across cluster
+- Avoids overloaded nodes
+- Reduces deployment failures from resource contention
+- Works with dynamic Kubernetes clusters
+

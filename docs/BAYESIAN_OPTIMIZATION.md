@@ -281,3 +281,53 @@ tail -f ~/.local/share/inference-autotuner/logs/task_<id>.log | grep "best score
 - [Optuna Documentation](https://optuna.readthedocs.io/)
 - [TPE Algorithm Paper](https://papers.nips.cc/paper/2011/hash/86e8f7ab32cfd12577bc2619bc635690-Abstract.html)
 - [Bayesian Optimization Overview](https://distill.pub/2020/bayesian-optimization/)
+
+---
+
+## Handling Failed Experiments
+
+### Question: Can Infinite Scores Guide Bayesian Optimization?
+
+**Short Answer**: **No.** Pure infinite scores provide only weak negative guidance (what to avoid) but no positive gradient (where to go). When all experiments fail, Bayesian optimization degrades to random search.
+
+### How Failed Experiments Are Reported
+
+In `src/web/workers/autotuner_worker.py`, failed experiments receive worst-case scores:
+
+```python
+# When experiment fails (timeout, crash, etc.)
+objective_name = optimization_config.get("objective", "minimize_latency")
+worst_score = float("inf") if "minimize" in objective_name else float("-inf")
+strategy.tell_result(
+    parameters=params,
+    objective_score=worst_score,
+    metrics={}
+)
+```
+
+### TPE Sampler Behavior
+
+Optuna's TPE (Tree-structured Parzen Estimator) sampler:
+1. Builds surrogate models for parameter distributions
+2. Separates observations into "good" (top γ%) and "bad" (rest)
+3. Models two distributions: l(x) for good trials, g(x) for bad trials
+4. Samples from regions where l(x)/g(x) is high
+
+**Critical requirement**: Needs varying scores to distinguish good vs bad regions.
+
+### Degradation When All Experiments Fail
+
+When all trials return `-inf` or `inf`:
+- TPE cannot distinguish between parameter configurations
+- All parameters appear equally bad
+- Sampler reverts to quasi-random exploration
+- **Result**: Bayesian optimization degrades to random search
+
+### Recommendation
+
+For robustness:
+1. Use graded failure penalties (see GRADED_FAILURE_PENALTIES.md)
+2. Implement partial success metrics even for failed experiments
+3. Consider hybrid approaches that combine Bayesian and grid search
+4. Set reasonable SLO thresholds to avoid all-failure scenarios
+

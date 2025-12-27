@@ -271,3 +271,43 @@ For issues or questions:
 3. Check backend logs: `logs/worker.log`
 4. Check frontend console: Browser DevTools
 5. Verify database state: `sqlite3 ~/.local/share/inference-autotuner/autotuner.db`
+
+---
+
+## System Architecture
+
+### Database Schema
+
+Presets stored in `parameter_presets` table:
+- `id`, `name`, `description`, `category`
+- `is_system` (boolean) - System presets cannot be deleted
+- `parameters` (JSON) - Parameter configuration
+- `metadata` (JSON) - Additional info (author, tags)
+
+### API Endpoints
+
+- `GET /api/presets/` - List all presets
+- `GET /api/presets/{id}` - Get preset details
+- `POST /api/presets/` - Create new preset
+- `PUT /api/presets/{id}` - Update preset
+- `DELETE /api/presets/{id}` - Delete preset (non-system only)
+- `POST /api/presets/import` - Import from JSON
+- `GET /api/presets/{id}/export` - Export to JSON
+
+### Merge Strategies
+
+When applying multiple presets to a task:
+
+1. **Override** (default): Last preset wins
+2. **Append**: Combine arrays, unique values
+3. **Deep Merge**: Recursively merge objects
+
+### Built-in System Presets
+
+- `high-throughput` - Maximize throughput
+- `low-latency` - Minimize latency
+- `memory-efficient` - Reduce memory usage
+- `balanced` - Balance performance and resources
+
+System presets are created on first startup and cannot be deleted.
+

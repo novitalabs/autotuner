@@ -334,3 +334,63 @@ Tasks without `slo` configuration continue to work unchanged. SLO scoring is ful
 - **Exponential Penalty Functions**: Common in constrained optimization
 - **SLO Design**: Google SRE Book - Chapter 4 (Service Level Objectives)
 - **Tiered Enforcement**: Inspired by alerting thresholds (warn/critical)
+
+---
+
+## Graded Failure Penalties for Bayesian Optimization
+
+### Problem
+
+When all experiments fail with infinite scores (`-inf` or `+inf`), Bayesian optimization cannot distinguish between parameter configurations and degrades to random search.
+
+### Solution: Time-Based Failure Penalties
+
+Failed experiments receive **graded penalties** based on failure timing - earlier failures get worse penalties.
+
+### Penalty Calculation
+
+Located in `src/web/workers/autotuner_worker.py`:
+
+```python
+def calculate_failure_penalty(started_at, failed_at, timeout_seconds, 
+                              experiment_status, error_message, objective_name):
+    elapsed = (failed_at - started_at).total_seconds()
+    completion_pct = min(elapsed / timeout_seconds, 1.0)
+
+    # Base penalty by completion percentage
+    if completion_pct < 0.20:
+        base_penalty = -1000  # Very early (deployment, immediate crash)
+    elif completion_pct < 0.60:
+        base_penalty = -500   # Mid-stage (benchmark started but failed)
+    elif completion_pct < 0.95:
+        base_penalty = -200   # Late-stage (benchmark mostly done)
+    else:
+        base_penalty = -100   # Timeout (full duration)
+
+    # Modifiers based on error type
+    if "oom" or "memory" in error: base_penalty *= 1.5  # Resource failures
+    if "deploy" in error: base_penalty *= 1.2            # Deployment failures
+    if "connection" in error: base_penalty *= 0.8        # Transient issues
+
+    # Invert for minimize objectives
+    return -base_penalty if "minimize" in objective_name else base_penalty
+```
+
+### Benefits
+
+1. **Provides gradient**: Bayesian optimizer can distinguish parameter quality even when all fail
+2. **Prioritizes stability**: Configs that run longer are preferred
+3. **Contextual penalties**: Error types affect severity
+4. **Enables learning**: Optimizer learns to avoid problematic parameter regions
+
+### Example Scenarios
+
+| Failure Timing | Completion % | Base Penalty | Scenario |
+|---------------|-------------|--------------|----------|
+| 10 seconds | 2% | -1000 | Deployment failure, config clearly broken |
+| 200 seconds | 50% | -500 | Benchmark started but OOM |
+| 450 seconds | 90% | -200 | Almost complete, near-miss |
+| 500 seconds | 100% | -100 | Timeout, config might work with more time |
+
+This allows the optimizer to progressively learn which parameters cause early vs late failures.
+
