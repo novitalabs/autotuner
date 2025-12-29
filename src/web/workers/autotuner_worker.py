@@ -665,7 +665,8 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 
 					# Update strategy with result
 					if result["status"] == "success":
-						task.successful_experiments += 1
+						if task:
+							task.successful_experiments += 1
 						objective_score = result.get("objective_score")
 
 						# Tell strategy about the result

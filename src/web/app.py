@@ -22,8 +22,133 @@ from web.db.seed_presets import seed_system_presets
 from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent, workers
 from web.services.result_listener import start_result_listener, stop_result_listener, get_result_listener
 from web.workers.pubsub import ExperimentResult, WorkerEvent
+from web.db.models import Task, Experiment, TaskStatus, ExperimentStatus
+from web.db.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
+
+
+async def sync_experiment_to_local_db(result: ExperimentResult) -> bool:
+	"""Sync experiment result from remote worker to local database.
+
+	This function creates or updates experiment records in the local database
+	based on results published via Redis Pub/Sub from distributed workers.
+
+	Args:
+		result: ExperimentResult from remote worker
+
+	Returns:
+		True if sync succeeded, False otherwise
+	"""
+	try:
+		async with AsyncSessionLocal() as db:
+			from sqlalchemy import select, update
+
+			# Check if task exists locally
+			task_result = await db.execute(
+				select(Task).where(Task.id == result.task_id)
+			)
+			task = task_result.scalar_one_or_none()
+
+			if not task:
+				logger.warning(
+					f"Task {result.task_id} not found in local database, "
+					"cannot sync experiment result"
+				)
+				return False
+
+			# Check if experiment already exists (by task_id and experiment_id)
+			exp_result = await db.execute(
+				select(Experiment).where(
+					Experiment.task_id == result.task_id,
+					Experiment.experiment_id == result.experiment_id
+				)
+			)
+			experiment = exp_result.scalar_one_or_none()
+
+			# Map status string to enum
+			status_map = {
+				"success": ExperimentStatus.SUCCESS,
+				"failed": ExperimentStatus.FAILED,
+				"pending": ExperimentStatus.PENDING,
+				"deploying": ExperimentStatus.DEPLOYING,
+				"benchmarking": ExperimentStatus.BENCHMARKING,
+			}
+			exp_status = status_map.get(result.status, ExperimentStatus.FAILED)
+
+			if experiment:
+				# Update existing experiment
+				experiment.status = exp_status
+				experiment.metrics = result.metrics
+				experiment.objective_score = result.objective_score
+				experiment.error_message = result.error_message
+				experiment.completed_at = result.timestamp
+				experiment.elapsed_time = result.elapsed_time
+				logger.info(
+					f"Updated experiment {result.experiment_id} for task {result.task_id} "
+					f"(status={result.status}, score={result.objective_score})"
+				)
+			else:
+				# Create new experiment
+				experiment = Experiment(
+					task_id=result.task_id,
+					experiment_id=result.experiment_id,
+					parameters=result.parameters,
+					status=exp_status,
+					metrics=result.metrics,
+					objective_score=result.objective_score,
+					error_message=result.error_message,
+					started_at=result.timestamp,
+					completed_at=result.timestamp,
+					elapsed_time=result.elapsed_time,
+				)
+				db.add(experiment)
+				logger.info(
+					f"Created experiment {result.experiment_id} for task {result.task_id} "
+					f"(status={result.status}, score={result.objective_score})"
+				)
+
+			await db.commit()
+
+			# Update task counters
+			# Count experiments for this task
+			count_result = await db.execute(
+				select(Experiment).where(Experiment.task_id == result.task_id)
+			)
+			all_experiments = count_result.scalars().all()
+
+			total = len(all_experiments)
+			successful = len([e for e in all_experiments if e.status == ExperimentStatus.SUCCESS])
+
+			# Find best experiment (lowest score among successful)
+			best_exp_id = None
+			best_score = float("inf")
+			for exp in all_experiments:
+				if exp.status == ExperimentStatus.SUCCESS and exp.objective_score is not None:
+					if exp.objective_score < best_score:
+						best_score = exp.objective_score
+						best_exp_id = exp.id
+
+			# Update task
+			await db.execute(
+				update(Task).where(Task.id == result.task_id).values(
+					total_experiments=total,
+					successful_experiments=successful,
+					best_experiment_id=best_exp_id,
+				)
+			)
+			await db.commit()
+
+			logger.info(
+				f"Task {result.task_id} updated: total={total}, successful={successful}, "
+				f"best_exp_id={best_exp_id}"
+			)
+
+			return True
+
+	except Exception as e:
+		logger.error(f"Failed to sync experiment to local database: {e}", exc_info=True)
+		return False
 
 
 
@@ -69,8 +194,12 @@ async def lifespan(app: FastAPI):
 				f"exp={result.experiment_id} status={result.status} "
 				f"worker={result.worker_id}"
 			)
-			# Results are already saved to DB by the worker
-			# This callback is for additional processing like notifications
+			# Sync result to local database for distributed workers
+			synced = await sync_experiment_to_local_db(result)
+			if synced:
+				logger.info(f"✅ Synced experiment {result.experiment_id} to local database")
+			else:
+				logger.warning(f"⚠️ Failed to sync experiment {result.experiment_id} to local database")
 
 		async def on_worker_event(event: WorkerEvent):
 			"""Handle worker status events."""
