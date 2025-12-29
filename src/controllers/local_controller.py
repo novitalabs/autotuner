@@ -10,6 +10,7 @@ import signal
 import subprocess
 import time
 import requests
+import psutil
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -221,9 +222,10 @@ class LocalController(BaseModelController):
 				self._print_logs(service_id, tail=100)
 				return False
 
-			# Check health endpoints
+			# Check health endpoints (bypass proxy for localhost)
+			no_proxy = {"http": None, "https": None}
 			try:
-				health_response = requests.get(health_url, timeout=5)
+				health_response = requests.get(health_url, timeout=5, proxies=no_proxy)
 				if health_response.status_code == 200:
 					print(f"[Local] Service is ready! (via /health) URL: http://localhost:{host_port}")
 					return True
@@ -231,7 +233,7 @@ class LocalController(BaseModelController):
 				pass
 
 			try:
-				models_response = requests.get(models_url, timeout=5)
+				models_response = requests.get(models_url, timeout=5, proxies=no_proxy)
 				if models_response.status_code == 200:
 					print(f"[Local] Service is ready! (via /v1/models) URL: http://localhost:{host_port}")
 					return True
@@ -268,18 +270,35 @@ class LocalController(BaseModelController):
 
 			print(f"[Local] Stopping service '{service_id}' (PID: {proc.pid})...")
 
-			# Try graceful termination first
+			# Use psutil to kill all child processes recursively
+			# This ensures vLLM EngineCore and other subprocesses are killed
 			try:
-				os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-				proc.wait(timeout=10)
-				print(f"[Local] Service terminated gracefully")
-			except subprocess.TimeoutExpired:
-				# Force kill
-				print(f"[Local] Forcing termination...")
-				os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-				proc.wait(timeout=5)
-			except ProcessLookupError:
+				parent = psutil.Process(proc.pid)
+				children = parent.children(recursive=True)
+
+				# Kill children first
+				for child in children:
+					try:
+						print(f"[Local] Killing child process {child.pid} ({child.name()})")
+						child.kill()
+					except psutil.NoSuchProcess:
+						pass
+
+				# Then kill parent
+				parent.kill()
+				parent.wait(timeout=5)
+				print(f"[Local] Service terminated with all children")
+
+			except psutil.NoSuchProcess:
 				print(f"[Local] Process already terminated")
+			except Exception as e:
+				# Fallback to process group kill
+				print(f"[Local] psutil failed ({e}), trying process group kill...")
+				try:
+					os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+					proc.wait(timeout=5)
+				except ProcessLookupError:
+					pass
 
 			# Close log file
 			if log_file:

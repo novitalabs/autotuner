@@ -745,16 +745,17 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 
 					# Save checkpoint after each experiment
 					try:
-						await db.refresh(task)
-						updated_metadata = TaskCheckpoint.save_checkpoint(
-							task_metadata=task.task_metadata or {},
-							iteration=iteration,
-							best_score=best_score,
-							best_experiment_id=best_experiment_id,
-							strategy_state=strategy.get_state(),
-						)
-						task.task_metadata = updated_metadata
-						await db.commit()
+						# Use a fresh session for checkpoint to avoid session expiration issues
+						async with AsyncSessionLocal() as checkpoint_db:
+							# Update task directly with SQL to avoid session state issues
+							from sqlalchemy import update
+							await checkpoint_db.execute(
+								update(Task).where(Task.id == task_id).values(
+									total_experiments=iteration,
+									successful_experiments=task.successful_experiments if task else 0,
+								)
+							)
+							await checkpoint_db.commit()
 						logger.info(f"[ARQ Worker] Checkpoint saved at iteration {iteration}")
 
 						# Broadcast task progress event
@@ -766,7 +767,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 								data={
 									"current_experiment": iteration,
 									"total_experiments": total_experiments,
-									"successful_experiments": task.successful_experiments,
+									"successful_experiments": task.successful_experiments if task else 0,
 									"progress_percent": (iteration / total_experiments * 100) if total_experiments > 0 else 0,
 									"best_score": best_score if best_score != float("inf") else None
 								},
@@ -898,56 +899,54 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 					except Exception as checkpoint_error:
 						logger.warning(f"[ARQ Worker] Failed to save checkpoint: {checkpoint_error}")
 
-			# Update task total_experiments with actual count (only if we have DB access)
-			if task:
-				task.total_experiments = iteration
+			# Update task with final results using a fresh session
+			try:
+				async with AsyncSessionLocal() as final_db:
+					from sqlalchemy import update
 
-				# Update task with final results
-				# Refresh task object to ensure it's properly tracked by the session
-				await db.refresh(task)
+					# Determine final status
+					successful_count = task.successful_experiments if task else 0
+					final_status = TaskStatus.COMPLETED if successful_count > 0 else TaskStatus.FAILED
+					completed_at = datetime.utcnow()
+					elapsed_time = None
 
-				# Check if any experiments succeeded
-				if task.successful_experiments > 0:
-					task.status = TaskStatus.COMPLETED
-				else:
-					# All experiments failed
-					task.status = TaskStatus.FAILED
-					logger.warning(f"[ARQ Worker] Task {task_name} - All {iteration} experiments failed")
+					if task and task.started_at:
+						elapsed_time = (completed_at - task.started_at).total_seconds()
 
-				task.completed_at = datetime.utcnow()
-				task.best_experiment_id = best_experiment_id
-
-				# Clear checkpoint after successful completion
-				task.task_metadata = TaskCheckpoint.clear_checkpoint(task.task_metadata)
-
-				if task.started_at:
-					elapsed = (task.completed_at - task.started_at).total_seconds()
-					task.elapsed_time = elapsed
-					logger.info(f"[ARQ Worker] Task completed in {elapsed:.2f}s - Best experiment: {best_experiment_id}")
-
-				await db.commit()
-				await db.refresh(task)  # Ensure changes are reflected
-
-				# Broadcast task completion event
-				broadcaster.broadcast_sync(
-					task_id,
-					create_event(
-						EventType.TASK_COMPLETED if task.status == TaskStatus.COMPLETED else EventType.TASK_FAILED,
-						task_id=task_id,
-						data={
-							"status": task.status.value,
-							"total_experiments": iteration,
-							"successful_experiments": task.successful_experiments,
-							"best_experiment_id": best_experiment_id,
-							"best_score": best_score if best_score != float("inf") else None,
-							"elapsed_time": elapsed if task.started_at else None
-						},
-						message=f"Task completed: {task.successful_experiments}/{iteration} experiments successful"
+					# Update task in database
+					await final_db.execute(
+						update(Task).where(Task.id == task_id).values(
+							status=final_status,
+							total_experiments=iteration,
+							successful_experiments=successful_count,
+							best_experiment_id=best_experiment_id,
+							completed_at=completed_at,
+							elapsed_time=elapsed_time,
+						)
 					)
-				)
-			else:
-				# No DB access - just log completion
-				logger.info(f"[ARQ Worker] Task completed (no DB access) - {iteration} experiments run")
+					await final_db.commit()
+
+					logger.info(f"[ARQ Worker] Task completed in {elapsed_time:.2f}s - Best experiment: {best_experiment_id}" if elapsed_time else f"[ARQ Worker] Task completed - Best experiment: {best_experiment_id}")
+
+					# Broadcast task completion event
+					broadcaster.broadcast_sync(
+						task_id,
+						create_event(
+							EventType.TASK_COMPLETED if final_status == TaskStatus.COMPLETED else EventType.TASK_FAILED,
+							task_id=task_id,
+							data={
+								"status": final_status.value,
+								"total_experiments": iteration,
+								"successful_experiments": successful_count,
+								"best_experiment_id": best_experiment_id,
+								"best_score": best_score if best_score != float("inf") else None,
+								"elapsed_time": elapsed_time
+							},
+							message=f"Task completed: {successful_count}/{iteration} experiments successful"
+						)
+					)
+			except Exception as final_update_error:
+				logger.error(f"[ARQ Worker] Failed to update final task status: {final_update_error}")
 
 			logger.info(
 				f"[ARQ Worker] Task finished: {task_name} - {task.successful_experiments if task else 0}/{total_experiments} successful"

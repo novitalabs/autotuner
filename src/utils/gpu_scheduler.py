@@ -142,7 +142,7 @@ def check_gpu_availability(required_gpus: int, min_memory_mb: Optional[int] = No
 		gpu_status = []
 		for gpu in snapshot.gpus:
 			gpu_status.append(
-				f"GPU {gpu.index}: {gpu.utilization_percent}% util, "
+				f"GPU {gpu.index}: {gpu.utilization_gpu}% util, "
 				f"{gpu.memory_free_mb}MB free"
 			)
 
@@ -163,7 +163,7 @@ def check_gpu_availability(required_gpus: int, min_memory_mb: Optional[int] = No
 		gpu_info = gpu_monitor.get_gpu_info(gpu_idx)
 		if gpu_info:
 			logger.info(
-				f"[GPU Scheduler]   GPU {gpu_idx}: {gpu_info.utilization_percent}% util, "
+				f"[GPU Scheduler]   GPU {gpu_idx}: {gpu_info.utilization_gpu}% util, "
 				f"{gpu_info.memory_free_mb}/{gpu_info.memory_total_mb}MB free, "
 				f"score={gpu_info.score:.2f}"
 			)
