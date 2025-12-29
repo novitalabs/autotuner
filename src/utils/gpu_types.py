@@ -63,6 +63,11 @@ class LocalGPUInfo:
         return self.utilization_gpu
 
     @property
+    def temperature_c(self) -> Optional[int]:
+        """GPU temperature in Celsius (alias for temperature)."""
+        return self.temperature
+
+    @property
     def is_available(self) -> bool:
         """Check if GPU is available for allocation (has free memory)."""
         return self.memory_free_mb > 1000  # At least 1GB free
