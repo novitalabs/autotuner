@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: frontendPort,
-      allowedHosts: ['localhost'],
+      allowedHosts: true,  // Allow all hosts for remote access
       proxy: {
         '/api': {
           target: `http://localhost:${backendPort}`,
