@@ -1142,13 +1142,27 @@ class WorkerSettings:
 		import os
 		from src.web.schemas.worker import WorkerRegister, WorkerCapabilities, GPUInfo
 		from src.web.workers.registry import get_worker_registry, HEARTBEAT_INTERVAL
+		from src.web.workers.worker_config import (
+			load_worker_config,
+			get_worker_alias,
+			get_deployment_mode,
+		)
 
 		worker_id = WorkerSettings.get_worker_id()
 		hostname = socket.gethostname()
 
-		# Determine deployment mode from environment
-		deployment_mode = os.environ.get("DEPLOYMENT_MODE", settings.deployment_mode)
-		worker_alias = os.environ.get("WORKER_ALIAS", None)
+		# Load local config file
+		local_config = load_worker_config()
+		ctx["local_config"] = local_config
+
+		# Get deployment mode and alias (config file with env var override)
+		deployment_mode = get_deployment_mode()
+		worker_alias = get_worker_alias()
+
+		# Log config source
+		from src.web.workers.worker_config import get_config_path
+		config_path = get_config_path()
+		logging.info(f"📁 Worker config: {config_path} (alias={worker_alias}, mode={deployment_mode})")
 
 		# Get GPU information - use cluster info for OME mode
 		if deployment_mode == "ome":
@@ -1210,6 +1224,11 @@ class WorkerSettings:
 			WorkerSettings._heartbeat_loop(ctx)
 		)
 
+		# Start config listener task
+		ctx["config_listener_task"] = asyncio.create_task(
+			WorkerSettings._config_listener(ctx)
+		)
+
 	@staticmethod
 	async def on_shutdown(ctx: Dict[str, Any]) -> None:
 		"""Called when worker shuts down. Deregister from the manager."""
@@ -1219,6 +1238,15 @@ class WorkerSettings:
 			heartbeat_task.cancel()
 			try:
 				await heartbeat_task
+			except asyncio.CancelledError:
+				pass
+
+		# Cancel config listener task
+		config_listener_task = ctx.get("config_listener_task")
+		if config_listener_task:
+			config_listener_task.cancel()
+			try:
+				await config_listener_task
 			except asyncio.CancelledError:
 				pass
 
@@ -1281,6 +1309,65 @@ class WorkerSettings:
 				break
 			except Exception as e:
 				logging.warning(f"Heartbeat failed: {e}")
+
+	@staticmethod
+	async def _config_listener(ctx: Dict[str, Any]) -> None:
+		"""Background task to listen for config updates from manager."""
+		import redis.asyncio as redis
+		from src.web.workers.pubsub import CONFIG_CHANNEL_PREFIX
+		from src.web.workers.worker_config import update_worker_config, get_config_path
+
+		worker_id = ctx.get("worker_id")
+		if not worker_id:
+			return
+
+		channel = f"{CONFIG_CHANNEL_PREFIX}{worker_id}"
+		logging.info(f"📡 Config listener started, subscribing to: {channel}")
+
+		try:
+			# Create separate Redis connection for pubsub
+			client = redis.Redis(
+				host=settings.redis_host,
+				port=settings.redis_port,
+				db=settings.redis_db,
+				decode_responses=True,
+			)
+			pubsub = client.pubsub()
+			await pubsub.subscribe(channel)
+
+			async for message in pubsub.listen():
+				if message["type"] == "message":
+					try:
+						import json
+						data = json.loads(message["data"])
+						updates = data.get("updates", {})
+
+						if updates:
+							logging.info(f"📥 Received config update: {updates}")
+							config = update_worker_config(**updates)
+							logging.info(f"✅ Config updated and saved to {get_config_path()}")
+
+							# If alias changed, update the registration
+							if "alias" in updates:
+								registry = ctx.get("registry")
+								if registry:
+									await registry.set_worker_alias(worker_id, updates["alias"])
+									logging.info(f"✅ Worker alias updated in registry: {updates['alias']}")
+
+					except Exception as e:
+						logging.error(f"Failed to process config update: {e}")
+
+		except asyncio.CancelledError:
+			logging.info("📡 Config listener stopped")
+			raise
+		except Exception as e:
+			logging.error(f"Config listener error: {e}")
+		finally:
+			try:
+				await pubsub.unsubscribe(channel)
+				await client.close()
+			except Exception:
+				pass
 
 	@staticmethod
 	def _get_gpu_metrics() -> Optional[List["GPUInfo"]]:

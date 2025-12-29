@@ -3,7 +3,8 @@ Worker management API endpoints.
 """
 
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 
 from web.schemas.worker import (
 	WorkerRegister,
@@ -17,6 +18,7 @@ from web.workers.registry import (
 	get_worker_registry,
 	worker_info_to_response,
 )
+from web.workers.pubsub import get_result_publisher
 
 router = APIRouter()
 
@@ -117,6 +119,10 @@ async def get_available_workers():
 async def rename_worker(worker_id: str, request: WorkerRenameRequest):
 	"""Set or clear a worker's alias (nickname).
 
+	This updates both:
+	1. The registry (Redis) - immediate effect
+	2. The worker's local config file (via pub/sub) - persistent
+
 	Args:
 		worker_id: Worker identifier
 		request: New alias or null to clear
@@ -126,6 +132,15 @@ async def rename_worker(worker_id: str, request: WorkerRenameRequest):
 
 	if not worker:
 		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	# Publish config update to worker so it saves to local config file
+	try:
+		publisher = await get_result_publisher()
+		await publisher.publish_config_update(worker_id, {"alias": request.alias})
+	except Exception as e:
+		# Log but don't fail - registry update succeeded
+		import logging
+		logging.warning(f"Failed to publish config update to worker {worker_id}: {e}")
 
 	return worker_info_to_response(worker)
 
@@ -146,3 +161,56 @@ async def get_worker_gpu_history(worker_id: str):
 	history = await registry.get_gpu_history(worker_id)
 	# Reverse to get oldest first (for chart display)
 	return {"worker_id": worker_id, "history": list(reversed(history))}
+
+
+class WorkerConfigUpdate(BaseModel):
+	"""Request body for updating worker config."""
+	alias: Optional[str] = None
+	deployment_mode: Optional[str] = None
+	max_parallel: Optional[int] = None
+	description: Optional[str] = None
+	tags: Optional[List[str]] = None
+
+
+@router.patch("/{worker_id}/config")
+async def update_worker_config(worker_id: str, request: WorkerConfigUpdate):
+	"""Update worker's local configuration file.
+
+	This sends config updates to the worker via pub/sub.
+	The worker will save updates to ~/.config/autotuner/worker.json
+
+	Args:
+		worker_id: Worker identifier
+		request: Config fields to update (only non-null fields are updated)
+	"""
+	registry = await get_worker_registry()
+	worker = await registry.get_worker(worker_id)
+
+	if not worker:
+		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	# Build updates dict with only non-null fields
+	updates = {k: v for k, v in request.model_dump().items() if v is not None}
+
+	if not updates:
+		raise HTTPException(status_code=400, detail="No config fields to update")
+
+	# If alias is updated, also update registry
+	if "alias" in updates:
+		await registry.set_worker_alias(worker_id, updates["alias"])
+
+	# Publish config update to worker
+	try:
+		publisher = await get_result_publisher()
+		subscribers = await publisher.publish_config_update(worker_id, updates)
+
+		return {
+			"status": "ok",
+			"worker_id": worker_id,
+			"updates": updates,
+			"subscribers": subscribers,
+			"message": f"Config update sent to {subscribers} subscriber(s)"
+		}
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"Failed to send config update: {e}")
+

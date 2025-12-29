@@ -21,6 +21,7 @@ settings = get_settings()
 # Channel patterns
 RESULTS_CHANNEL_PREFIX = "channel:results:"
 WORKER_CHANNEL_PREFIX = "channel:worker:"
+CONFIG_CHANNEL_PREFIX = "channel:config:"  # For worker config updates
 ALL_RESULTS_CHANNEL = "channel:results:*"
 
 
@@ -50,6 +51,19 @@ class WorkerEvent(BaseModel):
 	worker_id: str
 	event_type: str  # "registered", "heartbeat", "job_started", "job_completed", "offline"
 	data: Dict[str, Any] = Field(default_factory=dict)
+	timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+	class Config:
+		json_encoders = {
+			datetime: lambda v: v.isoformat()
+		}
+
+
+class ConfigUpdate(BaseModel):
+	"""Config update message sent from manager to worker."""
+
+	worker_id: str
+	updates: Dict[str, Any] = Field(default_factory=dict)  # Fields to update
 	timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 	class Config:
@@ -90,6 +104,28 @@ class ResultPublisher:
 	def _worker_channel(self, worker_id: str) -> str:
 		"""Get channel name for worker events."""
 		return f"{WORKER_CHANNEL_PREFIX}{worker_id}"
+
+	def _config_channel(self, worker_id: str) -> str:
+		"""Get channel name for worker config updates."""
+		return f"{CONFIG_CHANNEL_PREFIX}{worker_id}"
+
+	async def publish_config_update(self, worker_id: str, updates: Dict[str, Any]) -> int:
+		"""Publish a config update to a specific worker.
+
+		Args:
+			worker_id: Target worker ID
+			updates: Config fields to update
+
+		Returns:
+			Number of subscribers that received the message
+		"""
+		channel = self._config_channel(worker_id)
+		update = ConfigUpdate(worker_id=worker_id, updates=updates)
+		message = update.model_dump_json()
+
+		subscribers = await self.redis.publish(channel, message)
+		logger.info(f"Published config update to worker {worker_id}: {updates} ({subscribers} subscribers)")
+		return subscribers
 
 	async def publish_result(self, result: ExperimentResult) -> int:
 		"""Publish an experiment result.
