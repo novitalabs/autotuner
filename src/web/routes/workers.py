@@ -358,6 +358,30 @@ async def get_worker_gpu_history(worker_id: str):
 	return {"worker_id": worker_id, "history": list(reversed(history))}
 
 
+@router.get("/{worker_id}/logs")
+async def get_worker_logs(worker_id: str, count: int = 100):
+	"""Get recent log entries for a worker.
+
+	Args:
+		worker_id: Worker identifier
+		count: Number of log entries to retrieve (default 100, max 500)
+
+	Returns:
+		List of recent log entries (newest first)
+	"""
+	# Cap count at buffer max size
+	count = min(count, 500)
+
+	publisher = await get_result_publisher()
+	logs = await publisher.get_recent_logs(worker_id, count)
+
+	return {
+		"worker_id": worker_id,
+		"count": len(logs),
+		"logs": logs,
+	}
+
+
 class WorkerConfigUpdate(BaseModel):
 	"""Request body for updating worker config."""
 	alias: Optional[str] = None

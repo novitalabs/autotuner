@@ -488,7 +488,7 @@ async def get_experiment_logs(
 		)
 
 	log_file = get_experiment_log_file(task.id, experiment_id)
-	
+
 	# If follow mode, return streaming response (Server-Sent Events)
 	if follow:
 		return StreamingResponse(
@@ -500,12 +500,58 @@ async def get_experiment_logs(
 				"X-Accel-Buffering": "no"
 			}
 		)
-	
-	# Otherwise return static log content
-	if not log_file.exists():
-		return {"logs": "No logs available yet for this experiment."}
-	
-	with open(log_file, "r") as f:
-		logs = f.read()
-	
-	return {"logs": logs}
+
+	# Try local log file first
+	if log_file.exists():
+		with open(log_file, "r") as f:
+			logs = f.read()
+		return {"logs": logs}
+
+	# Fallback to Redis remote logs for distributed workers
+	try:
+		from web.workers.pubsub import get_result_publisher
+		publisher = await get_result_publisher()
+
+		# Get all workers and find logs for this task/experiment
+		import redis.asyncio as redis
+		from web.config import get_settings
+		settings = get_settings()
+
+		client = redis.Redis(
+			host=settings.redis_host,
+			port=settings.redis_port,
+			db=settings.redis_db,
+			decode_responses=True,
+		)
+
+		# Get all log buffer keys
+		buffer_keys = await client.keys("logs:buffer:*")
+		all_logs = []
+
+		for key in buffer_keys:
+			logs_raw = await client.lrange(key, 0, -1)
+			import json
+			for log_raw in logs_raw:
+				try:
+					log_entry = json.loads(log_raw)
+					# Filter by task_id and experiment_id
+					if log_entry.get("task_id") == task.id and log_entry.get("experiment_id") == experiment_id:
+						all_logs.append(log_entry)
+				except:
+					continue
+
+		await client.close()
+
+		if all_logs:
+			# Sort by timestamp and format as text
+			all_logs.sort(key=lambda x: x.get("timestamp", ""))
+			formatted_logs = "\n".join([
+				f"[{log.get('timestamp', '')}] [{log.get('level', 'INFO')}] {log.get('message', '')}"
+				for log in all_logs
+			])
+			return {"logs": formatted_logs, "source": "remote"}
+
+	except Exception as e:
+		logger.warning(f"Failed to fetch remote logs: {e}")
+
+	return {"logs": "No logs available yet for this experiment."}
