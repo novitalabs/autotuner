@@ -112,6 +112,24 @@ fi
 PYTHON_VERSION=$(python3 --version | awk '{print $2}')
 log_info "Python version: $PYTHON_VERSION"
 
+# Verify Python version is 3.8 or higher
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+
+if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
+    log_error "Python 3.8 or higher is required"
+    log_error "Current version: $PYTHON_VERSION"
+    log_error "Please upgrade Python to 3.8+"
+    echo ""
+    echo "Installation guides:"
+    echo "  Ubuntu/Debian: sudo apt-get update && sudo apt-get install python3.8"
+    echo "  CentOS/RHEL:   sudo yum install python38"
+    echo "  macOS:         brew install python@3.8"
+    echo ""
+    exit 1
+fi
+log_success "Python version meets requirements (3.8+)"
+
 # Check pip
 if ! check_command pip3; then
     log_error "pip3 is required but not installed"
@@ -154,27 +172,73 @@ fi
 # 3. Setup Python Virtual Environment
 ##############################################################################
 
+# Check if already in a virtual environment
+if [ -n "$VIRTUAL_ENV" ]; then
+    log_info "Already in a virtual environment: $VIRTUAL_ENV"
+    log_success "Using existing virtual environment"
+    SKIP_VENV=true
+fi
+
 if [ "$SKIP_VENV" = false ]; then
     log_info "Setting up Python virtual environment at: $VENV_PATH"
 
     # Create virtual environment if it doesn't exist
     if [ ! -d "$VENV_PATH" ]; then
-        python3 -m venv "$VENV_PATH"
+        log_info "Creating new virtual environment..."
+        if ! python3 -m venv "$VENV_PATH"; then
+            log_error "Failed to create virtual environment"
+            log_error "Make sure python3-venv is installed:"
+            echo "  Ubuntu/Debian: sudo apt-get install python3-venv"
+            echo "  CentOS/RHEL:   sudo yum install python3-virtualenv"
+            exit 1
+        fi
         log_success "Virtual environment created"
     else
         log_warning "Virtual environment already exists at $VENV_PATH"
+
+        # Check if the existing venv is valid
+        if [ ! -f "$VENV_PATH/bin/activate" ]; then
+            log_error "Virtual environment at $VENV_PATH appears to be corrupted"
+            log_error "Please remove it and run install.sh again:"
+            echo "  rm -rf $VENV_PATH"
+            echo "  ./install.sh"
+            exit 1
+        fi
+        log_info "Using existing virtual environment"
     fi
 
     # Activate virtual environment
+    log_info "Activating virtual environment..."
     source "$VENV_PATH/bin/activate"
-    log_success "Virtual environment activated"
+
+    # Verify activation succeeded
+    if [ -z "$VIRTUAL_ENV" ]; then
+        log_error "Failed to activate virtual environment"
+        log_error "Please try manually:"
+        echo "  source $VENV_PATH/bin/activate"
+        exit 1
+    fi
+
+    log_success "Virtual environment activated: $VIRTUAL_ENV"
 
     # Upgrade pip
     log_info "Upgrading pip..."
     pip install --upgrade pip
 
 else
-    log_warning "Skipping virtual environment creation (--skip-venv)"
+    log_warning "Skipping virtual environment creation"
+    if [ -n "$VIRTUAL_ENV" ]; then
+        log_info "Using current virtual environment: $VIRTUAL_ENV"
+    else
+        log_warning "No virtual environment detected - using system Python"
+        log_warning "It's recommended to use a virtual environment to avoid conflicts"
+        echo ""
+        echo "To create and activate a virtual environment:"
+        echo "  python3 -m venv env"
+        echo "  source env/bin/activate"
+        echo "  ./install.sh"
+        echo ""
+    fi
 fi
 
 ##############################################################################
@@ -183,11 +247,42 @@ fi
 
 log_info "Installing Python dependencies from requirements.txt..."
 
-if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    pip install -r "$SCRIPT_DIR/requirements.txt"
-    log_success "Python dependencies installed"
-else
-    log_error "requirements.txt not found"
+if [ ! -f "$SCRIPT_DIR/requirements.txt" ]; then
+    log_error "requirements.txt not found in $SCRIPT_DIR"
+    log_error "Please ensure you're running install.sh from the project root directory"
+    exit 1
+fi
+
+# Install dependencies with verbose output
+if ! pip install -r "$SCRIPT_DIR/requirements.txt"; then
+    log_error "Failed to install Python dependencies"
+    log_error "Common issues:"
+    echo "  1. Outdated pip - run: pip install --upgrade pip"
+    echo "  2. Missing build tools - install: gcc python3-dev"
+    echo "  3. Network issues - check proxy settings or use: pip install --proxy http://..."
+    echo ""
+    exit 1
+fi
+
+log_success "Python dependencies installed"
+
+# Verify critical packages
+log_info "Verifying critical packages..."
+CRITICAL_PACKAGES=("fastapi" "uvicorn" "sqlalchemy" "kubernetes" "jinja2" "optuna")
+MISSING_CRITICAL=0
+
+for package in "${CRITICAL_PACKAGES[@]}"; do
+    if python3 -c "import $package" 2>/dev/null; then
+        log_success "✓ $package"
+    else
+        log_error "✗ $package (CRITICAL)"
+        MISSING_CRITICAL=$((MISSING_CRITICAL + 1))
+    fi
+done
+
+if [ "$MISSING_CRITICAL" -gt 0 ]; then
+    log_error "$MISSING_CRITICAL critical package(s) failed to install"
+    log_error "Try reinstalling with: pip install -r requirements.txt --force-reinstall"
     exit 1
 fi
 
