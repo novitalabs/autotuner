@@ -82,7 +82,7 @@ class WorkerRegistry:
 		now = datetime.utcnow()
 		worker_key = self._worker_key(registration.worker_id)
 
-		# Convert nested models to dicts for proper serialization
+		# Convert nested models to dicts for Redis JSON storage
 		gpus_data = None
 		if registration.gpus:
 			gpus_data = [g.model_dump() for g in registration.gpus]
@@ -177,6 +177,7 @@ class WorkerRegistry:
 		# For OME mode, the worker now collects metrics from all cluster nodes via kubectl exec
 		# So we can simply replace the GPU list with the heartbeat data
 		if heartbeat.gpus:
+			# Convert to dicts for consistent Redis JSON storage
 			worker_info.gpus = [
 				g.model_dump() if hasattr(g, 'model_dump') else g
 				for g in heartbeat.gpus

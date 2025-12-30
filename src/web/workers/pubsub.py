@@ -22,7 +22,13 @@ settings = get_settings()
 RESULTS_CHANNEL_PREFIX = "channel:results:"
 WORKER_CHANNEL_PREFIX = "channel:worker:"
 CONFIG_CHANNEL_PREFIX = "channel:config:"  # For worker config updates
+LOG_CHANNEL_PREFIX = "channel:logs:"  # For worker log streaming
 ALL_RESULTS_CHANNEL = "channel:results:*"
+ALL_LOGS_CHANNEL = "channel:logs:*"
+
+# Log storage
+LOG_BUFFER_KEY_PREFIX = "logs:buffer:"  # Circular buffer for recent logs
+LOG_BUFFER_MAX_SIZE = 500  # Keep last 500 log lines per worker
 
 
 class ExperimentResult(BaseModel):
@@ -72,6 +78,23 @@ class ConfigUpdate(BaseModel):
 		}
 
 
+class LogEntry(BaseModel):
+	"""Log entry from a worker."""
+
+	worker_id: str
+	level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+	message: str
+	source: str = "worker"  # worker, task, benchmark
+	task_id: Optional[int] = None
+	experiment_id: Optional[int] = None
+	timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+	class Config:
+		json_encoders = {
+			datetime: lambda v: v.isoformat()
+		}
+
+
 class ResultPublisher:
 	"""Publisher for experiment results (used by workers)."""
 
@@ -108,6 +131,74 @@ class ResultPublisher:
 	def _config_channel(self, worker_id: str) -> str:
 		"""Get channel name for worker config updates."""
 		return f"{CONFIG_CHANNEL_PREFIX}{worker_id}"
+
+	def _log_channel(self, worker_id: str) -> str:
+		"""Get channel name for worker logs."""
+		return f"{LOG_CHANNEL_PREFIX}{worker_id}"
+
+	def _log_buffer_key(self, worker_id: str) -> str:
+		"""Get Redis key for worker's log buffer."""
+		return f"{LOG_BUFFER_KEY_PREFIX}{worker_id}"
+
+	async def publish_log(
+		self,
+		message: str,
+		level: str = "INFO",
+		source: str = "worker",
+		task_id: Optional[int] = None,
+		experiment_id: Optional[int] = None,
+	) -> int:
+		"""Publish a log entry from this worker.
+
+		Args:
+			message: Log message
+			level: Log level (DEBUG, INFO, WARNING, ERROR)
+			source: Log source (worker, task, benchmark)
+			task_id: Associated task ID (optional)
+			experiment_id: Associated experiment ID (optional)
+
+		Returns:
+			Number of subscribers that received the message
+		"""
+		if not self.worker_id:
+			return 0
+
+		entry = LogEntry(
+			worker_id=self.worker_id,
+			level=level,
+			message=message,
+			source=source,
+			task_id=task_id,
+			experiment_id=experiment_id,
+		)
+
+		channel = self._log_channel(self.worker_id)
+		entry_json = entry.model_dump_json()
+
+		# Publish to channel for real-time streaming
+		subscribers = await self.redis.publish(channel, entry_json)
+
+		# Store in circular buffer for recent logs retrieval
+		buffer_key = self._log_buffer_key(self.worker_id)
+		await self.redis.lpush(buffer_key, entry_json)
+		await self.redis.ltrim(buffer_key, 0, LOG_BUFFER_MAX_SIZE - 1)
+		await self.redis.expire(buffer_key, 86400)  # Expire after 24 hours
+
+		return subscribers
+
+	async def get_recent_logs(self, worker_id: str, count: int = 100) -> list:
+		"""Get recent log entries for a worker.
+
+		Args:
+			worker_id: Worker ID
+			count: Number of entries to retrieve
+
+		Returns:
+			List of LogEntry dicts (newest first)
+		"""
+		buffer_key = self._log_buffer_key(worker_id)
+		entries = await self.redis.lrange(buffer_key, 0, count - 1)
+		return [LogEntry.model_validate_json(e).model_dump() for e in entries]
 
 	async def publish_config_update(self, worker_id: str, updates: Dict[str, Any]) -> int:
 		"""Publish a config update to a specific worker.

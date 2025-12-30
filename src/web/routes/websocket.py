@@ -148,3 +148,74 @@ async def get_task_subscribers(task_id: int):
 		"subscriber_count": count,
 		"status": "active" if count > 0 else "inactive"
 	}
+
+
+@router.websocket("/ws/workers/{worker_id}/logs")
+async def worker_logs_websocket(websocket: WebSocket, worker_id: str):
+	"""
+	WebSocket endpoint for real-time worker log streaming.
+
+	Clients connect to this endpoint to receive live log messages from a worker:
+	- Task execution logs
+	- Experiment progress
+	- System messages
+
+	Args:
+	    websocket: FastAPI WebSocket connection
+	    worker_id: Worker ID to subscribe logs from
+	"""
+	from web.services.result_listener import get_result_listener
+	from web.workers.pubsub import LOG_CHANNEL_PREFIX
+
+	# Accept WebSocket connection
+	await websocket.accept()
+	logger.info(f"[WebSocket] Client connected for worker logs: {worker_id}")
+
+	# Get result listener and create a queue for this client
+	log_queue = asyncio.Queue()
+
+	# Callback to receive log entries
+	async def on_log_entry(log_entry):
+		# Only forward logs for this worker
+		if log_entry.worker_id == worker_id:
+			await log_queue.put(log_entry.model_dump())
+
+	# Get listener and register callback
+	listener = await get_result_listener()
+	listener.on_log(on_log_entry)
+
+	try:
+		# Send initial connection confirmation
+		await websocket.send_json({
+			"type": "connection_established",
+			"worker_id": worker_id,
+			"message": f"Subscribed to logs from worker {worker_id}"
+		})
+
+		# Event loop: receive logs and send to client
+		while True:
+			try:
+				# Wait for log entry with timeout to check for disconnection
+				log_entry = await asyncio.wait_for(log_queue.get(), timeout=30.0)
+
+				# Send log to WebSocket client
+				await websocket.send_json({
+					"type": "log_entry",
+					"worker_id": worker_id,
+					**log_entry
+				})
+				logger.debug(f"[WebSocket] Sent log to client for worker {worker_id}")
+
+			except asyncio.TimeoutError:
+				# Send ping to keep connection alive
+				await websocket.send_json({"type": "ping"})
+
+	except WebSocketDisconnect:
+		logger.info(f"[WebSocket] Client disconnected from worker logs: {worker_id}")
+	except Exception as e:
+		logger.error(f"[WebSocket] Unexpected error for worker logs {worker_id}: {e}")
+	finally:
+		# Remove callback from listener
+		if on_log_entry in listener._log_callbacks:
+			listener._log_callbacks.remove(on_log_entry)
+		logger.info(f"[WebSocket] Cleaned up log subscription for worker {worker_id}")

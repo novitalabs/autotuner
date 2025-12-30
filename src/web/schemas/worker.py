@@ -3,7 +3,7 @@ Worker schemas for distributed ARQ worker system.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -64,13 +64,15 @@ class WorkerInfo(BaseModel):
 	gpu_count: int = 0
 	gpu_model: Optional[str] = None
 	gpu_memory_gb: Optional[float] = None
-	gpus: Optional[List[GPUInfo]] = None
+	# Use Union to accept both GPUInfo objects and dicts (for Redis storage)
+	gpus: Optional[List[Union[GPUInfo, dict]]] = None
 	deployment_mode: str = "docker"
 	max_parallel: int = 2
 	current_jobs: int = 0
 	current_job_ids: List[int] = Field(default_factory=list)
 	status: WorkerStatus = WorkerStatus.ONLINE
-	capabilities: Optional[WorkerCapabilities] = None
+	# Use Union to accept both WorkerCapabilities objects and dicts (for Redis storage)
+	capabilities: Optional[Union[WorkerCapabilities, dict]] = None
 	registered_at: datetime = Field(default_factory=datetime.utcnow)
 	last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
 

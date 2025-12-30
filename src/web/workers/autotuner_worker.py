@@ -341,6 +341,12 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 			task_name = task_config.get("task_name", f"task-{task_id}")
 			logger.info(f"[ARQ Worker] Starting task: {task_name}")
 
+			# Set task context for remote logging
+			from src.web.workers.log_handler import get_log_handler
+			log_handler = get_log_handler()
+			if log_handler:
+				log_handler.set_task_context(task_id, None)
+
 			# Get broadcaster instance
 			broadcaster = get_broadcaster()
 
@@ -541,6 +547,12 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 				logger = setup_experiment_logging(task_id, iteration)
 				logger.info(f"[Experiment {iteration}] Logging to experiment-specific file")
 
+				# Set task context for remote logging
+				from src.web.workers.log_handler import get_log_handler
+				log_handler = get_log_handler()
+				if log_handler:
+					log_handler.set_task_context(task_id, iteration)
+
 				# Create experiment record
 				db_experiment = Experiment(
 					task_id=task_id,
@@ -734,7 +746,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 								task_id=task_id,
 								experiment_id=iteration,
 								status=result["status"],
-								metrics=result.get("metrics", {}),
+								metrics=result.get("metrics") or {},  # Ensure never None
 								objective_score=result.get("objective_score"),
 								error_message=result.get("error_message"),
 								elapsed_time=elapsed if db_experiment.started_at else 0.0,
@@ -830,6 +842,24 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 						metrics={}
 					)
 
+					# Publish result via Redis Pub/Sub for distributed listeners (timeout case)
+					if publisher:
+						try:
+							timeout_elapsed = (db_experiment.completed_at - db_experiment.started_at).total_seconds() if db_experiment.started_at else timeout_per_iteration
+							await publisher.publish_experiment_completed(
+								task_id=task_id,
+								experiment_id=iteration,
+								status="failed",
+								metrics={},
+								objective_score=penalty_score,
+								error_message=db_experiment.error_message,
+								elapsed_time=timeout_elapsed,
+								parameters=params,
+							)
+							logger.debug(f"[Experiment {iteration}] Timeout result published to Pub/Sub")
+						except Exception as pub_err:
+							logger.warning(f"[Experiment {iteration}] Failed to publish timeout result: {pub_err}")
+
 					# Save checkpoint after timeout
 					try:
 						await db.refresh(task)
@@ -883,6 +913,24 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 						objective_score=penalty_score,
 						metrics={}
 					)
+
+					# Publish result via Redis Pub/Sub for distributed listeners (exception case)
+					if publisher:
+						try:
+							exception_elapsed = (db_experiment.completed_at - db_experiment.started_at).total_seconds() if db_experiment.started_at else 0.0
+							await publisher.publish_experiment_completed(
+								task_id=task_id,
+								experiment_id=iteration,
+								status="failed",
+								metrics={},
+								objective_score=penalty_score,
+								error_message=db_experiment.error_message,
+								elapsed_time=exception_elapsed,
+								parameters=params,
+							)
+							logger.debug(f"[Experiment {iteration}] Exception result published to Pub/Sub")
+						except Exception as pub_err:
+							logger.warning(f"[Experiment {iteration}] Failed to publish exception result: {pub_err}")
 
 					# Save checkpoint after failed experiment
 					try:
@@ -1152,6 +1200,15 @@ class WorkerSettings:
 		worker_id = WorkerSettings.get_worker_id()
 		hostname = socket.gethostname()
 
+		# Setup remote logging to stream logs to manager
+		try:
+			from src.web.workers.log_handler import setup_remote_logging
+			log_handler = setup_remote_logging(worker_id, level=logging.INFO)
+			ctx["log_handler"] = log_handler
+			logging.info(f"📡 Remote logging enabled for worker: {worker_id}")
+		except Exception as e:
+			logging.warning(f"Failed to setup remote logging (logs will be local only): {e}")
+
 		# Load local config file
 		local_config = load_worker_config()
 		ctx["local_config"] = local_config
@@ -1257,6 +1314,16 @@ class WorkerSettings:
 			logging.info("📡 Result publisher closed")
 		except Exception as e:
 			logging.error(f"Failed to close result publisher: {e}")
+
+		# Shutdown remote logging
+		log_handler = ctx.get("log_handler")
+		if log_handler:
+			try:
+				from src.web.workers.log_handler import shutdown_remote_logging
+				shutdown_remote_logging()
+				logging.info("📡 Remote logging shutdown")
+			except Exception as e:
+				logging.error(f"Failed to shutdown remote logging: {e}")
 
 		# Deregister worker
 		worker_id = ctx.get("worker_id")
