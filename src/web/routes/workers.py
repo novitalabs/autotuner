@@ -193,6 +193,7 @@ async def restore_worker_slot(
 		worker_id=result.worker_id,
 		slot_id=slot_id,
 		error=result.error,
+		suggestion=result.suggestion,
 		logs=result.logs,
 		worker_info=result.worker_info,
 	)

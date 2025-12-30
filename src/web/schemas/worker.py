@@ -193,6 +193,7 @@ class WorkerSlotRestoreResponse(BaseModel):
 	worker_id: Optional[str] = None
 	slot_id: int
 	error: Optional[str] = None
+	suggestion: Optional[str] = Field(None, description="Suggested fix for errors")
 	logs: Optional[str] = None
 	worker_info: Optional[dict] = None
 
