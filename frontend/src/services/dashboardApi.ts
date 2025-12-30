@@ -104,6 +104,45 @@ export interface DistributedWorkersStatus {
 	offline_count: number;
 }
 
+// Worker Slot Types (persistent deployment configurations)
+export interface WorkerSlot {
+	id: number;
+	worker_id: string | null;
+	name: string;
+	controller_type: string;
+	ssh_command: string;
+	ssh_forward_tunnel: string | null;
+	ssh_reverse_tunnel: string | null;
+	project_path: string;
+	manager_ssh: string | null;
+	current_status: 'online' | 'offline' | 'unknown';
+	last_seen_at: string | null;
+	last_error: string | null;
+	hostname: string | null;
+	gpu_count: number | null;
+	gpu_model: string | null;
+	created_at: string | null;
+	updated_at: string | null;
+}
+
+export interface WorkerSlotsStatus {
+	slots: WorkerSlot[];
+	total_count: number;
+	online_count: number;
+	offline_count: number;
+	unknown_count: number;
+}
+
+export interface RestoreWorkerResponse {
+	success: boolean;
+	message: string;
+	worker_id: string | null;
+	slot_id: number;
+	error: string | null;
+	logs: string | null;
+	worker_info: Record<string, unknown> | null;
+}
+
 export const dashboardApi = {
 	async getGPUStatus(): Promise<GPUStatus> {
 		const response = await axios.get<GPUStatus>(`${API_BASE_URL}/dashboard/gpu-status`);
@@ -151,5 +190,23 @@ export const dashboardApi = {
 			{ params: { hours } }
 		);
 		return response.data;
+	},
+
+	// Worker Slot APIs (persistent deployment configurations)
+	async getWorkerSlots(): Promise<WorkerSlotsStatus> {
+		const response = await axios.get<WorkerSlotsStatus>(`${API_BASE_URL}/workers/slots`);
+		return response.data;
+	},
+
+	async restoreWorker(slotId: number, autoInstall: boolean = false): Promise<RestoreWorkerResponse> {
+		const response = await axios.post<RestoreWorkerResponse>(
+			`${API_BASE_URL}/workers/slots/${slotId}/restore`,
+			{ auto_install: autoInstall }
+		);
+		return response.data;
+	},
+
+	async deleteWorkerSlot(slotId: number): Promise<void> {
+		await axios.delete(`${API_BASE_URL}/workers/slots/${slotId}`);
 	},
 };

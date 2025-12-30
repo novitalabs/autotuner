@@ -289,3 +289,75 @@ class AgentEventSubscription(Base):
 	# Relationships
 	session = relationship("ChatSession", back_populates="subscriptions")
 	task = relationship("Task")
+
+
+class WorkerSlotStatus(str, enum.Enum):
+	"""Worker slot status enum."""
+
+	ONLINE = "online"      # Worker is currently running
+	OFFLINE = "offline"    # Worker is not responding
+	UNKNOWN = "unknown"    # Never successfully connected
+
+
+class WorkerSlot(Base):
+	"""Persistent worker deployment configuration.
+
+	This table stores deployment configurations for workers, allowing:
+	- Persistence of worker configs across restarts
+	- Display of offline workers in dashboard
+	- One-click worker recovery
+	"""
+
+	__tablename__ = "worker_slots"
+
+	id = Column(Integer, primary_key=True, index=True)
+
+	# Worker identification
+	worker_id = Column(String, unique=True, nullable=True, index=True)  # Set after first successful registration
+	name = Column(String, nullable=False, index=True)  # Human-readable name/alias
+
+	# Connection configuration
+	controller_type = Column(String, nullable=False, default="docker")  # docker, local, ome
+	ssh_command = Column(String, nullable=False)  # e.g., "ssh -p 18022 root@host"
+	ssh_forward_tunnel = Column(String, nullable=True)  # For Redis access tunnel
+	ssh_reverse_tunnel = Column(String, nullable=True)  # Optional reverse tunnel
+
+	# Deployment configuration
+	project_path = Column(String, default="/opt/inference-autotuner")  # Remote project path
+	manager_ssh = Column(String, nullable=True)  # SSH command for worker to tunnel back to manager
+
+	# Status tracking
+	current_status = Column(SQLEnum(WorkerSlotStatus), default=WorkerSlotStatus.UNKNOWN)
+	last_seen_at = Column(DateTime, nullable=True)  # Last heartbeat from Redis
+	last_error = Column(Text, nullable=True)  # Last deployment/connection error
+
+	# Hardware info (cached from last registration)
+	hostname = Column(String, nullable=True)
+	gpu_count = Column(Integer, nullable=True)
+	gpu_model = Column(String, nullable=True)
+
+	# Metadata
+	created_at = Column(DateTime, default=datetime.utcnow)
+	updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+	def to_dict(self) -> dict:
+		"""Convert to dictionary."""
+		return {
+			"id": self.id,
+			"worker_id": self.worker_id,
+			"name": self.name,
+			"controller_type": self.controller_type,
+			"ssh_command": self.ssh_command,
+			"ssh_forward_tunnel": self.ssh_forward_tunnel,
+			"ssh_reverse_tunnel": self.ssh_reverse_tunnel,
+			"project_path": self.project_path,
+			"manager_ssh": self.manager_ssh,
+			"current_status": self.current_status.value if self.current_status else "unknown",
+			"last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+			"last_error": self.last_error,
+			"hostname": self.hostname,
+			"gpu_count": self.gpu_count,
+			"gpu_model": self.gpu_model,
+			"created_at": self.created_at.isoformat() if self.created_at else None,
+			"updated_at": self.updated_at.isoformat() if self.updated_at else None,
+		}

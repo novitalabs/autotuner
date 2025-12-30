@@ -2,9 +2,10 @@
 Worker management API endpoints.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from web.schemas.worker import (
 	WorkerRegister,
@@ -13,14 +14,207 @@ from web.schemas.worker import (
 	WorkerListResponse,
 	WorkerRenameRequest,
 	WorkerStatus,
+	WorkerSlotCreate,
+	WorkerSlotResponse,
+	WorkerSlotListResponse,
+	WorkerSlotRestoreRequest,
+	WorkerSlotRestoreResponse,
+	WorkerSlotDeployRequest,
+	WorkerSlotStatus,
 )
 from web.workers.registry import (
 	get_worker_registry,
 	worker_info_to_response,
 )
 from web.workers.pubsub import get_result_publisher
+from web.db.session import get_db
+from web.services.worker_service import WorkerService, DeploymentConfig
 
 router = APIRouter()
+
+
+# ============== Worker Slot Endpoints (must be BEFORE /{worker_id} routes) ==============
+
+
+def _slot_to_response(slot) -> WorkerSlotResponse:
+	"""Convert WorkerSlot model to response schema."""
+	from web.db.models import WorkerSlotStatus as DBStatus
+
+	# Map DB status to schema status
+	status_map = {
+		DBStatus.ONLINE: WorkerSlotStatus.ONLINE,
+		DBStatus.OFFLINE: WorkerSlotStatus.OFFLINE,
+		DBStatus.UNKNOWN: WorkerSlotStatus.UNKNOWN,
+	}
+
+	return WorkerSlotResponse(
+		id=slot.id,
+		worker_id=slot.worker_id,
+		name=slot.name,
+		controller_type=slot.controller_type,
+		ssh_command=slot.ssh_command,
+		ssh_forward_tunnel=slot.ssh_forward_tunnel,
+		ssh_reverse_tunnel=slot.ssh_reverse_tunnel,
+		project_path=slot.project_path,
+		manager_ssh=slot.manager_ssh,
+		current_status=status_map.get(slot.current_status, WorkerSlotStatus.UNKNOWN),
+		last_seen_at=slot.last_seen_at,
+		last_error=slot.last_error,
+		hostname=slot.hostname,
+		gpu_count=slot.gpu_count,
+		gpu_model=slot.gpu_model,
+		created_at=slot.created_at,
+		updated_at=slot.updated_at,
+	)
+
+
+@router.get("/slots", response_model=WorkerSlotListResponse)
+async def list_worker_slots(db: AsyncSession = Depends(get_db)):
+	"""List all worker slots (persistent deployment configurations).
+
+	Returns both online and offline workers, allowing dashboard to show
+	all registered workers and provide restore functionality.
+	"""
+	service = WorkerService(db)
+	slots = await service.get_all_slots()
+
+	responses = [_slot_to_response(s) for s in slots]
+
+	# Count by status
+	online_count = sum(1 for s in responses if s.current_status == WorkerSlotStatus.ONLINE)
+	offline_count = sum(1 for s in responses if s.current_status == WorkerSlotStatus.OFFLINE)
+	unknown_count = sum(1 for s in responses if s.current_status == WorkerSlotStatus.UNKNOWN)
+
+	return WorkerSlotListResponse(
+		slots=responses,
+		total_count=len(responses),
+		online_count=online_count,
+		offline_count=offline_count,
+		unknown_count=unknown_count,
+	)
+
+
+@router.post("/slots", response_model=WorkerSlotResponse)
+async def create_worker_slot(
+	request: WorkerSlotCreate,
+	db: AsyncSession = Depends(get_db)
+):
+	"""Create a new worker slot (without deploying).
+
+	This stores the deployment configuration but doesn't start the worker.
+	Use /slots/{id}/restore to start the worker later.
+	"""
+	service = WorkerService(db)
+
+	config = DeploymentConfig(
+		ssh_command=request.ssh_command,
+		name=request.name,
+		controller_type=request.controller_type,
+		project_path=request.project_path,
+		manager_ssh=request.manager_ssh,
+		ssh_forward_tunnel=request.ssh_forward_tunnel,
+		ssh_reverse_tunnel=request.ssh_reverse_tunnel,
+		auto_install=False,  # Just create slot, don't deploy
+	)
+
+	slot = await service.create_or_update_slot(config)
+	return _slot_to_response(slot)
+
+
+@router.post("/slots/deploy", response_model=WorkerSlotRestoreResponse)
+async def deploy_new_worker(
+	request: WorkerSlotDeployRequest,
+	db: AsyncSession = Depends(get_db)
+):
+	"""Deploy a new worker (create slot + start worker).
+
+	This is the main endpoint for adding a new remote worker:
+	1. Creates a worker slot in the database
+	2. Connects to the remote machine via SSH
+	3. Optionally installs the project if not found
+	4. Starts the worker process
+	5. Waits for the worker to register with the manager
+	"""
+	service = WorkerService(db)
+
+	config = DeploymentConfig(
+		ssh_command=request.ssh_command,
+		name=request.name,
+		controller_type=request.controller_type,
+		project_path=request.project_path,
+		manager_ssh=request.manager_ssh,
+		ssh_forward_tunnel=request.ssh_forward_tunnel,
+		ssh_reverse_tunnel=request.ssh_reverse_tunnel,
+		auto_install=request.auto_install,
+	)
+
+	result = await service.deploy_worker(config)
+
+	return WorkerSlotRestoreResponse(
+		success=result.success,
+		message=result.message,
+		worker_id=result.worker_id,
+		slot_id=result.slot_id or 0,
+		error=result.error,
+		logs=result.logs,
+		worker_info=result.worker_info,
+	)
+
+
+@router.get("/slots/{slot_id}", response_model=WorkerSlotResponse)
+async def get_worker_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
+	"""Get a specific worker slot's details."""
+	service = WorkerService(db)
+	slot = await service.get_slot_by_id(slot_id)
+
+	if not slot:
+		raise HTTPException(status_code=404, detail=f"Worker slot not found: {slot_id}")
+
+	return _slot_to_response(slot)
+
+
+@router.post("/slots/{slot_id}/restore", response_model=WorkerSlotRestoreResponse)
+async def restore_worker_slot(
+	slot_id: int,
+	request: WorkerSlotRestoreRequest = WorkerSlotRestoreRequest(),
+	db: AsyncSession = Depends(get_db)
+):
+	"""Restore an offline worker by its slot ID.
+
+	This connects to the remote machine via SSH and starts the worker process.
+	If auto_install is True, it will also install the project if not found.
+	"""
+	service = WorkerService(db)
+	result = await service.restore_worker(slot_id, auto_install=request.auto_install)
+
+	return WorkerSlotRestoreResponse(
+		success=result.success,
+		message=result.message,
+		worker_id=result.worker_id,
+		slot_id=slot_id,
+		error=result.error,
+		logs=result.logs,
+		worker_info=result.worker_info,
+	)
+
+
+@router.delete("/slots/{slot_id}")
+async def delete_worker_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
+	"""Delete a worker slot configuration.
+
+	Note: This only removes the persistent configuration. If the worker is
+	currently running, it will continue to run but won't be restorable.
+	"""
+	service = WorkerService(db)
+	success = await service.delete_slot(slot_id)
+
+	if not success:
+		raise HTTPException(status_code=404, detail=f"Worker slot not found: {slot_id}")
+
+	return {"status": "ok", "message": f"Worker slot {slot_id} deleted"}
+
+
+# ============== Worker Registry Endpoints (from Redis) ==============
 
 
 @router.get("", response_model=WorkerListResponse)
