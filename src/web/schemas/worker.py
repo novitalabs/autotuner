@@ -119,3 +119,92 @@ class WorkerListResponse(BaseModel):
 	online_count: int
 	busy_count: int
 	offline_count: int
+
+
+# ============== Worker Slot Schemas ==============
+
+
+class WorkerSlotStatus(str, Enum):
+	"""Worker slot status enum."""
+
+	ONLINE = "online"  # Worker is currently running
+	OFFLINE = "offline"  # Worker is not responding
+	UNKNOWN = "unknown"  # Never successfully connected
+
+
+class WorkerSlotCreate(BaseModel):
+	"""Schema for creating a worker slot."""
+
+	name: Optional[str] = Field(None, description="Human-readable name/alias for the worker")
+	ssh_command: str = Field(..., description="Full SSH command (e.g., 'ssh -p 18022 root@host')")
+	controller_type: str = Field(default="docker", description="Controller type: docker, local, or ome")
+	project_path: str = Field(default="/opt/inference-autotuner", description="Remote project path")
+	manager_ssh: Optional[str] = Field(None, description="SSH command for worker to tunnel back to manager")
+	ssh_forward_tunnel: Optional[str] = Field(None, description="SSH forward tunnel for Redis access")
+	ssh_reverse_tunnel: Optional[str] = Field(None, description="SSH reverse tunnel configuration")
+
+
+class WorkerSlotResponse(BaseModel):
+	"""Schema for worker slot API response."""
+
+	id: int
+	worker_id: Optional[str] = None
+	name: str
+	controller_type: str
+	ssh_command: str
+	ssh_forward_tunnel: Optional[str] = None
+	ssh_reverse_tunnel: Optional[str] = None
+	project_path: str
+	manager_ssh: Optional[str] = None
+	current_status: WorkerSlotStatus
+	last_seen_at: Optional[datetime] = None
+	last_error: Optional[str] = None
+	hostname: Optional[str] = None
+	gpu_count: Optional[int] = None
+	gpu_model: Optional[str] = None
+	created_at: Optional[datetime] = None
+	updated_at: Optional[datetime] = None
+
+	class Config:
+		from_attributes = True
+
+
+class WorkerSlotListResponse(BaseModel):
+	"""Schema for worker slot list API response."""
+
+	slots: List[WorkerSlotResponse]
+	total_count: int
+	online_count: int
+	offline_count: int
+	unknown_count: int
+
+
+class WorkerSlotRestoreRequest(BaseModel):
+	"""Schema for restore worker request."""
+
+	auto_install: bool = Field(default=False, description="Auto-install project if not found on remote")
+
+
+class WorkerSlotRestoreResponse(BaseModel):
+	"""Schema for restore worker response."""
+
+	success: bool
+	message: str
+	worker_id: Optional[str] = None
+	slot_id: int
+	error: Optional[str] = None
+	logs: Optional[str] = None
+	worker_info: Optional[dict] = None
+
+
+class WorkerSlotDeployRequest(BaseModel):
+	"""Schema for deploying a new worker (create slot + start)."""
+
+	name: Optional[str] = Field(None, description="Human-readable name/alias for the worker")
+	ssh_command: str = Field(..., description="Full SSH command (e.g., 'ssh -p 18022 root@host')")
+	controller_type: str = Field(default="docker", description="Controller type: docker, local, or ome")
+	project_path: str = Field(default="/opt/inference-autotuner", description="Remote project path")
+	manager_ssh: Optional[str] = Field(None, description="SSH command for worker to tunnel back to manager")
+	ssh_forward_tunnel: Optional[str] = Field(None, description="SSH forward tunnel for Redis access")
+	ssh_reverse_tunnel: Optional[str] = Field(None, description="SSH reverse tunnel configuration")
+	auto_install: bool = Field(default=True, description="Auto-install project if not found on remote")

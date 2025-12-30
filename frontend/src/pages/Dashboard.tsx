@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { dashboardApi } from '../services/dashboardApi';
-import type { DistributedWorker, WorkerGPUHistory } from '../services/dashboardApi';
+import type { DistributedWorker, WorkerGPUHistory, WorkerSlot } from '../services/dashboardApi';
 import { useTimezone } from '../contexts/TimezoneContext';
 import ExperimentLogViewer from '../components/ExperimentLogViewer';
 import {
@@ -13,6 +13,8 @@ import {
 	PencilIcon,
 	CheckIcon,
 	XMarkIcon,
+	ArrowPathIcon,
+	TrashIcon,
 } from '@heroicons/react/24/outline';
 
 function formatUptime(seconds: number | null): string {
@@ -47,6 +49,30 @@ export default function Dashboard() {
 		},
 	});
 
+	// Track restoring worker slot
+	const [restoringSlotId, setRestoringSlotId] = useState<number | null>(null);
+
+	// Mutation for restoring worker
+	const restoreWorkerMutation = useMutation({
+		mutationFn: (slotId: number) => dashboardApi.restoreWorker(slotId, false),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['workerSlots'] });
+			queryClient.invalidateQueries({ queryKey: ['distributedWorkers'] });
+			setRestoringSlotId(null);
+		},
+		onError: () => {
+			setRestoringSlotId(null);
+		},
+	});
+
+	// Mutation for deleting worker slot
+	const deleteSlotMutation = useMutation({
+		mutationFn: (slotId: number) => dashboardApi.deleteWorkerSlot(slotId),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['workerSlots'] });
+		},
+	});
+
 	// Get timezone formatting functions
 	const { formatTime, timezoneOffsetMs } = useTimezone();
 
@@ -61,6 +87,13 @@ export default function Dashboard() {
 		queryKey: ['distributedWorkers'],
 		queryFn: dashboardApi.getDistributedWorkers,
 		refetchInterval: 5000,
+	});
+
+	// Fetch worker slots (persistent deployment configurations)
+	const { data: workerSlots, isLoading: workerSlotsLoading } = useQuery({
+		queryKey: ['workerSlots'],
+		queryFn: dashboardApi.getWorkerSlots,
+		refetchInterval: 10000, // Less frequent since slots don't change often
 	});
 
 	// Fetch GPU history for all workers when worker list updates
@@ -115,21 +148,28 @@ export default function Dashboard() {
 						<ServerStackIcon className="h-6 w-6 mr-2 text-purple-500" />
 						Workers
 					</h3>
-					{distributedWorkers && (
-						<div className="flex items-center gap-2">
-							<span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-								{distributedWorkers.online_count} online
-							</span>
-							{distributedWorkers.busy_count > 0 && (
-								<span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
-									{distributedWorkers.busy_count} busy
+					<div className="flex items-center gap-2">
+						{distributedWorkers && (
+							<>
+								<span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+									{distributedWorkers.online_count} online
 								</span>
-							)}
-						</div>
-					)}
+								{distributedWorkers.busy_count > 0 && (
+									<span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+										{distributedWorkers.busy_count} busy
+									</span>
+								)}
+							</>
+						)}
+						{workerSlots && workerSlots.offline_count + workerSlots.unknown_count > 0 && (
+							<span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+								{workerSlots.offline_count + workerSlots.unknown_count} offline
+							</span>
+						)}
+					</div>
 				</div>
 
-				{(workerLoading || distributedWorkersLoading) && <p className="text-gray-500">Loading...</p>}
+				{(workerLoading || distributedWorkersLoading || workerSlotsLoading) && <p className="text-gray-500">Loading...</p>}
 				{workerStatus?.error && <p className="text-red-500">Error: {workerStatus.error}</p>}
 
 				{/* Local Worker Process Info */}
@@ -415,11 +455,117 @@ export default function Dashboard() {
 					</div>
 				)}
 
-				{distributedWorkers && distributedWorkers.workers.length === 0 && (
+				{distributedWorkers && distributedWorkers.workers.length === 0 && !workerSlots?.slots?.length && (
 					<div className="text-sm text-gray-500 text-center py-4">
 						No workers registered yet
 					</div>
 				)}
+
+				{/* Offline Worker Slots (not currently running) */}
+				{workerSlots && workerSlots.slots.length > 0 && (() => {
+					// Get worker_ids of currently running workers
+					const runningWorkerIds = new Set(
+						(distributedWorkers?.workers || []).map(w => w.worker_id)
+					);
+					// Filter slots that are offline/unknown or don't have running workers
+					const offlineSlots = workerSlots.slots.filter(
+						slot => slot.current_status !== 'online' || !runningWorkerIds.has(slot.worker_id || '')
+					);
+
+					if (offlineSlots.length === 0) return null;
+
+					return (
+						<div className="mt-4 pt-4 border-t">
+							<div className="text-sm font-medium text-gray-700 mb-2">
+								Offline Workers ({offlineSlots.length})
+							</div>
+							<div className="space-y-2">
+								{offlineSlots.map((slot: WorkerSlot) => (
+									<div key={slot.id} className="p-3 border rounded bg-gray-50">
+										<div className="flex items-center justify-between mb-2">
+											<div className="flex items-center gap-2 flex-1 min-w-0">
+												<ServerIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+												<span className="font-medium text-sm truncate" title={slot.ssh_command}>
+													{slot.name}
+												</span>
+												{slot.hostname && (
+													<span className="text-xs text-gray-400 truncate">
+														({slot.hostname})
+													</span>
+												)}
+											</div>
+											<div className="flex items-center gap-2">
+												<span className={`px-2 py-0.5 text-xs rounded-full flex-shrink-0 ${
+													slot.current_status === 'offline' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+												}`}>
+													{slot.current_status}
+												</span>
+												<button
+													onClick={() => {
+														setRestoringSlotId(slot.id);
+														restoreWorkerMutation.mutate(slot.id);
+													}}
+													disabled={restoringSlotId === slot.id}
+													className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${
+														restoringSlotId === slot.id
+															? 'bg-gray-200 text-gray-500 cursor-wait'
+															: 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+													}`}
+													title="Restore worker"
+												>
+													<ArrowPathIcon className={`h-3 w-3 ${restoringSlotId === slot.id ? 'animate-spin' : ''}`} />
+													{restoringSlotId === slot.id ? 'Restoring...' : 'Restore'}
+												</button>
+												<button
+													onClick={() => {
+														if (confirm(`Delete worker slot "${slot.name}"?`)) {
+															deleteSlotMutation.mutate(slot.id);
+														}
+													}}
+													className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+													title="Delete slot"
+												>
+													<TrashIcon className="h-3.5 w-3.5" />
+												</button>
+											</div>
+										</div>
+										<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+											<div className="flex items-center gap-1">
+												<CpuChipIcon className="h-3 w-3" />
+												<span>{slot.gpu_count ?? '?'} GPU{(slot.gpu_count ?? 0) !== 1 ? 's' : ''}</span>
+											</div>
+											<div>
+												{slot.gpu_model ? (
+													<span className="truncate" title={slot.gpu_model}>
+														{slot.gpu_model.replace('NVIDIA ', '').replace('GeForce ', '')}
+													</span>
+												) : (
+													<span className="text-gray-400">Unknown GPU</span>
+												)}
+											</div>
+											<div>
+												<span className="text-gray-500">Mode:</span> {slot.controller_type}
+											</div>
+											<div className="truncate" title={slot.ssh_command}>
+												<span className="text-gray-500">SSH:</span> {slot.ssh_command.replace('ssh ', '')}
+											</div>
+											{slot.last_error && (
+												<div className="col-span-2 text-red-500 truncate" title={slot.last_error}>
+													Error: {slot.last_error}
+												</div>
+											)}
+											{slot.last_seen_at && (
+												<div className="col-span-2 text-gray-400">
+													Last seen: {new Date(slot.last_seen_at).toLocaleString()}
+												</div>
+											)}
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					);
+				})()}
 			</div>
 		);
 	};

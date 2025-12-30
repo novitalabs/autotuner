@@ -335,239 +335,6 @@ async def get_cluster_gpu_summary() -> str:
 # REMOTE WORKER DEPLOYMENT TOOLS
 # ============================================================================
 
-import re
-
-
-def _parse_ssh_command(ssh_command: str) -> dict:
-    """Parse SSH command to extract host, port, user.
-
-    Args:
-        ssh_command: SSH command like "ssh -p 18022 root@192.168.1.100"
-
-    Returns:
-        Dict with user, host, port or None if invalid
-    """
-    # Extract port if specified with -p
-    port_match = re.search(r'-p\s+(\d+)', ssh_command)
-    port = port_match.group(1) if port_match else "22"
-
-    # Extract user@host
-    user_host = re.search(r'(\w+)@([\w\.\-]+)', ssh_command)
-    if user_host:
-        return {"user": user_host.group(1), "host": user_host.group(2), "port": port}
-    return None
-
-
-def _run_ssh(ssh_cmd: str, command: str, timeout: int = 60) -> tuple:
-    """Execute command on remote host via SSH.
-
-    Args:
-        ssh_cmd: Base SSH command (e.g., "ssh -p 18022 root@host")
-        command: Command to execute on remote host
-        timeout: Command timeout in seconds
-
-    Returns:
-        Tuple of (return_code, stdout, stderr)
-    """
-    # Escape double quotes in command
-    escaped_cmd = command.replace('"', '\\"')
-    full_cmd = f'{ssh_cmd} "{escaped_cmd}"'
-    result = subprocess.run(
-        full_cmd,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
-def _build_rsync_command(ssh_command: str, local_path: str, remote_path: str) -> str:
-    """Build rsync command with proper SSH options.
-
-    Args:
-        ssh_command: SSH command (e.g., "ssh -p 18022 root@host")
-        local_path: Local source path
-        remote_path: Remote destination path
-
-    Returns:
-        Full rsync command string
-    """
-    ssh_info = _parse_ssh_command(ssh_command)
-    if not ssh_info:
-        return None
-
-    # Build SSH options for rsync
-    ssh_opts = f"ssh -p {ssh_info['port']} -o StrictHostKeyChecking=no"
-
-    # Build rsync command - exclude venv, cache, logs, etc.
-    excludes = [
-        "env/", ".venv/", "__pycache__/", "*.pyc", ".git/",
-        "logs/", "*.log", ".env", ".env.*", "node_modules/",
-        "frontend/node_modules/", "frontend/dist/", ".pytest_cache/",
-        "autotuner.db", "*.db", ".mypy_cache/"
-    ]
-    exclude_args = " ".join([f"--exclude='{e}'" for e in excludes])
-
-    remote_dest = f"{ssh_info['user']}@{ssh_info['host']}:{remote_path}"
-
-    return f"rsync -avz --delete {exclude_args} -e \"{ssh_opts}\" {local_path}/ {remote_dest}/"
-
-
-async def _auto_install_worker(ssh_command: str, project_path: str, local_project: str) -> dict:
-    """Auto-install the worker on a remote machine.
-
-    Args:
-        ssh_command: SSH command for remote connection
-        project_path: Target installation path on remote
-        local_project: Local project path to sync from
-
-    Returns:
-        Dict with success status and optional error message
-    """
-    try:
-        # Step 1: Install system dependencies
-        print(f"[Deploy] Installing system dependencies on remote...")
-        install_deps_cmd = """
-        if command -v apt-get &>/dev/null; then
-            apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv netcat-openbsd tar >/dev/null 2>&1
-        elif command -v dnf &>/dev/null; then
-            dnf install -y -q python3 python3-pip tar nc >/dev/null 2>&1
-        elif command -v yum &>/dev/null; then
-            yum install -y -q python3 python3-pip tar nc >/dev/null 2>&1
-        fi
-        echo done
-        """
-        ret, out, err = _run_ssh(ssh_command, install_deps_cmd, timeout=120)
-        if "done" not in out:
-            return {"success": False, "error": f"Failed to install system dependencies: {err}"}
-
-        # Step 2: Create project directory
-        print(f"[Deploy] Creating project directory at {project_path}...")
-        ret, out, err = _run_ssh(ssh_command, f"mkdir -p {project_path} && echo ok", timeout=10)
-        if "ok" not in out:
-            return {"success": False, "error": f"Failed to create directory: {err}"}
-
-        # Step 3: Sync project files
-        print(f"[Deploy] Syncing project files to remote...")
-
-        # Check if rsync is available locally
-        rsync_available = subprocess.run(
-            ["which", "rsync"],
-            capture_output=True
-        ).returncode == 0
-
-        if rsync_available:
-            # Use rsync
-            rsync_cmd = _build_rsync_command(ssh_command, local_project, project_path)
-            if not rsync_cmd:
-                return {"success": False, "error": "Failed to build rsync command"}
-
-            result = subprocess.run(
-                rsync_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            if result.returncode != 0:
-                return {"success": False, "error": f"Failed to sync files: {result.stderr[:500]}"}
-        else:
-            # Fallback: use tar + ssh
-            print(f"[Deploy] rsync not available, using tar + ssh...")
-            ssh_info = _parse_ssh_command(ssh_command)
-            if not ssh_info:
-                return {"success": False, "error": "Failed to parse SSH command"}
-
-            # Excludes for tar
-            excludes = [
-                "--exclude=env", "--exclude=.venv", "--exclude=__pycache__",
-                "--exclude=.git", "--exclude=logs", "--exclude=*.log",
-                "--exclude=.env", "--exclude=.env.*", "--exclude=node_modules",
-                "--exclude=frontend/node_modules", "--exclude=frontend/dist",
-                "--exclude=.pytest_cache", "--exclude=*.db", "--exclude=.mypy_cache"
-            ]
-            exclude_str = " ".join(excludes)
-
-            # Create tar and pipe to remote
-            ssh_opts = f"-p {ssh_info['port']} -o StrictHostKeyChecking=no"
-            tar_cmd = f"cd {local_project} && tar czf - {exclude_str} . | ssh {ssh_opts} {ssh_info['user']}@{ssh_info['host']} 'cd {project_path} && tar xzf -'"
-
-            result = subprocess.run(
-                tar_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            if result.returncode != 0:
-                return {"success": False, "error": f"Failed to sync files via tar: {result.stderr[:500]}"}
-
-        # Step 4: Make scripts executable
-        ret, out, err = _run_ssh(
-            ssh_command,
-            f"chmod +x {project_path}/scripts/*.sh 2>/dev/null; echo ok",
-            timeout=10
-        )
-
-        print(f"[Deploy] Project files synced successfully")
-        return {"success": True, "message": "Project installed"}
-
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Installation timed out"}
-    except Exception as e:
-        return {"success": False, "error": f"Installation failed: {str(e)}"}
-
-
-async def _setup_venv_and_deps(ssh_command: str, project_path: str) -> dict:
-    """Create virtual environment and install dependencies.
-
-    Args:
-        ssh_command: SSH command for remote connection
-        project_path: Project path on remote
-
-    Returns:
-        Dict with success status and optional error message
-    """
-    try:
-        # Find Python 3.9+ - use simple detection
-        print(f"[Deploy] Setting up Python virtual environment...")
-
-        # Try python3 first, check version
-        ret, out, err = _run_ssh(ssh_command, "python3 -c 'import sys; print(sys.version_info.minor)'", timeout=10)
-        if ret == 0:
-            try:
-                minor = int(out.strip())
-                if minor >= 9:
-                    python_cmd = "python3"
-                else:
-                    return {"success": False, "error": f"Python 3.{minor} found, but Python 3.9+ required"}
-            except ValueError:
-                return {"success": False, "error": f"Failed to parse Python version: {out}"}
-        else:
-            return {"success": False, "error": "Python 3 not found on remote machine"}
-
-        # Create virtual environment
-        venv_cmd = f"cd {project_path} && {python_cmd} -m venv env && echo ok"
-        ret, out, err = _run_ssh(ssh_command, venv_cmd, timeout=60)
-        if "ok" not in out:
-            return {"success": False, "error": f"Failed to create venv: {err}"}
-
-        # Install dependencies
-        print(f"[Deploy] Installing Python dependencies...")
-        pip_cmd = f"cd {project_path} && ./env/bin/pip install --upgrade pip -q && ./env/bin/pip install -r requirements.txt -q && echo ok"
-        ret, out, err = _run_ssh(ssh_command, pip_cmd, timeout=300)
-        if "ok" not in out:
-            return {"success": False, "error": f"Failed to install dependencies: {err[:500]}"}
-
-        print(f"[Deploy] Virtual environment ready")
-        return {"success": True, "message": "Virtual environment created"}
-
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Setup timed out"}
-    except Exception as e:
-        return {"success": False, "error": f"Setup failed: {str(e)}"}
-
 
 @tool
 @register_tool(
@@ -591,6 +358,7 @@ async def deploy_worker(
     3. Create worker configuration (.env.worker) with Redis connection
     4. Start the worker using start_remote_worker.sh
     5. Wait for worker to register with the manager
+    6. Save deployment configuration to database for future restores
 
     Prerequisites:
     - SSH key-based authentication configured (no password prompt)
@@ -608,164 +376,171 @@ async def deploy_worker(
     Returns:
         JSON string with deployment status and worker info
     """
-    PROJECT_PATH = "/opt/inference-autotuner"
-    LOCAL_PROJECT = str(Path(__file__).parent.parent.parent.parent.parent)
-
     try:
-        from web.config import get_settings
-        from web.workers.registry import get_worker_registry
+        from web.services.worker_service import WorkerService, DeploymentConfig
+        from web.db.session import AsyncSessionLocal
 
-        # 1. Parse SSH command
-        ssh_info = _parse_ssh_command(ssh_command)
-        if not ssh_info:
-            return json.dumps({
-                "success": False,
-                "error": "Invalid SSH command format. Expected: ssh [-p port] user@host"
-            })
+        async with AsyncSessionLocal() as db:
+            service = WorkerService(db)
 
-        # 2. Test SSH connectivity
-        try:
-            ret, out, err = _run_ssh(ssh_command, "echo ok", timeout=10)
-            if ret != 0:
-                return json.dumps({
-                    "success": False,
-                    "error": f"SSH connection failed: {err.strip() or 'Connection refused'}"
-                })
-        except subprocess.TimeoutExpired:
-            return json.dumps({
-                "success": False,
-                "error": "SSH connection timed out"
-            })
+            config = DeploymentConfig(
+                ssh_command=ssh_command,
+                name=name,
+                controller_type=mode,
+                manager_ssh=manager_ssh,
+                auto_install=auto_install,
+            )
 
-        # 3. Get Redis config from local settings
-        settings = get_settings()
-        redis_host = settings.redis_host
-        redis_port = settings.redis_port
+            result = await service.deploy_worker(config)
 
-        # 4. Check Redis is externally accessible (skip if using SSH tunnel)
-        if redis_host in ("localhost", "127.0.0.1") and not manager_ssh:
-            return json.dumps({
-                "success": False,
-                "error": (
-                    "REDIS_HOST is set to localhost. Remote workers cannot connect directly. "
-                    "Either set REDIS_HOST to Manager's external IP, or provide manager_ssh "
-                    "parameter for SSH tunnel (e.g., 'ssh -p 33773 user@manager-ip')."
-                )
-            })
+            response = {
+                "success": result.success,
+                "message": result.message,
+                "slot_id": result.slot_id,
+            }
 
-        # 5. Check if project exists on remote
-        ret, out, _ = _run_ssh(ssh_command, f"test -d {PROJECT_PATH}/src && echo exists", timeout=10)
-        project_exists = "exists" in out
+            if result.worker_id:
+                response["worker_id"] = result.worker_id
+            if result.worker_info:
+                response["worker"] = result.worker_info
+            if result.error:
+                response["error"] = result.error
+            if result.logs:
+                response["remote_logs"] = result.logs
 
-        # 6. Auto-install if project doesn't exist
-        if not project_exists:
-            if not auto_install:
-                return json.dumps({
-                    "success": False,
-                    "error": f"Project not found at {PROJECT_PATH} on remote machine. Set auto_install=True to install."
-                })
+            return json.dumps(response, indent=2)
 
-            # Run auto-installation
-            install_result = await _auto_install_worker(ssh_command, PROJECT_PATH, LOCAL_PROJECT)
-            if not install_result["success"]:
-                return json.dumps(install_result)
-
-        # 7. Check if virtual environment exists (may have been created by auto-install)
-        ret, out, _ = _run_ssh(ssh_command, f"test -f {PROJECT_PATH}/env/bin/activate && echo exists", timeout=10)
-        if "exists" not in out:
-            if auto_install:
-                # Create venv and install deps
-                install_result = await _setup_venv_and_deps(ssh_command, PROJECT_PATH)
-                if not install_result["success"]:
-                    return json.dumps(install_result)
-            else:
-                return json.dumps({
-                    "success": False,
-                    "error": f"Virtual environment not found at {PROJECT_PATH}/env. Set auto_install=True to create."
-                })
-
-        # 8. Create .env.worker on remote
-        worker_config_lines = [
-            f"REDIS_HOST={redis_host}",
-            f"REDIS_PORT={redis_port}",
-            f'WORKER_ALIAS="{name or ""}"',
-            f"DEPLOYMENT_MODE={mode}",
-        ]
-        if manager_ssh:
-            # Quote the MANAGER_SSH value since it may contain special characters
-            worker_config_lines.append(f'MANAGER_SSH="{manager_ssh}"')
-        worker_config = "\n".join(worker_config_lines) + "\n"
-        # Use heredoc to write config file
-        write_cmd = f"cat > {PROJECT_PATH}/.env.worker << 'ENVEOF'\n{worker_config}ENVEOF"
-        ret, out, err = _run_ssh(ssh_command, write_cmd, timeout=10)
-        if ret != 0:
-            return json.dumps({
-                "success": False,
-                "error": f"Failed to create .env.worker: {err}"
-            })
-
-        # 9. Stop any existing worker
-        _run_ssh(ssh_command, f"cd {PROJECT_PATH} && pkill -f 'arq.*autotuner_worker' || true", timeout=10)
-        await asyncio.sleep(2)
-
-        # 10. Start worker on remote
-        start_cmd = f"cd {PROJECT_PATH} && nohup ./scripts/start_remote_worker.sh > /tmp/worker_deploy.log 2>&1 &"
-        ret, out, err = _run_ssh(ssh_command, start_cmd, timeout=30)
-
-        # Give worker time to start
-        await asyncio.sleep(5)
-
-        # 11. Check if worker process is running on remote
-        ret, out, _ = _run_ssh(ssh_command, "pgrep -f 'arq.*autotuner_worker'", timeout=10)
-        if ret != 0:
-            # Worker not running, get logs
-            _, log_out, _ = _run_ssh(ssh_command, f"tail -30 {PROJECT_PATH}/logs/worker.log 2>/dev/null || cat /tmp/worker_deploy.log", timeout=10)
-            return json.dumps({
-                "success": False,
-                "error": "Worker process failed to start",
-                "remote_logs": log_out.strip()[-500:] if log_out else "No logs available"
-            })
-
-        # 12. Wait for worker registration (up to 30s)
-        registry = await get_worker_registry()
-        for _ in range(10):
-            await asyncio.sleep(3)
-            workers = await registry.get_all_workers(include_offline=True)
-            for w in workers:
-                # Match by alias or hostname
-                hostname_match = ssh_info["host"] in (w.hostname or "")
-                alias_match = name and w.alias == name
-                if alias_match or hostname_match:
-                    return json.dumps({
-                        "success": True,
-                        "message": "Worker deployed and registered successfully",
-                        "worker": {
-                            "worker_id": w.worker_id,
-                            "hostname": w.hostname,
-                            "alias": w.alias,
-                            "gpu_count": w.gpu_count,
-                            "gpu_model": w.gpu_model,
-                            "deployment_mode": w.deployment_mode,
-                            "status": w.status.value if hasattr(w.status, 'value') else w.status,
-                        }
-                    }, indent=2)
-
-        # Worker started but not registered yet
-        return json.dumps({
-            "success": True,
-            "message": "Worker started but not yet registered. It may take a moment to connect.",
-            "check_command": f"{ssh_command} 'tail -50 {PROJECT_PATH}/logs/worker.log'"
-        }, indent=2)
-
-    except subprocess.TimeoutExpired:
-        return json.dumps({
-            "success": False,
-            "error": "Command timed out during deployment"
-        })
     except Exception as e:
         return json.dumps({
             "success": False,
             "error": f"Failed to deploy worker: {str(e)}"
+        })
+
+
+@tool
+@register_tool(
+    ToolCategory.SYSTEM,
+    requires_auth=True,
+    auth_scope=AuthorizationScope.ARQ_CONTROL
+)
+async def restore_worker(slot_id: int, auto_install: bool = False) -> str:
+    """
+    Restore an offline worker by its slot ID.
+
+    This tool connects to a previously deployed worker machine via SSH
+    and restarts the worker process. Use this when a worker goes offline
+    due to machine restart, network issues, or process crash.
+
+    The slot configuration (SSH command, project path, etc.) is retrieved
+    from the database, so you don't need to provide deployment details again.
+
+    Args:
+        slot_id: Worker slot ID (can be found using list_worker_slots)
+        auto_install: Re-install/update project files if needed (default: False)
+
+    Returns:
+        JSON string with restore status and worker info
+    """
+    try:
+        from web.services.worker_service import WorkerService
+        from web.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            service = WorkerService(db)
+            result = await service.restore_worker(slot_id, auto_install=auto_install)
+
+            response = {
+                "success": result.success,
+                "message": result.message,
+                "slot_id": slot_id,
+            }
+
+            if result.worker_id:
+                response["worker_id"] = result.worker_id
+            if result.worker_info:
+                response["worker"] = result.worker_info
+            if result.error:
+                response["error"] = result.error
+            if result.logs:
+                response["remote_logs"] = result.logs
+
+            return json.dumps(response, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to restore worker: {str(e)}"
+        })
+
+
+@tool
+@register_tool(ToolCategory.SYSTEM)
+async def list_worker_slots() -> str:
+    """
+    List all persistent worker slot configurations.
+
+    Shows all workers that have been deployed through this system,
+    including:
+    - Online workers currently running
+    - Offline workers that can be restored
+    - Unknown workers that never successfully connected
+
+    Each slot includes deployment configuration (SSH command, project path)
+    and cached hardware info (GPU count, model).
+
+    Returns:
+        JSON string with list of worker slots
+    """
+    try:
+        from web.services.worker_service import WorkerService
+        from web.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            service = WorkerService(db)
+            slots = await service.get_all_slots()
+
+            slot_list = []
+            online_count = 0
+            offline_count = 0
+            unknown_count = 0
+
+            for slot in slots:
+                status = slot.current_status.value if hasattr(slot.current_status, 'value') else str(slot.current_status)
+
+                if status == "online":
+                    online_count += 1
+                elif status == "offline":
+                    offline_count += 1
+                else:
+                    unknown_count += 1
+
+                slot_list.append({
+                    "id": slot.id,
+                    "name": slot.name,
+                    "worker_id": slot.worker_id,
+                    "ssh_command": slot.ssh_command,
+                    "controller_type": slot.controller_type,
+                    "status": status,
+                    "hostname": slot.hostname,
+                    "gpu_count": slot.gpu_count,
+                    "gpu_model": slot.gpu_model,
+                    "last_seen_at": slot.last_seen_at.isoformat() if slot.last_seen_at else None,
+                    "last_error": slot.last_error,
+                })
+
+            return json.dumps({
+                "success": True,
+                "total_slots": len(slot_list),
+                "online_count": online_count,
+                "offline_count": offline_count,
+                "unknown_count": unknown_count,
+                "slots": slot_list
+            }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to list worker slots: {str(e)}"
         })
 
 
