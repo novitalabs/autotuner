@@ -10,7 +10,24 @@ cd "$PROJECT_ROOT"
 mkdir -p logs
 
 # Activate virtual environment
-source env/bin/activate
+if [ -n "$VIRTUAL_ENV" ]; then
+    echo "✓ Already in virtual environment: $VIRTUAL_ENV"
+elif [ -f "env/bin/activate" ]; then
+    echo "✓ Activating virtual environment..."
+    source env/bin/activate
+else
+    echo "❌ ERROR: Virtual environment not found at env/bin/activate"
+    echo ""
+    echo "Please run the installation script first:"
+    echo "  ./install.sh"
+    echo ""
+    echo "Or create a virtual environment manually:"
+    echo "  python3 -m venv env"
+    echo "  source env/bin/activate"
+    echo "  pip install -r requirements.txt"
+    echo ""
+    exit 1
+fi
 
 # Set PYTHONPATH
 export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
