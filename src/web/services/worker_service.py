@@ -47,6 +47,7 @@ class DeploymentResult:
     worker_id: Optional[str] = None
     slot_id: Optional[int] = None
     error: Optional[str] = None
+    suggestion: Optional[str] = None  # Fix suggestion for errors
     logs: Optional[str] = None
     worker_info: Optional[Dict[str, Any]] = None
 
@@ -93,6 +94,80 @@ def run_ssh(ssh_cmd: str, command: str, timeout: int = 60) -> Tuple[int, str, st
         timeout=timeout
     )
     return result.returncode, result.stdout, result.stderr
+
+
+async def setup_ssh_key_for_manager(ssh_command: str, manager_ssh: str) -> Dict[str, Any]:
+    """Setup SSH key authentication from remote worker to manager.
+
+    This allows the worker to establish an SSH tunnel back to the manager for Redis access.
+
+    Args:
+        ssh_command: SSH command to reach the remote worker
+        manager_ssh: SSH command the worker uses to reach the manager (e.g., "ssh -p 33773 claude@manager")
+
+    Returns:
+        Dict with success status and optional error message
+    """
+    try:
+        # Parse manager SSH to get user and host
+        manager_info = parse_ssh_command(manager_ssh)
+        if not manager_info:
+            return {"success": False, "error": "Invalid manager_ssh format"}
+
+        # Step 1: Check if remote has SSH key, generate if not
+        logger.info(f"[SSH Key] Checking SSH key on remote worker...")
+        ret, out, err = run_ssh(
+            ssh_command,
+            "test -f ~/.ssh/id_ed25519.pub && cat ~/.ssh/id_ed25519.pub || "
+            "(ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q && cat ~/.ssh/id_ed25519.pub)",
+            timeout=30
+        )
+        if ret != 0 or not out.strip():
+            return {"success": False, "error": f"Failed to get/generate SSH key: {err}"}
+
+        remote_pubkey = out.strip()
+        if not remote_pubkey.startswith("ssh-"):
+            return {"success": False, "error": f"Invalid public key format: {remote_pubkey[:50]}"}
+
+        # Step 2: Check if key already in manager's authorized_keys
+        local_auth_keys = Path.home() / ".ssh" / "authorized_keys"
+        key_exists = False
+        if local_auth_keys.exists():
+            existing_keys = local_auth_keys.read_text()
+            # Check by key content (ignore comment at end)
+            key_parts = remote_pubkey.split()
+            if len(key_parts) >= 2:
+                key_content = f"{key_parts[0]} {key_parts[1]}"
+                key_exists = key_content in existing_keys
+
+        if key_exists:
+            logger.info(f"[SSH Key] Remote key already in authorized_keys")
+            return {"success": True, "message": "SSH key already configured"}
+
+        # Step 3: Add key to local authorized_keys
+        logger.info(f"[SSH Key] Adding remote key to manager's authorized_keys...")
+        local_auth_keys.parent.mkdir(parents=True, exist_ok=True)
+        with open(local_auth_keys, "a") as f:
+            f.write(f"\n# Auto-added for worker SSH tunnel\n{remote_pubkey}\n")
+
+        # Step 4: Verify SSH connectivity from remote to manager
+        logger.info(f"[SSH Key] Testing SSH connection from worker to manager...")
+        test_cmd = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p {manager_info['port']} {manager_info['user']}@{manager_info['host']} 'echo connected'"
+        ret, out, err = run_ssh(ssh_command, test_cmd, timeout=20)
+
+        if "connected" in out:
+            logger.info(f"[SSH Key] SSH key setup successful")
+            return {"success": True, "message": "SSH key configured and verified"}
+        else:
+            return {
+                "success": False,
+                "error": f"SSH key added but connection test failed: {err.strip()}"
+            }
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "SSH key setup timed out"}
+    except Exception as e:
+        return {"success": False, "error": f"SSH key setup failed: {str(e)}"}
 
 
 def build_rsync_command(ssh_command: str, local_path: str, remote_path: str) -> Optional[str]:
@@ -282,6 +357,159 @@ async def setup_venv_and_deps(ssh_command: str, project_path: str) -> Dict[str, 
         return {"success": False, "error": f"Setup failed: {str(e)}"}
 
 
+async def sync_venv_offline(ssh_command: str, project_path: str, local_project: str) -> Dict[str, Any]:
+    """Sync virtual environment to remote machine without requiring network access.
+
+    This creates a tarball of the local venv's site-packages and transfers it to the remote,
+    avoiding the need for pip install on the remote machine.
+
+    Args:
+        ssh_command: SSH command for remote connection
+        project_path: Project path on remote
+        local_project: Local project path
+
+    Returns:
+        Dict with success status and optional error message
+    """
+    try:
+        local_venv = Path(local_project) / "env"
+        if not local_venv.exists():
+            return {"success": False, "error": "Local venv not found"}
+
+        ssh_info = parse_ssh_command(ssh_command)
+        if not ssh_info:
+            return {"success": False, "error": "Invalid SSH command format"}
+
+        # Step 1: Create venv on remote (just the structure, no packages)
+        logger.info(f"[Deploy] Creating Python virtual environment on remote...")
+        ret, out, err = run_ssh(ssh_command, "python3 -c 'import sys; print(sys.version_info.minor)'", timeout=10)
+        if ret != 0:
+            return {"success": False, "error": "Python 3 not found on remote machine"}
+
+        venv_cmd = f"cd {project_path} && python3 -m venv env && echo ok"
+        ret, out, err = run_ssh(ssh_command, venv_cmd, timeout=60)
+        if "ok" not in out:
+            return {"success": False, "error": f"Failed to create venv: {err}"}
+
+        # Step 2: Sync site-packages using rsync
+        logger.info(f"[Deploy] Syncing Python packages to remote (offline mode)...")
+
+        local_site_packages = local_venv / "lib"
+        remote_site_packages = f"{project_path}/env/lib"
+
+        ssh_opts = f"ssh -p {ssh_info['port']} -o StrictHostKeyChecking=no"
+        remote_dest = f"{ssh_info['user']}@{ssh_info['host']}:{remote_site_packages}/"
+
+        # Use rsync if available
+        rsync_available = subprocess.run(["which", "rsync"], capture_output=True).returncode == 0
+
+        if rsync_available:
+            rsync_cmd = f'rsync -avz --delete -e "{ssh_opts}" {local_site_packages}/ {remote_dest}'
+            result = subprocess.run(rsync_cmd, shell=True, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                return {"success": False, "error": f"Failed to sync packages: {result.stderr[:300]}"}
+        else:
+            # Fallback: tar + ssh
+            tar_cmd = f"cd {local_venv} && tar czf - lib | ssh {ssh_opts} {ssh_info['user']}@{ssh_info['host']} 'cd {project_path}/env && tar xzf -'"
+            result = subprocess.run(tar_cmd, shell=True, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                return {"success": False, "error": f"Failed to sync packages via tar: {result.stderr[:300]}"}
+
+        # Step 3: Also sync bin scripts that reference python
+        logger.info(f"[Deploy] Fixing venv bin scripts...")
+        fix_bin_cmd = f"""
+cd {project_path}/env/bin
+for f in *; do
+    if [ -f "$f" ] && head -1 "$f" 2>/dev/null | grep -q python; then
+        sed -i '1s|.*|#!/usr/bin/env python3|' "$f" 2>/dev/null || true
+    fi
+done
+# Ensure activate script exists
+test -f activate && echo ok
+"""
+        ret, out, err = run_ssh(ssh_command, fix_bin_cmd, timeout=30)
+        if "ok" not in out:
+            logger.warning(f"[Deploy] Warning: bin scripts fix may have issues: {err}")
+
+        logger.info(f"[Deploy] Offline venv sync completed")
+        return {"success": True, "message": "Virtual environment synced (offline mode)"}
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Offline sync timed out"}
+    except Exception as e:
+        return {"success": False, "error": f"Offline sync failed: {str(e)}"}
+
+
+def get_deployment_error_suggestion(error: str) -> str:
+    """Get user-friendly suggestion for fixing deployment errors.
+
+    Args:
+        error: Error message from deployment
+
+    Returns:
+        Suggestion string for fixing the error
+    """
+    error_lower = error.lower()
+
+    if "permission denied" in error_lower and "publickey" in error_lower:
+        return (
+            "SSH key authentication failed. The remote worker cannot connect to the manager. "
+            "Enable auto_install=true to automatically configure SSH keys, or manually run: "
+            "ssh-copy-id -p <port> <user>@<manager-host> from the remote machine."
+        )
+
+    if "redis" in error_lower and "localhost" in error_lower:
+        return (
+            "Remote workers cannot connect to Redis on localhost. Options: "
+            "1) Set REDIS_HOST to the manager's external IP in .env, or "
+            "2) Configure manager_ssh for SSH tunnel."
+        )
+
+    if "network is unreachable" in error_lower or "could not resolve" in error_lower:
+        return (
+            "Remote machine has no network access. Use auto_install with offline mode "
+            "to sync the venv without requiring pip. Check the machine's network configuration."
+        )
+
+    if "connection refused" in error_lower or "connection timed out" in error_lower:
+        return (
+            "Cannot establish SSH connection. Verify: "
+            "1) SSH service is running on the remote machine, "
+            "2) Port is correct and not blocked by firewall, "
+            "3) SSH tunnel (if any) is active."
+        )
+
+    if "no module named" in error_lower:
+        module = error.split("No module named")[-1].strip().strip("'\"")
+        return (
+            f"Missing Python module '{module}'. Use auto_install=true to install dependencies, "
+            "or if network is unavailable, the offline sync will transfer packages from the manager."
+        )
+
+    if "project not found" in error_lower:
+        return (
+            "Project not installed on remote machine. Use auto_install=true to automatically "
+            "sync project files, or manually clone/copy the project to the specified path."
+        )
+
+    if "venv" in error_lower or "virtual environment" in error_lower:
+        return (
+            "Virtual environment issue. Use auto_install=true to create and configure the venv. "
+            "If network is unavailable, packages will be synced from the manager."
+        )
+
+    if "timed out" in error_lower:
+        return (
+            "Operation timed out. This may indicate: "
+            "1) Slow network connection, "
+            "2) Remote machine is overloaded, "
+            "3) Large file transfer in progress. Try again or increase timeout."
+        )
+
+    # Default suggestion
+    return "Check the worker logs for more details. Try restore with auto_install=true."
+
+
 class WorkerService:
     """Service for worker deployment and management."""
 
@@ -463,21 +691,25 @@ class WorkerService:
             try:
                 ret, out, err = run_ssh(slot.ssh_command, "echo ok", timeout=10)
                 if ret != 0:
+                    error_msg = f"SSH connection failed: {err.strip() or 'Connection refused'}"
                     await self.update_slot_status(
                         slot, WorkerSlotStatus.OFFLINE,
-                        error=f"SSH connection failed: {err.strip() or 'Connection refused'}"
+                        error=error_msg
                     )
                     return DeploymentResult(
                         success=False,
                         message="SSH connection failed",
-                        error=f"SSH connection failed: {err.strip() or 'Connection refused'}"
+                        error=error_msg,
+                        suggestion=get_deployment_error_suggestion(error_msg)
                     )
             except subprocess.TimeoutExpired:
-                await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error="SSH connection timed out")
+                error_msg = "SSH connection timed out"
+                await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
                 return DeploymentResult(
                     success=False,
                     message="SSH connection timed out",
-                    error="SSH connection timed out"
+                    error=error_msg,
+                    suggestion=get_deployment_error_suggestion(error_msg)
                 )
 
             # Get Redis config from local settings
@@ -487,15 +719,27 @@ class WorkerService:
 
             # Check Redis is externally accessible (skip if using SSH tunnel)
             if redis_host in ("localhost", "127.0.0.1") and not slot.manager_ssh:
+                error_msg = (
+                    "REDIS_HOST is set to localhost. Remote workers cannot connect directly. "
+                    "Either set REDIS_HOST to Manager's external IP, or configure manager_ssh "
+                    "for SSH tunnel."
+                )
                 return DeploymentResult(
                     success=False,
                     message="Redis not accessible",
-                    error=(
-                        "REDIS_HOST is set to localhost. Remote workers cannot connect directly. "
-                        "Either set REDIS_HOST to Manager's external IP, or configure manager_ssh "
-                        "for SSH tunnel."
-                    )
+                    error=error_msg,
+                    suggestion=get_deployment_error_suggestion(error_msg)
                 )
+
+            # Auto-setup SSH key for manager tunnel if needed
+            if slot.manager_ssh and auto_install:
+                logger.info(f"[Deploy] Setting up SSH key for manager tunnel...")
+                key_result = await setup_ssh_key_for_manager(slot.ssh_command, slot.manager_ssh)
+                if not key_result["success"]:
+                    logger.warning(f"[Deploy] SSH key setup warning: {key_result.get('error')}")
+                    # Don't fail deployment, just warn - user may have already configured keys
+                else:
+                    logger.info(f"[Deploy] {key_result.get('message')}")
 
             # Check if project exists on remote
             ret, out, _ = run_ssh(slot.ssh_command, f"test -d {slot.project_path}/src && echo exists", timeout=10)
@@ -504,40 +748,66 @@ class WorkerService:
             # Auto-install if project doesn't exist
             if not project_exists:
                 if not auto_install:
+                    error_msg = f"Project not found at {slot.project_path} on remote machine."
                     return DeploymentResult(
                         success=False,
                         message="Project not found",
-                        error=f"Project not found at {slot.project_path} on remote machine."
+                        error=error_msg,
+                        suggestion=get_deployment_error_suggestion(error_msg)
                     )
 
                 logger.info(f"[Deploy] Installing project on remote...")
                 install_result = await auto_install_worker(slot.ssh_command, slot.project_path, local_project)
                 if not install_result["success"]:
-                    await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=install_result.get("error"))
+                    error_msg = install_result.get("error", "Installation failed")
+                    await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
                     return DeploymentResult(
                         success=False,
                         message="Installation failed",
-                        error=install_result.get("error")
+                        error=error_msg,
+                        suggestion=get_deployment_error_suggestion(error_msg)
                     )
 
             # Check if virtual environment exists
             ret, out, _ = run_ssh(slot.ssh_command, f"test -f {slot.project_path}/env/bin/activate && echo exists", timeout=10)
             if "exists" not in out:
                 if auto_install:
-                    # Create venv and install deps
+                    # Try online install first (pip install)
+                    logger.info(f"[Deploy] Setting up virtual environment...")
                     install_result = await setup_venv_and_deps(slot.ssh_command, slot.project_path)
                     if not install_result["success"]:
-                        await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=install_result.get("error"))
-                        return DeploymentResult(
-                            success=False,
-                            message="Setup failed",
-                            error=install_result.get("error")
-                        )
+                        error_msg = install_result.get("error", "")
+                        # Check if it's a network issue - try offline sync
+                        if any(kw in error_msg.lower() for kw in ["network", "unreachable", "timed out", "connection"]):
+                            logger.info(f"[Deploy] Network issue detected, trying offline venv sync...")
+                            offline_result = await sync_venv_offline(
+                                slot.ssh_command, slot.project_path, local_project
+                            )
+                            if not offline_result["success"]:
+                                combined_error = f"Online install failed: {error_msg}\nOffline sync also failed: {offline_result.get('error')}"
+                                await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=combined_error)
+                                return DeploymentResult(
+                                    success=False,
+                                    message="Setup failed",
+                                    error=combined_error,
+                                    suggestion=get_deployment_error_suggestion(combined_error)
+                                )
+                            logger.info(f"[Deploy] Offline venv sync successful")
+                        else:
+                            await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
+                            return DeploymentResult(
+                                success=False,
+                                message="Setup failed",
+                                error=error_msg,
+                                suggestion=get_deployment_error_suggestion(error_msg)
+                            )
                 else:
+                    error_msg = f"Virtual environment not found at {slot.project_path}/env"
                     return DeploymentResult(
                         success=False,
                         message="Virtual environment not found",
-                        error=f"Virtual environment not found at {slot.project_path}/env"
+                        error=error_msg,
+                        suggestion=get_deployment_error_suggestion(error_msg)
                     )
 
             # Create .env.worker on remote
@@ -583,12 +853,15 @@ class WorkerService:
                     f"tail -30 {slot.project_path}/logs/worker.log 2>/dev/null || cat /tmp/worker_deploy.log",
                     timeout=10
                 )
-                await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error="Worker process failed to start")
+                log_text = log_out.strip()[-500:] if log_out else ""
+                error_msg = "Worker process failed to start"
+                await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
                 return DeploymentResult(
                     success=False,
                     message="Worker process failed to start",
-                    error="Worker process failed to start",
-                    logs=log_out.strip()[-500:] if log_out else None
+                    error=error_msg,
+                    suggestion=get_deployment_error_suggestion(log_text or error_msg),
+                    logs=log_text
                 )
 
             # Wait for worker registration (up to 30s)
@@ -639,18 +912,22 @@ class WorkerService:
             )
 
         except subprocess.TimeoutExpired:
+            error_msg = "Command timed out during deployment"
             await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error="Command timed out")
             return DeploymentResult(
                 success=False,
                 message="Deployment timed out",
-                error="Command timed out during deployment"
+                error=error_msg,
+                suggestion=get_deployment_error_suggestion(error_msg)
             )
         except Exception as e:
-            await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=str(e))
+            error_msg = str(e)
+            await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
             return DeploymentResult(
                 success=False,
                 message="Deployment failed",
-                error=f"Failed to deploy worker: {str(e)}"
+                error=f"Failed to deploy worker: {error_msg}",
+                suggestion=get_deployment_error_suggestion(error_msg)
             )
 
     async def deploy_worker(self, config: DeploymentConfig) -> DeploymentResult:
