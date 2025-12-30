@@ -6,6 +6,73 @@
 
 Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best performance, while respecting SLOs and hardware constraints.
 
+## Why Autotuner?
+
+LLM inference engines like SGLang and vLLM expose dozens of tunable parameters (`mem-fraction-static`, `max-running-requests`, `chunked-prefill-size`, etc.). Finding the optimal combination manually is:
+
+- **Time-consuming**: Each configuration requires deploying a container, running benchmarks, and analyzing results
+- **Error-prone**: Parameter interactions are complex and non-intuitive
+- **Hardware-dependent**: Optimal settings vary by GPU model, memory, and workload
+
+### Real-World Example: 4% Throughput Gain in Minutes
+
+We compared an **optimized SGLang configuration** (found via Bayesian optimization) against **baseline defaults** on RTX 4090:
+
+| Configuration | Mean Throughput | P99 Latency |
+|--------------|-----------------|-------------|
+| **Optimized** | 11,298 tok/s | 350 ms |
+| Baseline | 10,862 tok/s | 390 ms |
+| **Improvement** | **+4.01%** | **-10.2%** |
+
+The performance gain scales with concurrency:
+
+| Concurrency | Improvement |
+|-------------|-------------|
+| 1 | +0.2% |
+| 4 | +2.1% |
+| 8 | **+8.0%** |
+
+**Key optimized parameters:**
+```yaml
+mem-fraction-static: 0.85      # GPU memory allocation
+max-running-requests: 128      # Concurrent request capacity
+chunked-prefill-size: 4096     # Prefill batch optimization
+enable-mixed-chunk: true       # Overlapped prefill/decode
+```
+
+### What Would Take Hours Manually
+
+Without Autotuner, achieving this result requires:
+
+1. **Research** SGLang documentation for tunable parameters
+2. **Design** a parameter search space (which combinations to try?)
+3. **Script** container deployment, health checks, benchmark execution
+4. **Run** experiments sequentially (each takes 2-5 minutes)
+5. **Analyze** results, identify best configuration
+6. **Repeat** for different models, GPUs, or workloads
+
+### What Autotuner Does in One Command
+
+```bash
+python src/run_autotuner.py task.yaml --mode docker
+```
+
+Autotuner handles:
+- Container lifecycle management (deploy, health check, cleanup)
+- Benchmark execution with `genai-bench`
+- SLO-aware scoring (penalize latency violations)
+- Bayesian optimization (80%+ fewer trials than grid search)
+- Result persistence and comparison
+
+### Bottom Line
+
+| Metric | Manual Tuning | With Autotuner |
+|--------|---------------|----------------|
+| Time to optimal config | Hours/Days | Minutes |
+| Parameter combinations tested | ~10 (limited by patience) | 50-100+ |
+| Reproducibility | Low | High |
+| Cross-hardware portability | Manual rework | Re-run task |
+
 ## How to Use
 
 ### CLI Mode
