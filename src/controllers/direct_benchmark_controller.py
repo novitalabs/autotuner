@@ -114,15 +114,17 @@ class DirectBenchmarkController:
 		    model_tokenizer: HuggingFace tokenizer ID (e.g., "meta-llama/Llama-3.2-3B-Instruct")
 
 		Returns:
-		    Tuple of (success: bool, is_fully_cached: bool)
+		    Tuple of (success: bool, is_fully_cached: bool, local_path: Optional[str])
 		    - success: True if tokenizer is cached or successfully downloaded
 		    - is_fully_cached: True if tokenizer was already fully cached (can use offline mode)
+		    - local_path: Local path to the cached tokenizer (snapshot directory) if fully cached
 		"""
 		import os
 		from pathlib import Path
 
 		# Check if tokenizer is already cached
-		cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+		# Resolve symlinks (e.g., ~/.cache/huggingface -> /ppio1/huggingface)
+		cache_dir = (Path.home() / ".cache" / "huggingface" / "hub").resolve()
 		# HuggingFace cache uses format: models--org--model-name
 		cache_name = "models--" + model_tokenizer.replace("/", "--")
 		cached_path = cache_dir / cache_name
@@ -131,21 +133,21 @@ class DirectBenchmarkController:
 			# Check if tokenizer_config.json exists (indicates complete tokenizer cache)
 			# Look for tokenizer files in snapshots directory
 			snapshots_dir = cached_path / "snapshots"
-			has_tokenizer_config = False
+			local_tokenizer_path = None
 			if snapshots_dir.exists():
 				for snapshot_dir in snapshots_dir.iterdir():
 					if snapshot_dir.is_dir():
 						tokenizer_config = snapshot_dir / "tokenizer_config.json"
 						if tokenizer_config.exists():
-							has_tokenizer_config = True
+							local_tokenizer_path = str(snapshot_dir)
 							break
 
-			if has_tokenizer_config:
-				print(f"[Tokenizer] Fully cached (offline mode OK): {model_tokenizer}")
-				return True, True
+			if local_tokenizer_path:
+				print(f"[Tokenizer] Fully cached at: {local_tokenizer_path}")
+				return True, True, local_tokenizer_path
 			else:
 				print(f"[Tokenizer] Partially cached (needs online access): {model_tokenizer}")
-				return True, False
+				return True, False, None
 
 		print(f"[Tokenizer] Not cached, downloading: {model_tokenizer}")
 
@@ -179,17 +181,23 @@ class DirectBenchmarkController:
 
 			if result.returncode != 0:
 				print(f"[Tokenizer] Download failed: {result.stderr}")
-				return False, False
+				return False, False, None
 
 			print(f"[Tokenizer] Successfully downloaded and cached: {model_tokenizer}")
-			return True, True
+			# After download, find the cached path
+			snapshots_dir = cached_path / "snapshots"
+			if snapshots_dir.exists():
+				for snapshot_dir in snapshots_dir.iterdir():
+					if snapshot_dir.is_dir() and (snapshot_dir / "tokenizer_config.json").exists():
+						return True, True, str(snapshot_dir)
+			return True, True, None
 
 		except subprocess.TimeoutExpired:
 			print(f"[Tokenizer] Download timeout after 120s")
-			return False, False
+			return False, False, None
 		except Exception as e:
 			print(f"[Tokenizer] Error downloading tokenizer: {e}")
-			return False, False
+			return False, False, None
 
 	def setup_port_forward(
 		self, service_name: str, namespace: str, remote_port: int = 8080, local_port: int = 8080
@@ -371,13 +379,16 @@ class DirectBenchmarkController:
 
 		# Ensure tokenizer is cached before running benchmark
 		model_tokenizer = benchmark_config.get("model_tokenizer", "gpt2")
-		tokenizer_success, is_fully_cached = self._ensure_tokenizer_cached(model_tokenizer)
+		tokenizer_success, is_fully_cached, local_tokenizer_path = self._ensure_tokenizer_cached(model_tokenizer)
 		if not tokenizer_success:
 			print(f"[Benchmark] Failed to ensure tokenizer is cached: {model_tokenizer}")
-			print(f"[Benchmark] Continuing anyway, offline mode may fail if tokenizer not cached")
-		
-		# Track offline mode for later use
-		use_offline_mode = is_fully_cached
+			print(f"[Benchmark] Continuing anyway, may fail if tokenizer not accessible")
+
+		# Use local path if available to avoid HuggingFace network requests
+		effective_tokenizer = local_tokenizer_path if local_tokenizer_path else model_tokenizer
+		use_local_tokenizer = local_tokenizer_path is not None
+		if use_local_tokenizer:
+			print(f"[Benchmark] Using local tokenizer path: {effective_tokenizer}")
 
 		# Setup endpoint URL
 		if endpoint_url:
@@ -425,7 +436,7 @@ class DirectBenchmarkController:
 
 		# Add model tokenizer (required by genai-bench)
 		model_tokenizer = benchmark_config.get("model_tokenizer", "gpt2")
-		cmd.extend(["--model-tokenizer", model_tokenizer])
+		cmd.extend(["--model-tokenizer", effective_tokenizer])
 
 		# Add traffic scenarios
 		traffic_scenarios = benchmark_config.get("traffic_scenarios", ["D(100,100)"])
@@ -499,14 +510,12 @@ class DirectBenchmarkController:
 		else:
 			print(f"[Benchmark] HF_TOKEN not set (only public models accessible)")
 
-		# Don't set HF_HUB_OFFLINE anymore - it causes issues with transformers' mistral detection
-		# which always tries to call model_info() API even in offline mode.
-		# Instead, rely on proxy settings to access HuggingFace API when needed.
-		# The tokenizer files will be cached after first access.
-		if use_offline_mode:
-			print(f"[Benchmark] Tokenizer fully cached, but NOT setting HF_HUB_OFFLINE (transformers compatibility)")
+		# When using local tokenizer path, we don't need network access to HuggingFace
+		# This avoids both the long retry timeout and the OfflineModeIsEnabled exception
+		if use_local_tokenizer:
+			print(f"[Benchmark] Using local tokenizer - no HuggingFace network access needed")
 		else:
-			print(f"[Benchmark] HuggingFace online mode (tokenizer needs metadata from API)")
+			print(f"[Benchmark] Using HuggingFace tokenizer ID - network access may be required")
 
 		# Filter out None values from environment (subprocess requires all values to be strings)
 		env = {k: v for k, v in env.items() if v is not None}

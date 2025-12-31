@@ -369,6 +369,12 @@ class AutotunerOrchestrator:
 				slo_value = benchmark_config_with_slo.get("slo_config")
 				print(f"[DEBUG ORCHESTRATOR] slo_config value: {slo_value}")
 
+			# Use model path as default tokenizer if not specified (avoids gpt2 download requirement)
+			if "model_tokenizer" not in benchmark_config_with_slo:
+				model_path = task["model"].get("id_or_path", "gpt2")
+				benchmark_config_with_slo["model_tokenizer"] = model_path
+				print(f"[DEBUG ORCHESTRATOR] Using model tokenizer: {model_path}")
+
 			metrics = self.benchmark_controller.run_benchmark(
 				task_name=task_name,
 				experiment_id=experiment_id,
