@@ -30,9 +30,9 @@ fi
 REDIS_HOST="${REDIS_HOST:-localhost}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
-# Setup SSH tunnel if MANAGER_SSH is configured
-if [ -n "$MANAGER_SSH" ]; then
-    echo "Setting up SSH tunnel to manager..."
+# Setup SSH forward tunnel ONLY if MANAGER_SSH is configured AND not using reverse tunnel
+if [ -n "$MANAGER_SSH" ] && [ "$USE_REVERSE_TUNNEL" != "true" ]; then
+    echo "Setting up SSH forward tunnel to manager..."
 
     # Kill any existing tunnel
     pkill -f "ssh.*-L.*:6379:localhost:6379" 2>/dev/null || true
@@ -59,8 +59,11 @@ if [ -n "$MANAGER_SSH" ]; then
     REDIS_HOST="localhost"
     REDIS_PORT="16379"
     export REDIS_HOST REDIS_PORT
-    echo "✓ SSH tunnel established (PID: $TUNNEL_PID)"
+    echo "✓ SSH forward tunnel established (PID: $TUNNEL_PID)"
     echo "  Forwarding localhost:16379 -> manager:6379"
+elif [ "$USE_REVERSE_TUNNEL" = "true" ]; then
+    echo "✓ Using reverse tunnel (Manager manages connection)"
+    echo "  Redis: $REDIS_HOST:$REDIS_PORT"
 fi
 
 # Check if Redis is reachable
@@ -120,16 +123,17 @@ echo "  Mode: ${DEPLOYMENT_MODE:-docker}"
 echo "  Log: logs/worker.log"
 echo ""
 
-cd src
+# Set PYTHONPATH to include src directory
+export PYTHONPATH="$PROJECT_DIR/src:$PYTHONPATH"
 
 # Run in foreground (for debugging) or background
 if [ "$1" == "--foreground" ] || [ "$1" == "-f" ]; then
     echo "Running in foreground (Ctrl+C to stop)..."
     python -m arq web.workers.autotuner_worker.WorkerSettings --verbose
 else
-    nohup python -m arq web.workers.autotuner_worker.WorkerSettings --verbose > ../logs/worker.log 2>&1 &
+    nohup python -m arq web.workers.autotuner_worker.WorkerSettings --verbose > logs/worker.log 2>&1 &
     WORKER_PID=$!
-    echo $WORKER_PID > ../logs/worker.pid
+    echo $WORKER_PID > logs/worker.pid
     echo "Worker started (PID: $WORKER_PID)"
     echo ""
     echo "View logs: tail -f logs/worker.log"
