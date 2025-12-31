@@ -31,3 +31,4 @@ sqlalchemy>=2.0.0
 # Task Queue
 uvicorn[standard]>=0.24.0
 # Web Framework
+genai-bench>=0.1.0
