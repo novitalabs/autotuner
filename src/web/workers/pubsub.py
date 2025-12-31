@@ -23,8 +23,10 @@ RESULTS_CHANNEL_PREFIX = "channel:results:"
 WORKER_CHANNEL_PREFIX = "channel:worker:"
 CONFIG_CHANNEL_PREFIX = "channel:config:"  # For worker config updates
 LOG_CHANNEL_PREFIX = "channel:logs:"  # For worker log streaming
+TASK_STATUS_CHANNEL_PREFIX = "channel:task_status:"  # For task status updates
 ALL_RESULTS_CHANNEL = "channel:results:*"
 ALL_LOGS_CHANNEL = "channel:logs:*"
+ALL_TASK_STATUS_CHANNEL = "channel:task_status:*"
 
 # Log storage
 LOG_BUFFER_KEY_PREFIX = "logs:buffer:"  # Circular buffer for recent logs
@@ -95,6 +97,26 @@ class LogEntry(BaseModel):
 		}
 
 
+class TaskStatusUpdate(BaseModel):
+	"""Task status update message from worker to manager."""
+
+	task_id: int
+	worker_id: str
+	status: str  # "COMPLETED", "FAILED", "CANCELLED"
+	total_experiments: int = 0
+	successful_experiments: int = 0
+	best_experiment_id: Optional[int] = None
+	best_score: Optional[float] = None
+	elapsed_time: Optional[float] = None
+	error_message: Optional[str] = None
+	timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+	class Config:
+		json_encoders = {
+			datetime: lambda v: v.isoformat()
+		}
+
+
 class ResultPublisher:
 	"""Publisher for experiment results (used by workers)."""
 
@@ -139,6 +161,60 @@ class ResultPublisher:
 	def _log_buffer_key(self, worker_id: str) -> str:
 		"""Get Redis key for worker's log buffer."""
 		return f"{LOG_BUFFER_KEY_PREFIX}{worker_id}"
+
+	def _task_status_channel(self, task_id: int) -> str:
+		"""Get channel name for task status updates."""
+		return f"{TASK_STATUS_CHANNEL_PREFIX}{task_id}"
+
+	async def publish_task_status(
+		self,
+		task_id: int,
+		status: str,
+		total_experiments: int = 0,
+		successful_experiments: int = 0,
+		best_experiment_id: Optional[int] = None,
+		best_score: Optional[float] = None,
+		elapsed_time: Optional[float] = None,
+		error_message: Optional[str] = None,
+	) -> int:
+		"""Publish task status update (completion, failure).
+
+		Args:
+			task_id: Task ID
+			status: Task status ("COMPLETED", "FAILED", "CANCELLED")
+			total_experiments: Total number of experiments
+			successful_experiments: Number of successful experiments
+			best_experiment_id: ID of best experiment
+			best_score: Best objective score
+			elapsed_time: Total elapsed time in seconds
+			error_message: Error message if failed
+
+		Returns:
+			Number of subscribers that received the message
+		"""
+		worker_id = self.worker_id or "unknown"
+
+		update = TaskStatusUpdate(
+			task_id=task_id,
+			worker_id=worker_id,
+			status=status,
+			total_experiments=total_experiments,
+			successful_experiments=successful_experiments,
+			best_experiment_id=best_experiment_id,
+			best_score=best_score,
+			elapsed_time=elapsed_time,
+			error_message=error_message,
+		)
+
+		channel = self._task_status_channel(task_id)
+		message = update.model_dump_json()
+
+		subscribers = await self.redis.publish(channel, message)
+		logger.info(
+			f"Published task status for task {task_id}: status={status} "
+			f"to {subscribers} subscribers"
+		)
+		return subscribers
 
 	async def publish_log(
 		self,

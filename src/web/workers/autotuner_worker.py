@@ -23,15 +23,15 @@ from typing import Dict, Any, Optional, List
 import io
 import asyncio
 
-from src.web.config import get_settings
-from src.web.db.models import Task, Experiment, TaskStatus, ExperimentStatus
+from web.config import get_settings
+from web.db.models import Task, Experiment, TaskStatus, ExperimentStatus
 from src.orchestrator import AutotunerOrchestrator
 from src.utils.optimizer import generate_parameter_grid, create_optimization_strategy, restore_optimization_strategy
 from src.utils.quantization_integration import merge_parameters_with_quant_config
 from src.utils.gpu_scheduler import estimate_gpu_requirements, check_gpu_availability, wait_for_gpu_availability
-from src.web.workers.checkpoint import TaskCheckpoint
-from src.web.events.broadcaster import get_broadcaster, EventType, create_event
-from src.web.workers.pubsub import get_result_publisher, close_result_publisher
+from web.workers.checkpoint import TaskCheckpoint
+from web.events.broadcaster import get_broadcaster, EventType, create_event
+from web.workers.pubsub import get_result_publisher, close_result_publisher
 
 settings = get_settings()
 
@@ -362,7 +362,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 			logger.info(f"[ARQ Worker] Starting task: {task_name}")
 
 			# Set task context for remote logging
-			from src.web.workers.log_handler import get_log_handler
+			from web.workers.log_handler import get_log_handler
 			log_handler = get_log_handler()
 			if log_handler:
 				log_handler.set_task_context(task_id, None)
@@ -568,7 +568,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 				logger.info(f"[Experiment {iteration}] Logging to experiment-specific file")
 
 				# Set task context for remote logging
-				from src.web.workers.log_handler import get_log_handler
+				from web.workers.log_handler import get_log_handler
 				log_handler = get_log_handler()
 				if log_handler:
 					log_handler.set_task_context(task_id, iteration)
@@ -995,6 +995,18 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 					)
 					await final_db.commit()
 
+					# Publish task status via Redis for distributed workers
+					if publisher:
+						await publisher.publish_task_status(
+							task_id=task_id,
+							status=final_status.value,
+							total_experiments=iteration,
+							successful_experiments=successful_count,
+							best_experiment_id=best_experiment_id,
+							best_score=best_score if best_score != float("inf") else None,
+							elapsed_time=elapsed_time,
+						)
+
 					logger.info(f"[ARQ Worker] Task completed in {elapsed_time:.2f}s - Best experiment: {best_experiment_id}" if elapsed_time else f"[ARQ Worker] Task completed - Best experiment: {best_experiment_id}")
 
 					# Broadcast task completion event
@@ -1028,6 +1040,20 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 				task.status = TaskStatus.FAILED
 				task.completed_at = datetime.utcnow()
 				await db.commit()
+
+				# Publish task failure via Redis for distributed workers
+				if publisher:
+					elapsed_time = None
+					if task.started_at:
+						elapsed_time = (task.completed_at - task.started_at).total_seconds()
+					await publisher.publish_task_status(
+						task_id=task_id,
+						status=TaskStatus.FAILED.value,
+						total_experiments=task.total_experiments or 0,
+						successful_experiments=task.successful_experiments or 0,
+						elapsed_time=elapsed_time,
+						error_message=str(e),
+					)
 			return {"task_id": task_id, "error": str(e)}
 		finally:
 			# Restore stdout and stderr
@@ -1209,9 +1235,9 @@ class WorkerSettings:
 	async def on_startup(ctx: Dict[str, Any]) -> None:
 		"""Called when worker starts. Register with the manager."""
 		import os
-		from src.web.schemas.worker import WorkerRegister, WorkerCapabilities, GPUInfo
-		from src.web.workers.registry import get_worker_registry, HEARTBEAT_INTERVAL
-		from src.web.workers.worker_config import (
+		from web.schemas.worker import WorkerRegister, WorkerCapabilities, GPUInfo
+		from web.workers.registry import get_worker_registry, HEARTBEAT_INTERVAL
+		from web.workers.worker_config import (
 			load_worker_config,
 			get_worker_alias,
 			get_deployment_mode,
@@ -1222,7 +1248,7 @@ class WorkerSettings:
 
 		# Setup remote logging to stream logs to manager
 		try:
-			from src.web.workers.log_handler import setup_remote_logging
+			from web.workers.log_handler import setup_remote_logging
 			log_handler = setup_remote_logging(worker_id, level=logging.INFO)
 			ctx["log_handler"] = log_handler
 			logging.info(f"📡 Remote logging enabled for worker: {worker_id}")
@@ -1238,7 +1264,7 @@ class WorkerSettings:
 		worker_alias = get_worker_alias()
 
 		# Log config source
-		from src.web.workers.worker_config import get_config_path
+		from web.workers.worker_config import get_config_path
 		config_path = get_config_path()
 		logging.info(f"📁 Worker config: {config_path} (alias={worker_alias}, mode={deployment_mode})")
 
@@ -1339,7 +1365,7 @@ class WorkerSettings:
 		log_handler = ctx.get("log_handler")
 		if log_handler:
 			try:
-				from src.web.workers.log_handler import shutdown_remote_logging
+				from web.workers.log_handler import shutdown_remote_logging
 				shutdown_remote_logging()
 				logging.info("📡 Remote logging shutdown")
 			except Exception as e:
@@ -1358,8 +1384,8 @@ class WorkerSettings:
 	@staticmethod
 	async def _heartbeat_loop(ctx: Dict[str, Any]) -> None:
 		"""Background task to send periodic heartbeats."""
-		from src.web.schemas.worker import WorkerHeartbeat, GPUInfo
-		from src.web.workers.registry import HEARTBEAT_INTERVAL
+		from web.schemas.worker import WorkerHeartbeat, GPUInfo
+		from web.workers.registry import HEARTBEAT_INTERVAL
 
 		worker_id = ctx.get("worker_id")
 		registry = ctx.get("registry")
@@ -1402,8 +1428,8 @@ class WorkerSettings:
 	async def _config_listener(ctx: Dict[str, Any]) -> None:
 		"""Background task to listen for config updates from manager."""
 		import redis.asyncio as redis
-		from src.web.workers.pubsub import CONFIG_CHANNEL_PREFIX
-		from src.web.workers.worker_config import update_worker_config, get_config_path
+		from web.workers.pubsub import CONFIG_CHANNEL_PREFIX
+		from web.workers.worker_config import update_worker_config, get_config_path
 
 		worker_id = ctx.get("worker_id")
 		if not worker_id:
@@ -1464,7 +1490,7 @@ class WorkerSettings:
 		Returns:
 			List of GPUInfo objects or None if unavailable
 		"""
-		from src.web.schemas.worker import GPUInfo
+		from web.schemas.worker import GPUInfo
 		try:
 			result = subprocess.run(
 				[
@@ -1518,7 +1544,7 @@ class WorkerSettings:
 		Returns:
 			List of GPUInfo objects from all cluster nodes, or None if unavailable
 		"""
-		from src.web.schemas.worker import GPUInfo
+		from web.schemas.worker import GPUInfo
 		import json as json_module
 
 		try:

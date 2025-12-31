@@ -21,7 +21,7 @@ from web.db.session import init_db, get_db
 from web.db.seed_presets import seed_system_presets
 from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent, workers
 from web.services.result_listener import start_result_listener, stop_result_listener, get_result_listener
-from web.workers.pubsub import ExperimentResult, WorkerEvent
+from web.workers.pubsub import ExperimentResult, WorkerEvent, TaskStatusUpdate
 from web.db.models import Task, Experiment, TaskStatus, ExperimentStatus
 from web.db.session import AsyncSessionLocal
 
@@ -151,7 +151,80 @@ async def sync_experiment_to_local_db(result: ExperimentResult) -> bool:
 		return False
 
 
+async def sync_task_status_to_local_db(task_status: TaskStatusUpdate) -> bool:
+	"""Sync task status from remote worker to local database.
 
+	This function updates the task status in the local database
+	based on status updates published via Redis Pub/Sub from distributed workers.
+
+	Args:
+		task_status: TaskStatusUpdate from remote worker
+
+	Returns:
+		True if sync succeeded, False otherwise
+	"""
+	try:
+		async with AsyncSessionLocal() as db:
+			from sqlalchemy import select, update
+
+			# Check if task exists locally
+			task_result = await db.execute(
+				select(Task).where(Task.id == task_status.task_id)
+			)
+			task = task_result.scalar_one_or_none()
+
+			if not task:
+				logger.warning(
+					f"Task {task_status.task_id} not found in local database, "
+					"cannot sync task status"
+				)
+				return False
+
+			# Map status string to enum (case-insensitive)
+			status_map = {
+				"completed": TaskStatus.COMPLETED,
+				"failed": TaskStatus.FAILED,
+				"cancelled": TaskStatus.CANCELLED,
+				"running": TaskStatus.RUNNING,
+				"pending": TaskStatus.PENDING,
+			}
+			new_status = status_map.get(task_status.status.lower())
+
+			if not new_status:
+				logger.warning(f"Unknown task status: {task_status.status}")
+				return False
+
+			# Update task status
+			update_values = {
+				"status": new_status,
+				"total_experiments": task_status.total_experiments,
+				"successful_experiments": task_status.successful_experiments,
+			}
+
+			if task_status.best_experiment_id:
+				update_values["best_experiment_id"] = task_status.best_experiment_id
+
+			if task_status.elapsed_time:
+				update_values["elapsed_time"] = task_status.elapsed_time
+
+			if new_status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+				update_values["completed_at"] = task_status.timestamp
+
+			await db.execute(
+				update(Task).where(Task.id == task_status.task_id).values(**update_values)
+			)
+			await db.commit()
+
+			logger.info(
+				f"Task {task_status.task_id} status synced: status={task_status.status}, "
+				f"total={task_status.total_experiments}, successful={task_status.successful_experiments}"
+			)
+
+			return True
+
+	except Exception as e:
+		logger.error(f"Failed to sync task status to local database: {e}", exc_info=True)
+		return False
 
 
 class CustomORJSONResponse(ORJSONResponse):
@@ -207,8 +280,22 @@ async def lifespan(app: FastAPI):
 				f"📥 Worker event: {event.worker_id} - {event.event_type}"
 			)
 
+		async def on_task_status(task_status: TaskStatusUpdate):
+			"""Handle task status updates from distributed workers."""
+			logger.info(
+				f"📥 Received task status via Pub/Sub: task={task_status.task_id} "
+				f"status={task_status.status} worker={task_status.worker_id}"
+			)
+			# Sync task status to local database for distributed workers
+			synced = await sync_task_status_to_local_db(task_status)
+			if synced:
+				logger.info(f"✅ Synced task {task_status.task_id} status to local database")
+			else:
+				logger.warning(f"⚠️ Failed to sync task {task_status.task_id} status to local database")
+
 		listener.on_result(on_result)
 		listener.on_worker_event(on_worker_event)
+		listener.on_task_status(on_task_status)
 
 		print("📡 Result listener started (Redis Pub/Sub)")
 	except Exception as e:
