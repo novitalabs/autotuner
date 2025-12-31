@@ -219,7 +219,9 @@ class DockerController(BaseModelController):
 			# Prepare environment variables
 			env_vars = {
 				"MODEL_PATH": model_identifier,
-				"HF_HOME": "/root/.cache/huggingface"  # Cache directory for downloaded models
+				"HF_HOME": "/root/.cache/huggingface",  # Cache directory for downloaded models
+				"HF_HUB_OFFLINE": "1",  # Use offline mode - only load from cache, no network requests
+				"TRANSFORMERS_OFFLINE": "1",  # Redundant but ensures offline mode for transformers
 			}
 
 			# Note: CUDA_VISIBLE_DEVICES is NOT set here because we use device_requests

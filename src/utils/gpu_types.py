@@ -68,6 +68,11 @@ class LocalGPUInfo:
         return self.temperature
 
     @property
+    def power_draw_w(self) -> Optional[float]:
+        """GPU power draw in Watts (alias for power_draw)."""
+        return self.power_draw
+
+    @property
     def is_available(self) -> bool:
         """Check if GPU is available for allocation (has free memory)."""
         return self.memory_free_mb > 1000  # At least 1GB free
