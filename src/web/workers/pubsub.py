@@ -137,6 +137,19 @@ class ResultPublisher:
 		publisher.worker_id = worker_id
 		return publisher
 
+	async def _get_fresh_connection(self) -> redis.Redis:
+		"""Get a fresh Redis connection to avoid event loop issues.
+
+		This is needed because the original connection's lock may be bound
+		to a different event loop when called from different async contexts.
+		"""
+		return redis.Redis(
+			host=settings.redis_host,
+			port=settings.redis_port,
+			db=settings.redis_db,
+			decode_responses=True,
+		)
+
 	async def close(self):
 		"""Close Redis connection."""
 		if self.redis:
@@ -209,7 +222,21 @@ class ResultPublisher:
 		channel = self._task_status_channel(task_id)
 		message = update.model_dump_json()
 
-		subscribers = await self.redis.publish(channel, message)
+		# Use fresh connection to avoid event loop issues
+		# The original connection's lock may be bound to a different event loop
+		try:
+			subscribers = await self.redis.publish(channel, message)
+		except RuntimeError as e:
+			if "different event loop" in str(e):
+				logger.warning(f"Event loop mismatch, using fresh connection for task status publish")
+				fresh_conn = await self._get_fresh_connection()
+				try:
+					subscribers = await fresh_conn.publish(channel, message)
+				finally:
+					await fresh_conn.close()
+			else:
+				raise
+
 		logger.info(
 			f"Published task status for task {task_id}: status={status} "
 			f"to {subscribers} subscribers"
@@ -306,7 +333,20 @@ class ResultPublisher:
 		channel = self._results_channel(result.task_id)
 		message = result.model_dump_json()
 
-		subscribers = await self.redis.publish(channel, message)
+		# Use fresh connection if event loop mismatch
+		try:
+			subscribers = await self.redis.publish(channel, message)
+		except RuntimeError as e:
+			if "different event loop" in str(e):
+				logger.warning(f"Event loop mismatch, using fresh connection for result publish")
+				fresh_conn = await self._get_fresh_connection()
+				try:
+					subscribers = await fresh_conn.publish(channel, message)
+				finally:
+					await fresh_conn.close()
+			else:
+				raise
+
 		logger.info(
 			f"Published result for task {result.task_id} exp {result.experiment_id} "
 			f"to {subscribers} subscribers"
@@ -325,7 +365,20 @@ class ResultPublisher:
 		channel = self._worker_channel(event.worker_id)
 		message = event.model_dump_json()
 
-		subscribers = await self.redis.publish(channel, message)
+		# Use fresh connection if event loop mismatch
+		try:
+			subscribers = await self.redis.publish(channel, message)
+		except RuntimeError as e:
+			if "different event loop" in str(e):
+				logger.warning(f"Event loop mismatch, using fresh connection for worker event publish")
+				fresh_conn = await self._get_fresh_connection()
+				try:
+					subscribers = await fresh_conn.publish(channel, message)
+				finally:
+					await fresh_conn.close()
+			else:
+				raise
+
 		logger.debug(f"Published worker event {event.event_type} to {subscribers} subscribers")
 		return subscribers
 
