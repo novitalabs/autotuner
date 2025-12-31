@@ -14,7 +14,7 @@ LLM inference engines like SGLang and vLLM expose dozens of tunable parameters (
 - **Error-prone**: Parameter interactions are complex and non-intuitive
 - **Hardware-dependent**: Optimal settings vary by GPU model, memory, and workload
 
-### Real-World Example: 4% Throughput Gain in Minutes
+### Real-World Example: Performance Gain in Minutes
 
 We compared an **optimized SGLang configuration** (found via Bayesian optimization) against **baseline defaults** on RTX 4090:
 
