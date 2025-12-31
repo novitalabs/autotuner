@@ -17,9 +17,11 @@ from web.workers.pubsub import (
 	ExperimentResult,
 	WorkerEvent,
 	LogEntry,
+	TaskStatusUpdate,
 	RESULTS_CHANNEL_PREFIX,
 	WORKER_CHANNEL_PREFIX,
 	LOG_CHANNEL_PREFIX,
+	TASK_STATUS_CHANNEL_PREFIX,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class ResultListener:
 		self._result_callbacks: List[Callable[[ExperimentResult], Any]] = []
 		self._worker_event_callbacks: List[Callable[[WorkerEvent], Any]] = []
 		self._log_callbacks: List[Callable[[LogEntry], Any]] = []
+		self._task_status_callbacks: List[Callable[[TaskStatusUpdate], Any]] = []
 
 	@classmethod
 	async def create(cls) -> "ResultListener":
@@ -93,6 +96,14 @@ class ResultListener:
 		"""
 		self._log_callbacks.append(callback)
 
+	def on_task_status(self, callback: Callable[[TaskStatusUpdate], Any]):
+		"""Register a callback for task status updates.
+
+		Args:
+			callback: Function to call with TaskStatusUpdate
+		"""
+		self._task_status_callbacks.append(callback)
+
 	async def subscribe_task(self, task_id: int):
 		"""Subscribe to results for a specific task.
 
@@ -138,6 +149,12 @@ class ResultListener:
 		pattern = f"{LOG_CHANNEL_PREFIX}*"
 		await self.pubsub.psubscribe(pattern)
 		logger.info("Subscribed to all worker log channels")
+
+	async def subscribe_all_task_status(self):
+		"""Subscribe to all task status channels using pattern matching."""
+		pattern = f"{TASK_STATUS_CHANNEL_PREFIX}*"
+		await self.pubsub.psubscribe(pattern)
+		logger.info("Subscribed to all task status channels")
 
 	async def start(self):
 		"""Start listening for messages in background."""
@@ -202,6 +219,13 @@ class ResultListener:
 				log_entry = LogEntry.model_validate_json(data)
 				await self._dispatch_log(log_entry)
 
+			elif channel.startswith(TASK_STATUS_CHANNEL_PREFIX) or (
+				msg_type == "pmessage" and TASK_STATUS_CHANNEL_PREFIX in channel
+			):
+				# Parse task status update
+				task_status = TaskStatusUpdate.model_validate_json(data)
+				await self._dispatch_task_status(task_status)
+
 		except Exception as e:
 			logger.error(f"Failed to parse message from {channel}: {e}")
 
@@ -259,6 +283,26 @@ class ResultListener:
 			except Exception as e:
 				logger.error(f"Error in log callback: {e}")
 
+	async def _dispatch_task_status(self, task_status: TaskStatusUpdate):
+		"""Dispatch task status update to all registered callbacks.
+
+		Args:
+			task_status: Parsed task status update from worker
+		"""
+		logger.info(
+			f"Received task status: task={task_status.task_id} status={task_status.status} "
+			f"worker={task_status.worker_id}"
+		)
+
+		for callback in self._task_status_callbacks:
+			try:
+				if asyncio.iscoroutinefunction(callback):
+					await callback(task_status)
+				else:
+					callback(task_status)
+			except Exception as e:
+				logger.error(f"Error in task status callback: {e}")
+
 
 # Global listener instance
 _listener: Optional[ResultListener] = None
@@ -280,6 +324,7 @@ async def start_result_listener():
 	await listener.subscribe_all_results()
 	await listener.subscribe_all_workers()
 	await listener.subscribe_all_logs()
+	await listener.subscribe_all_task_status()
 
 	# Start listening
 	await listener.start()
