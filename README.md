@@ -22,7 +22,7 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best per
 
 Testing on NVIDIA RTX 4090 (24GB) with typical production workloads (concurrency=32, mixed prefill/decode):
 
-| Model | Metric | FP16 Baseline | AWQ-Marlin (INT4) | Improvement |
+| Model | Metric | Baseline | Optimized | Improvement |
 |-------|--------|---------------|-------------------|-------------|
 | **Qwen2.5-14B** | Throughput | 1002 tok/s | 1661 tok/s | **+66%** |
 | | P50 Latency | 7001 ms | 4513 ms | **-36%** |
