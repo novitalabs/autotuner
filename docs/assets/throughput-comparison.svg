@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400">
+  <!-- Title -->
+  <text x="350" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#333">
+    Throughput: Raw vs Optimized (Autotuner)
+  </text>
+
+  <!-- Subtitle -->
+  <text x="350" y="52" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#666">
+    Output tokens per second (higher is better)
+  </text>
+
+  <!-- Background grid -->
+  <line x1="80" y1="100" x2="80" y2="320" stroke="#ddd" stroke-width="2"/>
+  <line x1="80" y1="320" x2="650" y2="320" stroke="#ddd" stroke-width="2"/>
+
+  <!-- Y-axis labels and grid lines (0-1800) -->
+  <g font-family="Arial, sans-serif" font-size="12" fill="#666">
+    <text x="70" y="325" text-anchor="end">0</text>
+    <line x1="80" y1="320" x2="650" y2="320" stroke="#eee" stroke-width="1"/>
+
+    <text x="70" y="270" text-anchor="end">500</text>
+    <line x1="80" y1="264" x2="650" y2="264" stroke="#eee" stroke-width="1"/>
+
+    <text x="70" y="214" text-anchor="end">1000</text>
+    <line x1="80" y1="209" x2="650" y2="209" stroke="#eee" stroke-width="1"/>
+
+    <text x="70" y="159" text-anchor="end">1500</text>
+    <line x1="80" y1="153" x2="650" y2="153" stroke="#eee" stroke-width="1"/>
+
+    <text x="70" y="104" text-anchor="end">2000</text>
+    <line x1="80" y1="98" x2="650" y2="98" stroke="#eee" stroke-width="1"/>
+  </g>
+
+  <!-- Qwen2.5-14B bars (scale: 220px = 2000 tok/s, so 1 tok/s = 0.11px) -->
+  <!-- FP16: 1002 tok/s = 110px from bottom -->
+  <rect x="130" y="210" width="80" height="110" fill="#94a3b8" rx="4"/>
+  <text x="170" y="204" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">1002</text>
+
+  <!-- AWQ: 1661 tok/s = 183px from bottom -->
+  <rect x="220" y="137" width="80" height="183" fill="#10b981" rx="4"/>
+  <text x="260" y="131" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">1661</text>
+
+  <!-- Improvement label for 14B -->
+  <text x="250" y="110" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#059669">+66%</text>
+
+  <!-- Qwen2.5-32B bars -->
+  <!-- FP16: 730 tok/s = 80px from bottom -->
+  <rect x="400" y="240" width="80" height="80" fill="#94a3b8" rx="4"/>
+  <text x="440" y="234" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">730</text>
+
+  <!-- AWQ: 1037 tok/s = 114px from bottom -->
+  <rect x="490" y="206" width="80" height="114" fill="#10b981" rx="4"/>
+  <text x="530" y="200" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">1037</text>
+
+  <!-- Improvement label for 32B -->
+  <text x="520" y="178" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#059669">+42%</text>
+
+  <!-- Model labels -->
+  <text x="215" y="350" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">Qwen2.5-14B</text>
+  <text x="485" y="350" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">Qwen2.5-32B</text>
+
+  <!-- Legend -->
+  <rect x="170" y="370" width="20" height="15" fill="#94a3b8" rx="2"/>
+  <text x="195" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">Raw Baseline</text>
+
+  <rect x="300" y="370" width="20" height="15" fill="#10b981" rx="2"/>
+  <text x="325" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">Optimized (Autotuner)</text>
+</svg>
