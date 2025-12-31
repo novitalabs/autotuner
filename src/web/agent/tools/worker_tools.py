@@ -347,6 +347,8 @@ async def deploy_worker(
     name: str = None,
     mode: str = "docker",
     auto_install: bool = True,
+    force_sync: bool = False,
+    ssh_reverse_tunnel: str = None,
     manager_ssh: str = None
 ) -> str:
     """
@@ -355,23 +357,28 @@ async def deploy_worker(
     This tool will:
     1. Test SSH connectivity to the remote machine
     2. Auto-install the project if not present (install deps, sync files)
-    3. Create worker configuration (.env.worker) with Redis connection
-    4. Start the worker using start_remote_worker.sh
-    5. Wait for worker to register with the manager
-    6. Save deployment configuration to database for future restores
+    3. Setup SSH tunnel for Redis access (reverse or forward)
+    4. Create worker configuration (.env.worker) with Redis connection
+    5. Start the worker using start_remote_worker.sh
+    6. Wait for worker to register with the manager
+    7. Save deployment configuration to database for future restores
 
     Prerequisites:
     - SSH key-based authentication configured (no password prompt)
-    - Either: REDIS_HOST accessible from remote, OR manager_ssh for SSH tunnel
-    - Root/sudo access on remote machine (for auto-install)
+    - For reverse tunnel (recommended): Manager can SSH to remote machine
+    - For forward tunnel: Remote can SSH back to manager
 
     Args:
         ssh_command: SSH connection command (e.g., "ssh -p 18022 root@192.168.1.100")
         name: Worker alias/name for identification in dashboard (optional)
         mode: Deployment mode - "docker" or "ome" (default: "docker")
         auto_install: Automatically install project if not found (default: True)
-        manager_ssh: SSH command for worker to connect back to manager for Redis tunnel
-                    (e.g., "ssh -p 33773 user@manager-ip"). Required if Redis not directly accessible.
+        force_sync: Force sync code even if project exists - useful for updates (default: False)
+        ssh_reverse_tunnel: Reverse tunnel spec "remote_port:manager_host:manager_port"
+                           (e.g., "6380:localhost:6379"). Manager creates tunnel to remote.
+                           Recommended when Manager can SSH to remote but not vice versa.
+        manager_ssh: SSH command for worker to connect back to manager for forward tunnel
+                    (e.g., "ssh -p 33773 user@manager-ip"). Use only if remote can SSH to manager.
 
     Returns:
         JSON string with deployment status and worker info
@@ -388,7 +395,9 @@ async def deploy_worker(
                 name=name,
                 controller_type=mode,
                 manager_ssh=manager_ssh,
+                ssh_reverse_tunnel=ssh_reverse_tunnel,
                 auto_install=auto_install,
+                force_sync=force_sync,
             )
 
             result = await service.deploy_worker(config)
@@ -423,7 +432,7 @@ async def deploy_worker(
     requires_auth=True,
     auth_scope=AuthorizationScope.ARQ_CONTROL
 )
-async def restore_worker(slot_id: int, auto_install: bool = False) -> str:
+async def restore_worker(slot_id: int, auto_install: bool = False, force_sync: bool = False) -> str:
     """
     Restore an offline worker by its slot ID.
 
@@ -434,9 +443,13 @@ async def restore_worker(slot_id: int, auto_install: bool = False) -> str:
     The slot configuration (SSH command, project path, etc.) is retrieved
     from the database, so you don't need to provide deployment details again.
 
+    If ssh_reverse_tunnel was configured in the slot, Manager will
+    re-establish the reverse tunnel before starting the worker.
+
     Args:
         slot_id: Worker slot ID (can be found using list_worker_slots)
         auto_install: Re-install/update project files if needed (default: False)
+        force_sync: Force sync code even if project exists - useful for code updates (default: False)
 
     Returns:
         JSON string with restore status and worker info
@@ -447,7 +460,11 @@ async def restore_worker(slot_id: int, auto_install: bool = False) -> str:
 
         async with AsyncSessionLocal() as db:
             service = WorkerService(db)
-            result = await service.restore_worker(slot_id, auto_install=auto_install)
+            result = await service.restore_worker(
+                slot_id,
+                auto_install=auto_install,
+                force_sync=force_sync
+            )
 
             response = {
                 "success": result.success,

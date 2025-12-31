@@ -36,6 +36,7 @@ class DeploymentConfig:
     ssh_forward_tunnel: Optional[str] = None
     ssh_reverse_tunnel: Optional[str] = None
     auto_install: bool = True
+    force_sync: bool = False  # Force sync code even if project exists
     project_path: str = "/opt/inference-autotuner"
 
 
@@ -440,6 +441,114 @@ test -f activate && echo ok
         return {"success": False, "error": f"Offline sync failed: {str(e)}"}
 
 
+async def setup_reverse_tunnel(
+    ssh_command: str,
+    reverse_tunnel_spec: str,
+    remote_project_path: str
+) -> Dict[str, Any]:
+    """Setup reverse SSH tunnel from Manager to Remote Worker.
+
+    This creates a tunnel where the Manager maintains the SSH connection,
+    forwarding a port on the remote to Manager's Redis.
+
+    Args:
+        ssh_command: SSH command to reach remote (e.g., "ssh -p 18022 root@host")
+        reverse_tunnel_spec: Tunnel spec like "6380:localhost:6379" (remote_port:manager_host:manager_port)
+        remote_project_path: Remote project path for storing tunnel PID
+
+    Returns:
+        Dict with success status, tunnel_pid, and remote_redis_port
+    """
+    try:
+        # Parse reverse tunnel spec: remote_port:manager_host:manager_port
+        parts = reverse_tunnel_spec.split(":")
+        if len(parts) != 3:
+            return {"success": False, "error": f"Invalid reverse tunnel spec: {reverse_tunnel_spec}. Expected: remote_port:manager_host:manager_port"}
+
+        remote_port = parts[0]
+        manager_host = parts[1]
+        manager_port = parts[2]
+
+        logger.info(f"[Deploy] Setting up reverse tunnel: remote:{remote_port} -> {manager_host}:{manager_port}")
+
+        # Kill any existing reverse tunnel to this remote
+        subprocess.run(
+            f"pkill -f 'ssh.*-R.*{remote_port}:.*{ssh_command.split()[-1]}' 2>/dev/null || true",
+            shell=True,
+            timeout=5
+        )
+        await asyncio.sleep(1)
+
+        # Build SSH command with reverse tunnel
+        # Extract port and host from ssh_command
+        ssh_info = parse_ssh_command(ssh_command)
+        if not ssh_info:
+            return {"success": False, "error": "Invalid SSH command format"}
+
+        # Build tunnel command
+        tunnel_cmd = [
+            "ssh",
+            "-p", ssh_info["port"],
+            "-N",  # No command execution
+            "-R", f"{remote_port}:{manager_host}:{manager_port}",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ServerAliveInterval=60",
+            "-o", "ServerAliveCountMax=3",
+            "-o", "ExitOnForwardFailure=yes",
+            f"{ssh_info['user']}@{ssh_info['host']}"
+        ]
+
+        # Start tunnel in background
+        log_dir = Path(__file__).parent.parent.parent.parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        tunnel_log = log_dir / f"reverse_tunnel_{ssh_info['host']}.log"
+
+        process = subprocess.Popen(
+            tunnel_cmd,
+            stdout=open(tunnel_log, "w"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+
+        # Wait for tunnel to establish
+        await asyncio.sleep(3)
+
+        # Check if tunnel is still running
+        if process.poll() is not None:
+            # Process exited, read log for error
+            log_content = tunnel_log.read_text() if tunnel_log.exists() else "No log"
+            return {
+                "success": False,
+                "error": f"Reverse tunnel failed to start: {log_content[:200]}"
+            }
+
+        # Verify tunnel is working by checking port on remote
+        ret, out, _ = run_ssh(ssh_command, f"nc -z localhost {remote_port} && echo connected", timeout=10)
+        if "connected" not in out:
+            process.terminate()
+            return {
+                "success": False,
+                "error": f"Reverse tunnel started but port {remote_port} not accessible on remote"
+            }
+
+        # Save tunnel PID locally for cleanup
+        pid_file = log_dir / f"reverse_tunnel_{ssh_info['host']}.pid"
+        pid_file.write_text(str(process.pid))
+
+        logger.info(f"[Deploy] Reverse tunnel established (PID: {process.pid})")
+        return {
+            "success": True,
+            "tunnel_pid": process.pid,
+            "remote_redis_port": remote_port,
+            "message": f"Reverse tunnel active: remote:{remote_port} -> {manager_host}:{manager_port}"
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Reverse tunnel setup timed out"}
+    except Exception as e:
+        return {"success": False, "error": f"Reverse tunnel setup failed: {str(e)}"}
+
+
 def get_deployment_error_suggestion(error: str) -> str:
     """Get user-friendly suggestion for fixing deployment errors.
 
@@ -660,13 +769,15 @@ class WorkerService:
     async def start_remote_worker(
         self,
         slot: WorkerSlot,
-        auto_install: bool = True
+        auto_install: bool = True,
+        force_sync: bool = False
     ) -> DeploymentResult:
         """Start a worker on a remote machine using slot configuration.
 
         Args:
             slot: WorkerSlot with deployment configuration
             auto_install: Whether to auto-install if project not found
+            force_sync: Force sync code even if project exists (useful for updates)
 
         Returns:
             DeploymentResult with success status and worker info
@@ -718,11 +829,12 @@ class WorkerService:
             redis_port = settings.redis_port
 
             # Check Redis is externally accessible (skip if using SSH tunnel)
-            if redis_host in ("localhost", "127.0.0.1") and not slot.manager_ssh:
+            has_tunnel = slot.manager_ssh or slot.ssh_reverse_tunnel
+            if redis_host in ("localhost", "127.0.0.1") and not has_tunnel:
                 error_msg = (
                     "REDIS_HOST is set to localhost. Remote workers cannot connect directly. "
-                    "Either set REDIS_HOST to Manager's external IP, or configure manager_ssh "
-                    "for SSH tunnel."
+                    "Either set REDIS_HOST to Manager's external IP, or configure ssh_reverse_tunnel "
+                    "(recommended) or manager_ssh for SSH tunnel."
                 )
                 return DeploymentResult(
                     success=False,
@@ -730,6 +842,27 @@ class WorkerService:
                     error=error_msg,
                     suggestion=get_deployment_error_suggestion(error_msg)
                 )
+
+            # Setup reverse tunnel if configured (Manager -> Remote)
+            remote_redis_port = redis_port  # Default to manager's redis port
+            if slot.ssh_reverse_tunnel:
+                logger.info(f"[Deploy] Setting up reverse SSH tunnel...")
+                tunnel_result = await setup_reverse_tunnel(
+                    slot.ssh_command,
+                    slot.ssh_reverse_tunnel,
+                    slot.project_path
+                )
+                if not tunnel_result["success"]:
+                    error_msg = tunnel_result.get("error", "Reverse tunnel setup failed")
+                    await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
+                    return DeploymentResult(
+                        success=False,
+                        message="Reverse tunnel setup failed",
+                        error=error_msg,
+                        suggestion="Check SSH connectivity and ensure the remote port is available."
+                    )
+                remote_redis_port = tunnel_result["remote_redis_port"]
+                logger.info(f"[Deploy] {tunnel_result.get('message')}")
 
             # Auto-setup SSH key for manager tunnel if needed
             if slot.manager_ssh and auto_install:
@@ -745,9 +878,11 @@ class WorkerService:
             ret, out, _ = run_ssh(slot.ssh_command, f"test -d {slot.project_path}/src && echo exists", timeout=10)
             project_exists = "exists" in out
 
-            # Auto-install if project doesn't exist
-            if not project_exists:
-                if not auto_install:
+            # Sync code if project doesn't exist OR force_sync is requested
+            need_sync = not project_exists or force_sync
+
+            if need_sync:
+                if not auto_install and not project_exists:
                     error_msg = f"Project not found at {slot.project_path} on remote machine."
                     return DeploymentResult(
                         success=False,
@@ -756,17 +891,19 @@ class WorkerService:
                         suggestion=get_deployment_error_suggestion(error_msg)
                     )
 
-                logger.info(f"[Deploy] Installing project on remote...")
-                install_result = await auto_install_worker(slot.ssh_command, slot.project_path, local_project)
-                if not install_result["success"]:
-                    error_msg = install_result.get("error", "Installation failed")
-                    await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
-                    return DeploymentResult(
-                        success=False,
-                        message="Installation failed",
-                        error=error_msg,
-                        suggestion=get_deployment_error_suggestion(error_msg)
-                    )
+                if auto_install or force_sync:
+                    action = "Syncing" if project_exists else "Installing"
+                    logger.info(f"[Deploy] {action} project on remote...")
+                    install_result = await auto_install_worker(slot.ssh_command, slot.project_path, local_project)
+                    if not install_result["success"]:
+                        error_msg = install_result.get("error", "Installation failed")
+                        await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
+                        return DeploymentResult(
+                            success=False,
+                            message=f"{action} failed",
+                            error=error_msg,
+                            suggestion=get_deployment_error_suggestion(error_msg)
+                        )
 
             # Check if virtual environment exists
             ret, out, _ = run_ssh(slot.ssh_command, f"test -f {slot.project_path}/env/bin/activate && echo exists", timeout=10)
@@ -812,11 +949,30 @@ class WorkerService:
 
             # Create .env.worker on remote
             logger.info(f"[Deploy] Creating worker configuration...")
+
+            # Determine Redis connection settings based on tunnel type
+            if slot.ssh_reverse_tunnel:
+                # Reverse tunnel: Worker connects to localhost on the tunneled port
+                worker_redis_host = "localhost"
+                worker_redis_port = remote_redis_port
+                use_reverse_tunnel = "true"
+            elif slot.manager_ssh:
+                # Forward tunnel: Worker will create tunnel and connect to it
+                worker_redis_host = redis_host
+                worker_redis_port = redis_port
+                use_reverse_tunnel = "false"
+            else:
+                # Direct connection: Worker connects to manager's Redis directly
+                worker_redis_host = redis_host
+                worker_redis_port = redis_port
+                use_reverse_tunnel = "false"
+
             worker_config_lines = [
-                f"REDIS_HOST={redis_host}",
-                f"REDIS_PORT={redis_port}",
+                f"REDIS_HOST={worker_redis_host}",
+                f"REDIS_PORT={worker_redis_port}",
                 f'WORKER_ALIAS="{slot.name or ""}"',
                 f"DEPLOYMENT_MODE={slot.controller_type}",
+                f"USE_REVERSE_TUNNEL={use_reverse_tunnel}",
             ]
             if slot.manager_ssh:
                 worker_config_lines.append(f'MANAGER_SSH="{slot.manager_ssh}"')
@@ -943,17 +1099,27 @@ class WorkerService:
         slot = await self.create_or_update_slot(config)
 
         # Start the worker
-        result = await self.start_remote_worker(slot, auto_install=config.auto_install)
+        result = await self.start_remote_worker(
+            slot,
+            auto_install=config.auto_install,
+            force_sync=config.force_sync
+        )
         result.slot_id = slot.id
 
         return result
 
-    async def restore_worker(self, slot_id: int, auto_install: bool = False) -> DeploymentResult:
+    async def restore_worker(
+        self,
+        slot_id: int,
+        auto_install: bool = False,
+        force_sync: bool = False
+    ) -> DeploymentResult:
         """Restore an offline worker by its slot ID.
 
         Args:
             slot_id: Worker slot ID to restore
             auto_install: Whether to auto-install if project not found
+            force_sync: Force sync code even if project exists (useful for updates)
 
         Returns:
             DeploymentResult with success status and worker info
@@ -966,4 +1132,8 @@ class WorkerService:
                 error=f"Worker slot {slot_id} not found"
             )
 
-        return await self.start_remote_worker(slot, auto_install=auto_install)
+        return await self.start_remote_worker(
+            slot,
+            auto_install=auto_install,
+            force_sync=force_sync
+        )
