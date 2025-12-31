@@ -37,7 +37,7 @@ class DeploymentConfig:
     ssh_reverse_tunnel: Optional[str] = None
     auto_install: bool = True
     force_sync: bool = False  # Force sync code even if project exists
-    project_path: str = "/opt/inference-autotuner"
+    project_path: str = "~/.autotuner"  # Default to user's home directory
 
 
 @dataclass
@@ -797,6 +797,20 @@ class WorkerService:
                     error="Invalid SSH command format. Expected: ssh [-p port] user@host"
                 )
 
+            # Expand ~ in project_path on remote machine
+            project_path = slot.project_path
+            if project_path.startswith("~"):
+                ret, out, _ = run_ssh(slot.ssh_command, f'echo {project_path}', timeout=10)
+                if ret == 0 and out.strip():
+                    project_path = out.strip()
+                    logger.info(f"[Deploy] Expanded project path: {project_path}")
+                else:
+                    # Fallback: expand ~ to /root or /home/user
+                    if ssh_info["user"] == "root":
+                        project_path = project_path.replace("~", "/root", 1)
+                    else:
+                        project_path = project_path.replace("~", f"/home/{ssh_info['user']}", 1)
+
             # Test SSH connectivity
             logger.info(f"[Deploy] Testing SSH connection to {ssh_info['host']}...")
             try:
@@ -850,7 +864,7 @@ class WorkerService:
                 tunnel_result = await setup_reverse_tunnel(
                     slot.ssh_command,
                     slot.ssh_reverse_tunnel,
-                    slot.project_path
+                    project_path
                 )
                 if not tunnel_result["success"]:
                     error_msg = tunnel_result.get("error", "Reverse tunnel setup failed")
@@ -875,7 +889,7 @@ class WorkerService:
                     logger.info(f"[Deploy] {key_result.get('message')}")
 
             # Check if project exists on remote
-            ret, out, _ = run_ssh(slot.ssh_command, f"test -d {slot.project_path}/src && echo exists", timeout=10)
+            ret, out, _ = run_ssh(slot.ssh_command, f"test -d {project_path}/src && echo exists", timeout=10)
             project_exists = "exists" in out
 
             # Sync code if project doesn't exist OR force_sync is requested
@@ -883,7 +897,7 @@ class WorkerService:
 
             if need_sync:
                 if not auto_install and not project_exists:
-                    error_msg = f"Project not found at {slot.project_path} on remote machine."
+                    error_msg = f"Project not found at {project_path} on remote machine."
                     return DeploymentResult(
                         success=False,
                         message="Project not found",
@@ -894,7 +908,7 @@ class WorkerService:
                 if auto_install or force_sync:
                     action = "Syncing" if project_exists else "Installing"
                     logger.info(f"[Deploy] {action} project on remote...")
-                    install_result = await auto_install_worker(slot.ssh_command, slot.project_path, local_project)
+                    install_result = await auto_install_worker(slot.ssh_command, project_path, local_project)
                     if not install_result["success"]:
                         error_msg = install_result.get("error", "Installation failed")
                         await self.update_slot_status(slot, WorkerSlotStatus.OFFLINE, error=error_msg)
@@ -906,19 +920,19 @@ class WorkerService:
                         )
 
             # Check if virtual environment exists
-            ret, out, _ = run_ssh(slot.ssh_command, f"test -f {slot.project_path}/env/bin/activate && echo exists", timeout=10)
+            ret, out, _ = run_ssh(slot.ssh_command, f"test -f {project_path}/env/bin/activate && echo exists", timeout=10)
             if "exists" not in out:
                 if auto_install:
                     # Try online install first (pip install)
                     logger.info(f"[Deploy] Setting up virtual environment...")
-                    install_result = await setup_venv_and_deps(slot.ssh_command, slot.project_path)
+                    install_result = await setup_venv_and_deps(slot.ssh_command, project_path)
                     if not install_result["success"]:
                         error_msg = install_result.get("error", "")
                         # Check if it's a network issue - try offline sync
                         if any(kw in error_msg.lower() for kw in ["network", "unreachable", "timed out", "connection"]):
                             logger.info(f"[Deploy] Network issue detected, trying offline venv sync...")
                             offline_result = await sync_venv_offline(
-                                slot.ssh_command, slot.project_path, local_project
+                                slot.ssh_command, project_path, local_project
                             )
                             if not offline_result["success"]:
                                 combined_error = f"Online install failed: {error_msg}\nOffline sync also failed: {offline_result.get('error')}"
@@ -939,7 +953,7 @@ class WorkerService:
                                 suggestion=get_deployment_error_suggestion(error_msg)
                             )
                 else:
-                    error_msg = f"Virtual environment not found at {slot.project_path}/env"
+                    error_msg = f"Virtual environment not found at {project_path}/env"
                     return DeploymentResult(
                         success=False,
                         message="Virtual environment not found",
@@ -978,7 +992,7 @@ class WorkerService:
                 worker_config_lines.append(f'MANAGER_SSH="{slot.manager_ssh}"')
             worker_config = "\n".join(worker_config_lines) + "\n"
 
-            write_cmd = f"cat > {slot.project_path}/.env.worker << 'ENVEOF'\n{worker_config}ENVEOF"
+            write_cmd = f"cat > {project_path}/.env.worker << 'ENVEOF'\n{worker_config}ENVEOF"
             ret, out, err = run_ssh(slot.ssh_command, write_cmd, timeout=10)
             if ret != 0:
                 return DeploymentResult(
@@ -989,12 +1003,12 @@ class WorkerService:
 
             # Stop any existing worker
             logger.info(f"[Deploy] Stopping any existing worker...")
-            run_ssh(slot.ssh_command, f"cd {slot.project_path} && pkill -f 'arq.*autotuner_worker' || true", timeout=10)
+            run_ssh(slot.ssh_command, f"cd {project_path} && pkill -f 'arq.*autotuner_worker' || true", timeout=10)
             await asyncio.sleep(2)
 
             # Start worker on remote
             logger.info(f"[Deploy] Starting worker...")
-            start_cmd = f"cd {slot.project_path} && nohup ./scripts/start_remote_worker.sh > /tmp/worker_deploy.log 2>&1 &"
+            start_cmd = f"cd {project_path} && nohup ./scripts/start_remote_worker.sh > /tmp/worker_deploy.log 2>&1 &"
             run_ssh(slot.ssh_command, start_cmd, timeout=30)
 
             # Give worker time to start
@@ -1006,7 +1020,7 @@ class WorkerService:
                 # Worker not running, get logs
                 _, log_out, _ = run_ssh(
                     slot.ssh_command,
-                    f"tail -30 {slot.project_path}/logs/worker.log 2>/dev/null || cat /tmp/worker_deploy.log",
+                    f"tail -30 {project_path}/logs/worker.log 2>/dev/null || cat /tmp/worker_deploy.log",
                     timeout=10
                 )
                 log_text = log_out.strip()[-500:] if log_out else ""
