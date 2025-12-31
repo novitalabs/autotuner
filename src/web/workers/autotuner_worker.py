@@ -327,6 +327,18 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 			"slo": task.slo_config,
 		}
 
+	# Normalize task_config keys from Redis format (_config suffix) to orchestrator format
+	# This handles task_config passed via Redis queue which uses model_config, optimization_config, etc.
+	key_mapping = {
+		"model_config": "model",
+		"optimization_config": "optimization",
+		"benchmark_config": "benchmark",
+		"slo_config": "slo",
+	}
+	for old_key, new_key in key_mapping.items():
+		if old_key in task_config and new_key not in task_config:
+			task_config[new_key] = task_config.pop(old_key)
+
 	# Now we have task_config, proceed with execution
 
 	# Check if this worker can handle the task's deployment mode
