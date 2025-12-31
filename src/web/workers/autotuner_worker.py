@@ -328,6 +328,26 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 		}
 
 	# Now we have task_config, proceed with execution
+
+	# Check if this worker can handle the task's deployment mode
+	worker_deployment_mode = ctx.get("deployment_mode", "docker")
+	task_deployment_mode = task_config.get("deployment_mode", "docker")
+
+	# Docker tasks can only be processed by Docker workers
+	if task_deployment_mode == "docker" and worker_deployment_mode != "docker":
+		error_msg = f"Worker ({worker_deployment_mode}) cannot process docker task, skipping"
+		logger.warning(f"[ARQ Worker] {error_msg}")
+		# Return defer error to let another worker try
+		from arq import Retry
+		raise Retry(defer=5)  # Retry after 5 seconds by another worker
+
+	# OME tasks can only be processed by OME workers
+	if task_deployment_mode == "ome" and worker_deployment_mode != "ome":
+		error_msg = f"Worker ({worker_deployment_mode}) cannot process OME task, skipping"
+		logger.warning(f"[ARQ Worker] {error_msg}")
+		from arq import Retry
+		raise Retry(defer=5)
+
 	async with AsyncSessionLocal() as db:
 		# Re-fetch task if we have DB access (for status updates)
 		if task is None:
