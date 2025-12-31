@@ -5,6 +5,7 @@ Dashboard API endpoints.
 import subprocess
 import psutil
 import os
+import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List
@@ -196,11 +197,19 @@ async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
 		)
 		completed_count = result.scalar()
 
+		# Parse optimization_config if it's a string
+		opt_config = task.optimization_config
+		if isinstance(opt_config, str):
+			try:
+				opt_config = json.loads(opt_config)
+			except (json.JSONDecodeError, TypeError):
+				opt_config = {}
+
 		running_tasks_info.append({
 			"id": task.id,
 			"name": task.task_name,
 			"started_at": task.started_at.isoformat() if task.started_at else None,
-			"max_iterations": task.optimization_config.get("max_iterations", 0) if task.optimization_config else 0,
+			"max_iterations": opt_config.get("max_iterations", 0) if opt_config else 0,
 			"completed_experiments": completed_count
 		})
 

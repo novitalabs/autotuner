@@ -2,10 +2,11 @@
 Pydantic schemas for API request/response models.
 """
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
+import json
 
 
 class TaskStatusEnum(str, Enum):
@@ -94,6 +95,18 @@ class TaskResponse(BaseModel):
 	completed_at: Optional[datetime]
 	elapsed_time: Optional[float]
 
+	# Parse JSON strings to dicts
+	@field_validator('model', 'parameters', 'optimization', 'benchmark', 'slo',
+					 'quant_config', 'parallel_config', 'clusterbasemodel_config',
+					 'clusterservingruntime_config', mode='before')
+	@classmethod
+	def parse_json_fields(cls, v):
+		if isinstance(v, str):
+			try:
+				return json.loads(v)
+			except (json.JSONDecodeError, TypeError):
+				return {}
+		return v
 
 
 	# Datetime serializers to add 'Z' suffix for UTC timezone
@@ -121,7 +134,16 @@ class TaskListResponse(BaseModel):
 	elapsed_time: Optional[float]
 	slo: Optional[Dict[str, Any]] = Field(None, alias="slo_config", serialization_alias="slo")
 
-
+	# Parse JSON strings to dicts
+	@field_validator('slo', mode='before')
+	@classmethod
+	def parse_json_fields(cls, v):
+		if isinstance(v, str):
+			try:
+				return json.loads(v)
+			except (json.JSONDecodeError, TypeError):
+				return {}
+		return v
 
 	# Datetime serializers to add 'Z' suffix for UTC timezone
 	@field_serializer('created_at', when_used='json')
@@ -153,7 +175,16 @@ class ExperimentResponse(BaseModel):
 	completed_at: Optional[datetime]
 	elapsed_time: Optional[float]
 
-
+	# Parse JSON strings to dicts
+	@field_validator('parameters', 'metrics', 'gpu_info', mode='before')
+	@classmethod
+	def parse_json_fields(cls, v):
+		if isinstance(v, str):
+			try:
+				return json.loads(v)
+			except (json.JSONDecodeError, TypeError):
+				return {}
+		return v
 
 	# Datetime serializers to add 'Z' suffix for UTC timezone
 	@field_serializer('created_at', 'started_at', 'completed_at', when_used='json')
