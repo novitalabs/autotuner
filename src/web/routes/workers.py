@@ -515,6 +515,10 @@ async def update_worker_config(worker_id: str, request: WorkerConfigUpdate):
 	if "alias" in updates:
 		await registry.set_worker_alias(worker_id, updates["alias"])
 
+	# If deployment_mode is updated, also update registry
+	if "deployment_mode" in updates:
+		await registry.set_worker_deployment_mode(worker_id, updates["deployment_mode"])
+
 	# Publish config update to worker
 	try:
 		publisher = await get_result_publisher()

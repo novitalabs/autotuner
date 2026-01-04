@@ -397,6 +397,37 @@ class WorkerRegistry:
 		logger.info(f"Worker alias updated: {worker_id} -> {alias}")
 		return worker
 
+	async def set_worker_deployment_mode(self, worker_id: str, deployment_mode: str) -> Optional[WorkerInfo]:
+		"""Set worker deployment mode.
+
+		Args:
+			worker_id: Worker identifier
+			deployment_mode: New deployment mode (local, docker, ome)
+
+		Returns:
+			Updated WorkerInfo or None if worker not found
+		"""
+		worker = await self.get_worker(worker_id)
+		if not worker:
+			return None
+
+		worker.deployment_mode = deployment_mode
+
+		worker_key = self._worker_key(worker_id)
+		# Get current TTL to preserve it
+		ttl = await self.redis.ttl(worker_key)
+		if ttl < 0:
+			ttl = HEARTBEAT_TTL
+
+		await self.redis.setex(
+			worker_key,
+			ttl,
+			worker.model_dump_json(),
+		)
+
+		logger.info(f"Worker deployment_mode updated: {worker_id} -> {deployment_mode}")
+		return worker
+
 
 def worker_info_to_response(worker: WorkerInfo) -> WorkerResponse:
 	"""Convert WorkerInfo to WorkerResponse with computed fields."""
