@@ -283,9 +283,6 @@ docker run -d \
 ### FP16 Model (28GB)
 
 ```bash
-export http_proxy=http://172.17.0.1:1081
-export https_proxy=http://172.17.0.1:1081
-
 huggingface-cli download Qwen/Qwen2.5-14B-Instruct \
   --local-dir /mnt/data/models/Qwen2.5-14B-Instruct
 ```
@@ -299,9 +296,6 @@ huggingface-cli download Qwen/Qwen2.5-14B-Instruct \
 ### AWQ Model (9.4GB)
 
 ```bash
-export http_proxy=http://172.17.0.1:1081
-export https_proxy=http://172.17.0.1:1081
-
 huggingface-cli download Qwen/Qwen2.5-14B-Instruct-AWQ \
   --local-dir /mnt/data/models/Qwen2.5-14B-Instruct-AWQ
 ```
