@@ -286,17 +286,18 @@ async def get_gpu_types(deployment_mode: Optional[str] = None):
 
 	# Pre-defined candidates (common GPU types)
 	candidates = [
+		"RTX 5090",
 		"RTX 4090",
 		"RTX 3090",
+		"RTX 6000 Ada",
 		"A100",
 		"A10",
 		"H100",
 		"H200",
 		"H20",
+		"H800",
 		"L40",
 		"L40S",
-		"Ada",
-		"B100",
 		"B200",
 		"B300",
 		"GB200",
