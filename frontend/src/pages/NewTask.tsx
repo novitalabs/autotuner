@@ -15,6 +15,7 @@ interface TaskFormData {
   task_name: string;
   description: string;
   deployment_mode: string;
+  gpu_type?: string;
   base_runtime: string;
   runtime_image_tag?: string;
   model: {
@@ -74,6 +75,7 @@ export default function NewTask() {
         setTaskName(duplicateConfig.task_name || '');
         setDescription(duplicateConfig.description || '');
         setDeploymentMode(duplicateConfig.deployment_mode || 'docker');
+        setGpuType(duplicateConfig.gpu_type || '');
         setBaseRuntime(duplicateConfig.base_runtime || 'sglang');
         setRuntimeImageTag(duplicateConfig.runtime_image_tag || '');
 
@@ -211,6 +213,7 @@ export default function NewTask() {
       setTaskName(taskToEdit.task_name);
       setDescription(taskToEdit.description || '');
       setDeploymentMode(taskToEdit.deployment_mode);
+      setGpuType(taskToEdit.gpu_type || '');
       setBaseRuntime(taskToEdit.base_runtime);
       setRuntimeImageTag(taskToEdit.runtime_image_tag || '');
 
@@ -327,8 +330,16 @@ export default function NewTask() {
   const [taskName, setTaskName] = useState('');
   const [description, setDescription] = useState('');
   const [deploymentMode, setDeploymentMode] = useState('local');
+  const [gpuType, setGpuType] = useState('');
   const [baseRuntime, setBaseRuntime] = useState('sglang');
   const [runtimeImageTag, setRuntimeImageTag] = useState('');
+
+  // Fetch available GPU types (filtered by deployment mode)
+  const { data: gpuTypesData } = useQuery({
+    queryKey: ['gpu-types', deploymentMode],
+    queryFn: () => apiClient.getGpuTypes(deploymentMode),
+    staleTime: 30000, // Cache for 30 seconds
+  });
 
   // YAML Import state
   const [isDragging, setIsDragging] = useState(false);
@@ -503,6 +514,7 @@ export default function NewTask() {
       if (config.task_name) setTaskName(config.task_name);
       if (config.description) setDescription(config.description);
       if (config.deployment_mode) setDeploymentMode(config.deployment_mode);
+      if (config.gpu_type) setGpuType(config.gpu_type);
       if (config.base_runtime) setBaseRuntime(config.base_runtime);
       if (config.runtime_image_tag) setRuntimeImageTag(config.runtime_image_tag);
 
@@ -667,6 +679,7 @@ export default function NewTask() {
       task_name: taskName,
       description,
       deployment_mode: deploymentMode,
+      ...(gpuType && { gpu_type: gpuType }),
       base_runtime: baseRuntime,
       ...(runtimeImageTag && { runtime_image_tag: runtimeImageTag }),
       model: {
@@ -905,6 +918,34 @@ export default function NewTask() {
                 <option value="docker">Docker</option>
                 <option value="ome">OME (Kubernetes)</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                GPU Type (Optional)
+              </label>
+              <select
+                value={gpuType}
+                onChange={(e) => setGpuType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Any GPU (no filter)</option>
+                {gpuTypesData?.gpu_types.map((gt) => (
+                  <option
+                    key={gt.short_name}
+                    value={gt.short_name}
+                    disabled={!gt.available}
+                  >
+                    {gt.short_name}
+                    {gt.available
+                      ? ` ✓ (${gt.worker_count} worker${gt.worker_count > 1 ? 's' : ''})`
+                      : ' (unavailable)'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-gray-500 mt-1">
+                Filter workers by GPU type (partial match supported)
+              </p>
             </div>
 
             <div className="md:col-span-2">

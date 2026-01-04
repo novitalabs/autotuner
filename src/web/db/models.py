@@ -49,8 +49,9 @@ class Task(Base):
 	created_clusterbasemodel = Column(String, nullable=True)  # Name of CBM if auto-created by task
 	created_clusterservingruntime = Column(String, nullable=True)  # Name of CSR if auto-created by task
 
-	# Deployment mode
+	# Deployment mode and worker selection
 	deployment_mode = Column(String, default="docker")  # docker, ome
+	gpu_type = Column(String, nullable=True)  # GPU type filter for worker selection (e.g., "RTX 4090", "A100")
 
 	# Metadata for checkpoints and other task state (using task_metadata as Python attribute name)
 	task_metadata = Column("metadata", JSON, nullable=True)
@@ -83,6 +84,7 @@ class Task(Base):
 			"task_name": self.task_name,
 			"status": self.status.value if hasattr(self.status, 'value') else str(self.status),
 			"deployment_mode": self.deployment_mode,
+			"gpu_type": self.gpu_type,
 			"created_at": self.created_at.isoformat() if self.created_at else None,
 			"total_experiments": self.total_experiments,
 			"successful_experiments": self.successful_experiments,

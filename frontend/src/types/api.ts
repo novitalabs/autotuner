@@ -60,6 +60,7 @@ export interface Task {
 	quant_config?: QuantizationConfig;  // Optional quantization configuration
 	parallel_config?: ParallelConfig;  // Optional parallel execution configuration
 	deployment_mode: string;
+	gpu_type?: string;  // Optional GPU type filter for worker selection
 	total_experiments: number;
 	successful_experiments: number;
 	best_experiment_id: number | null;
@@ -148,6 +149,7 @@ export interface TaskCreate {
 	slo?: SLOConfig;  // Optional SLO configuration
 	quant_config?: QuantizationConfig;  // Optional quantization configuration
 	deployment_mode?: string;
+	gpu_type?: string;  // Optional GPU type filter for worker selection
 }
 
 // Docker Types

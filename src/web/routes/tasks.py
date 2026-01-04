@@ -50,6 +50,7 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 		clusterbasemodel_config=task_data.clusterbasemodel_config,
 		clusterservingruntime_config=task_data.clusterservingruntime_config,
 		deployment_mode=task_data.deployment_mode,
+		gpu_type=task_data.gpu_type,
 		status=TaskStatus.PENDING,
 	)
 
@@ -137,6 +138,7 @@ async def replace_task(task_data: TaskCreate, task: Task = Depends(get_task_or_4
 	task.clusterbasemodel_config = task_data.clusterbasemodel_config
 	task.clusterservingruntime_config = task_data.clusterservingruntime_config
 	task.deployment_mode = task_data.deployment_mode
+	task.gpu_type = task_data.gpu_type
 
 	# Reset status to pending and clear timestamps when task is edited
 	task.status = TaskStatus.PENDING
@@ -201,6 +203,7 @@ async def start_task(task_id: int, db: AsyncSession = Depends(get_db)):
 		"optimization": task.optimization_config,
 		"benchmark": task.benchmark_config,
 		"deployment_mode": task.deployment_mode,
+		"gpu_type": task.gpu_type,
 		"clusterbasemodel_config": task.clusterbasemodel_config,
 		"clusterservingruntime_config": task.clusterservingruntime_config,
 		"slo": task.slo_config,
@@ -283,6 +286,7 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 		"optimization": task.optimization_config,
 		"benchmark": task.benchmark_config,
 		"deployment_mode": task.deployment_mode,
+		"gpu_type": task.gpu_type,
 		"clusterbasemodel_config": task.clusterbasemodel_config,
 		"clusterservingruntime_config": task.clusterservingruntime_config,
 		"slo": task.slo_config,

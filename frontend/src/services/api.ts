@@ -155,6 +155,21 @@ class ApiClient {
 		await this.client.delete(`/tasks/${taskId}/logs`);
 	}
 
+	// Workers
+	async getGpuTypes(deploymentMode?: string): Promise<{
+		gpu_types: Array<{
+			name: string;
+			short_name: string;
+			available: boolean;
+			worker_count: number;
+		}>;
+		candidates: string[];
+	}> {
+		const params = deploymentMode ? { deployment_mode: deploymentMode } : {};
+		const { data } = await this.client.get("/workers/gpu-types", { params });
+		return data;
+	}
+
 	// Docker
 	async getContainers(all: boolean = true): Promise<ContainerInfo[]> {
 		const { data } = await this.client.get("/docker/containers", {

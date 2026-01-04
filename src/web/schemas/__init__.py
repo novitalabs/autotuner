@@ -55,6 +55,7 @@ class TaskCreate(BaseModel):
 	clusterbasemodel_config: Optional[Dict[str, Any]] = Field(None, description="ClusterBaseModel preset or custom config (OME mode)")
 	clusterservingruntime_config: Optional[Dict[str, Any]] = Field(None, description="ClusterServingRuntime preset or custom config (OME mode)")
 	deployment_mode: str = Field("docker", description="Deployment mode")
+	gpu_type: Optional[str] = Field(None, description="GPU type filter for worker selection (e.g., 'RTX 4090', 'A100')")
 
 
 class TaskUpdate(BaseModel):
@@ -87,6 +88,7 @@ class TaskResponse(BaseModel):
 	created_clusterbasemodel: Optional[str] = None
 	created_clusterservingruntime: Optional[str] = None
 	deployment_mode: str
+	gpu_type: Optional[str] = None
 	total_experiments: int
 	successful_experiments: int
 	best_experiment_id: Optional[int]
@@ -127,6 +129,8 @@ class TaskListResponse(BaseModel):
 	description: Optional[str]
 	status: TaskStatusEnum
 	base_runtime: str
+	deployment_mode: Optional[str] = None
+	gpu_type: Optional[str] = None
 	total_experiments: int
 	successful_experiments: int
 	best_experiment_id: Optional[int]

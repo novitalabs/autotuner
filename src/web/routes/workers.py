@@ -246,16 +246,108 @@ async def list_workers(include_offline: bool = False):
 	)
 
 
-@router.get("/{worker_id}", response_model=WorkerResponse)
-async def get_worker(worker_id: str):
-	"""Get a specific worker's information."""
+class GPUTypeInfo(BaseModel):
+	"""GPU type information with availability status."""
+	name: str
+	short_name: str  # Simplified name for filtering (e.g., "RTX 4090")
+	available: bool
+	worker_count: int
+
+
+class GPUTypesResponse(BaseModel):
+	"""Response for GPU types endpoint."""
+	gpu_types: List[GPUTypeInfo]
+	candidates: List[str]  # Pre-defined candidates for UI
+
+
+@router.get("/gpu-types", response_model=GPUTypesResponse)
+async def get_gpu_types(deployment_mode: Optional[str] = None):
+	"""Get available GPU types from registered workers.
+
+	Args:
+		deployment_mode: Filter workers by deployment mode (docker, local, ome)
+
+	Returns a list of GPU types with availability status,
+	plus pre-defined candidates for common GPU types.
+	"""
 	registry = await get_worker_registry()
-	worker = await registry.get_worker(worker_id)
+	workers = await registry.get_all_workers(include_offline=False)
 
-	if not worker:
-		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+	# Filter by deployment mode if specified
+	if deployment_mode:
+		workers = [w for w in workers if w.deployment_mode == deployment_mode]
 
-	return worker_info_to_response(worker)
+	# Collect GPU types from workers
+	gpu_type_counts: dict[str, int] = {}
+	for w in workers:
+		gpu_model = w.gpu_model
+		if gpu_model:
+			gpu_type_counts[gpu_model] = gpu_type_counts.get(gpu_model, 0) + 1
+
+	# Pre-defined candidates (common GPU types)
+	candidates = [
+		"RTX 4090",
+		"RTX 3090",
+		"A100",
+		"A10",
+		"H100",
+		"H200",
+		"H20",
+		"L40",
+		"L40S",
+		"Ada",
+		"B100",
+		"B200",
+		"B300",
+		"GB200",
+	]
+
+	# Build GPU type info list
+	gpu_types = []
+
+	# Add available types from workers
+	for gpu_model, count in sorted(gpu_type_counts.items()):
+		# Extract short name (e.g., "NVIDIA GeForce RTX 4090" -> "RTX 4090")
+		short_name = gpu_model
+		for part in ["NVIDIA GeForce ", "NVIDIA ", "Tesla "]:
+			short_name = short_name.replace(part, "")
+
+		gpu_types.append(GPUTypeInfo(
+			name=gpu_model,
+			short_name=short_name,
+			available=True,
+			worker_count=count,
+		))
+
+	# Add unavailable candidates
+	available_short_names = {gt.short_name for gt in gpu_types}
+	for candidate in candidates:
+		if candidate not in available_short_names:
+			gpu_types.append(GPUTypeInfo(
+				name=candidate,
+				short_name=candidate,
+				available=False,
+				worker_count=0,
+			))
+
+	# Sort: available first, then by name
+	gpu_types.sort(key=lambda x: (not x.available, x.short_name))
+
+	return GPUTypesResponse(
+		gpu_types=gpu_types,
+		candidates=candidates,
+	)
+
+
+@router.get("/available", response_model=List[WorkerResponse])
+async def get_available_workers():
+	"""Get workers available for new jobs.
+
+	Returns workers that have capacity for additional experiments.
+	"""
+	registry = await get_worker_registry()
+	workers = await registry.get_available_workers()
+	return [worker_info_to_response(w) for w in workers]
 
 
 @router.post("/register", response_model=WorkerResponse)
@@ -284,6 +376,21 @@ async def worker_heartbeat(heartbeat: WorkerHeartbeat):
 	return worker_info_to_response(worker)
 
 
+# ============== Dynamic Worker ID Routes (must be AFTER static routes) ==============
+
+
+@router.get("/{worker_id}", response_model=WorkerResponse)
+async def get_worker(worker_id: str):
+	"""Get a specific worker's information."""
+	registry = await get_worker_registry()
+	worker = await registry.get_worker(worker_id)
+
+	if not worker:
+		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	return worker_info_to_response(worker)
+
+
 @router.delete("/{worker_id}")
 async def deregister_worker(worker_id: str):
 	"""Deregister a worker (graceful shutdown).
@@ -297,17 +404,6 @@ async def deregister_worker(worker_id: str):
 		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
 
 	return {"status": "ok", "message": f"Worker {worker_id} deregistered"}
-
-
-@router.get("/available", response_model=List[WorkerResponse])
-async def get_available_workers():
-	"""Get workers available for new jobs.
-
-	Returns workers that have capacity for additional experiments.
-	"""
-	registry = await get_worker_registry()
-	workers = await registry.get_available_workers()
-	return [worker_info_to_response(w) for w in workers]
 
 
 @router.patch("/{worker_id}/alias", response_model=WorkerResponse)
