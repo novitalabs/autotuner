@@ -124,9 +124,6 @@ Access at http://localhost:5173
 ### Operations & Troubleshooting
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
-### Development History
-- [agentlog/](agentlog/) - Daily development diary (yyyy/mmdd.md format) written directly to files
-
 ## Contributing
 
 See [DEVELOPMENT](docs/DEVELOPMENT.md) for development guidelines and project architecture.

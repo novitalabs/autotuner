@@ -156,4 +156,3 @@ Before submitting changes:
 - Update `README.md` for user-facing changes
 - Update `CLAUDE.md` for development guidelines
 - Add detailed docs to `docs/` for complex features
-- Update `agentlog.md` for mini-milestones (per CLAUDE.md)
