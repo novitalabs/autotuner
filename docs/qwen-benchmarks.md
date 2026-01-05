@@ -61,7 +61,7 @@ docker run -d \
   -v /mnt/data/models/Qwen2.5-14B-Instruct:/model:ro \
   vllm/vllm-openai:latest \
   --model /model \
-  --served-model-name /model \
+  --served-model-name qwen2.5-14b-instruct \
   --host 0.0.0.0 \
   --port 8000 \
   --quantization fp8 \
@@ -109,7 +109,7 @@ docker run -d \
   -v /mnt/data/models/Qwen2.5-32B-Instruct:/model:ro \
   vllm/vllm-openai:latest \
   --model /model \
-  --served-model-name /model \
+  --served-model-name qwen2.5-32b-instruct \
   --host 0.0.0.0 \
   --port 8000 \
   --quantization fp8 \
@@ -182,8 +182,8 @@ genai-bench default dataset (sonnet.txt) with default traffic scenarios.
 
 | Model | Metric | Baseline | Optimized | Change |
 |-------|--------|----------|-----------|--------|
-| **14B** | Max Throughput | 1172.50 tok/s | 2397.85 tok/s | +104.5% |
-| **14B** | E2E P50 (c=2) | 4853.96 ms | 3380.91 ms | -30.3% |
+| **14B** | Max Throughput | 1172.50 tok/s | 2397.85 tok/s | **+104.5%** |
+| **14B** | E2E P50 (c=2) | 4853.96 ms | 3380.91 ms | **-30.3%** |
 | **32B** | Max Throughput | 1580.47 tok/s | 1854.70 tok/s | **+17.4%** |
 | **32B** | E2E P50 (c=2) | 3744.57 ms | 1933.36 ms | **-48.4%** |
 
