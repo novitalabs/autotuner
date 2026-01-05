@@ -20,16 +20,9 @@ Automated parameter tuning for LLM inference engines (SGLang, vLLM) for best per
   <img src="docs/assets/latency-comparison.svg" width="700" alt="Latency Comparison" />
 </p>
 
-Testing on NVIDIA RTX 4090 (24GB) with typical production workloads (concurrency=32, mixed prefill/decode):
+Testing on NVIDIA RTX 4090 (24GB) with typical production workloads (mixed prefill/decode).
 
-| Model | Metric | Baseline | Optimized | Improvement |
-|-------|--------|---------------|-------------------|-------------|
-| **Qwen2.5-14B** | Throughput | 1002 tok/s | 1661 tok/s | **+66%** |
-| | P50 Latency | 7001 ms | 4513 ms | **-36%** |
-| **Qwen2.5-32B** | Throughput | 730 tok/s | 1037 tok/s | **+42%** |
-| | P50 Latency | 8388 ms | 5919 ms | **-29%** |
-
-**See detailed benchmarks:** [Baseline Benchmarks](docs/qwen-baseline-benchmarks.md)
+**See detailed benchmarks:** [Baseline Benchmarks](docs/qwen-benchmarks.md)
 
 | What You Get | Manual Tuning | Autotuner |
 |--------------|---------------|-----------|
@@ -39,7 +32,6 @@ Testing on NVIDIA RTX 4090 (24GB) with typical production workloads (concurrency
 | **Reproducibility** | Low (manual errors) | **High** (versioned configs) |
 | **Cross-hardware portability** | Manual rework | **Re-run task** (one command) |
 
-**Stop leaving performance on the table.** Let Autotuner find your optimal configuration while you focus on building features.
 
 ## How to Use
 
