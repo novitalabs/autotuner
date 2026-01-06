@@ -1,0 +1,17 @@
+.git
+.gitignore
+*.pyc
+__pycache__
+*.egg-info
+.pytest_cache
+.mypy_cache
+.venv
+env/
+venv/
+node_modules/
+frontend/
+docs/
+*.md
+!README.md
+.env.local
+agentlog/
