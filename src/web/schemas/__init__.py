@@ -2,10 +2,14 @@
 Pydantic schemas for API request/response models.
 """
 
+import os
 from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
+
+# Default deployment mode from environment
+DEFAULT_DEPLOYMENT_MODE = os.environ.get("DEPLOYMENT_MODE", "docker")
 
 
 class TaskStatusEnum(str, Enum):
@@ -53,7 +57,7 @@ class TaskCreate(BaseModel):
 	parallel_config: Optional[Dict[str, Any]] = Field(None, description="Parallel execution configuration")
 	clusterbasemodel_config: Optional[Dict[str, Any]] = Field(None, description="ClusterBaseModel preset or custom config (OME mode)")
 	clusterservingruntime_config: Optional[Dict[str, Any]] = Field(None, description="ClusterServingRuntime preset or custom config (OME mode)")
-	deployment_mode: str = Field("docker", description="Deployment mode")
+	deployment_mode: str = Field(default_factory=lambda: DEFAULT_DEPLOYMENT_MODE, description="Deployment mode")
 
 
 class TaskUpdate(BaseModel):

@@ -1,3 +1,17 @@
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend source
+COPY frontend/package*.json ./
+RUN npm ci --prefer-offline
+
+COPY frontend/ ./
+RUN npm run build
+
+
+# Stage 2: Main application
 FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04
 
 # Prevent interactive prompts
@@ -41,6 +55,9 @@ RUN pip install --no-cache-dir /app/third_party/genai-bench
 # Copy application code
 COPY src/ /app/src/
 COPY .env.example /app/.env
+
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Copy and setup entrypoint
 COPY docker-entrypoint.sh /app/

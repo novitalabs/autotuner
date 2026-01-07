@@ -2,9 +2,12 @@
 FastAPI application entry point.
 """
 
-from fastapi import FastAPI
+import os
+from pathlib import Path
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import ORJSONResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import datetime
 import orjson
@@ -13,6 +16,27 @@ from web.config import get_settings
 from web.db.session import init_db, get_db
 from web.db.seed_presets import seed_system_presets
 from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent
+
+
+# Detect frontend dist directory early (before app creation)
+def _find_frontend_dist() -> Path | None:
+	"""Find the frontend dist directory."""
+	# Project-relative path (src/web/app.py -> project root)
+	project_root = Path(__file__).parent.parent.parent
+	frontend_dist = project_root / "frontend" / "dist"
+
+	if frontend_dist.exists() and (frontend_dist / "index.html").exists():
+		return frontend_dist
+
+	# Container paths
+	for path in [Path("/app/frontend/dist"), Path("/opt/autotuner/frontend/dist")]:
+		if path.exists() and (path / "index.html").exists():
+			return path
+
+	return None
+
+# Detect frontend before creating routes
+FRONTEND_PATH = _find_frontend_dist()
 
 
 
@@ -83,18 +107,59 @@ app.include_router(ome_resources.router)
 app.include_router(agent.router)
 
 
-@app.get("/")
-async def root():
-	"""Root endpoint."""
-	return {
-		"name": settings.app_name,
-		"version": settings.app_version,
-		"status": "running",
-		"docs": "/docs",
-	}
+# Root endpoint - serve frontend if available, otherwise API info
+if FRONTEND_PATH:
+	print(f"📦 Serving frontend from: {FRONTEND_PATH}")
+
+	# Mount assets directory for JS/CSS files
+	assets_path = FRONTEND_PATH / "assets"
+	if assets_path.exists():
+		app.mount("/assets", StaticFiles(directory=str(assets_path)), name="static-assets")
+
+	@app.get("/", response_class=HTMLResponse)
+	async def serve_frontend_root():
+		"""Serve frontend index.html for root path."""
+		index_file = FRONTEND_PATH / "index.html"
+		if index_file.exists():
+			return FileResponse(index_file, media_type="text/html")
+		return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+else:
+	print("⚠️  Frontend dist not found, serving API only")
+
+	@app.get("/")
+	async def root():
+		"""Root endpoint - API info."""
+		return {
+			"name": settings.app_name,
+			"version": settings.app_version,
+			"status": "running",
+			"docs": "/docs",
+		}
 
 
 @app.get("/health")
 async def health():
 	"""Health check endpoint."""
 	return {"status": "healthy"}
+
+
+# SPA catch-all route for client-side routing (only if frontend exists)
+if FRONTEND_PATH:
+	@app.get("/{path:path}", response_class=HTMLResponse, include_in_schema=False)
+	async def serve_spa(request: Request, path: str):
+		"""Serve frontend for SPA routes (fallback to index.html)."""
+		# Skip API routes and special endpoints
+		if path.startswith("api/") or path in ("docs", "redoc", "openapi.json", "health"):
+			return None
+
+		# Try to serve static file first
+		file_path = FRONTEND_PATH / path
+		if file_path.exists() and file_path.is_file():
+			return FileResponse(file_path)
+
+		# Fallback to index.html for SPA routing
+		index_file = FRONTEND_PATH / "index.html"
+		if index_file.exists():
+			return FileResponse(index_file, media_type="text/html")
+
+		return HTMLResponse("<h1>Not found</h1>", status_code=404)

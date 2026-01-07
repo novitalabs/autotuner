@@ -12,3 +12,7 @@ docs/_build
 
 /env/
 /benchmark_results/
+
+*.db
+*.db-*
+*.rdb

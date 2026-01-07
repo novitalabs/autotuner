@@ -9,9 +9,20 @@ __pycache__
 env/
 venv/
 node_modules/
-frontend/
+frontend/node_modules/
+frontend/dist/
 docs/
 *.md
 !README.md
 .env.local
 agentlog/
+
+# Database files - should be mounted as volumes
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Build artifacts
+*.log
+*.tmp

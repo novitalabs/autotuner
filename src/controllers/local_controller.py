@@ -222,8 +222,10 @@ class LocalController(BaseModelController):
 				return False
 
 			# Check health endpoints
+			# IMPORTANT: Disable proxy for localhost requests to avoid routing through HTTP_PROXY
+			no_proxy = {'http': None, 'https': None}
 			try:
-				health_response = requests.get(health_url, timeout=5)
+				health_response = requests.get(health_url, timeout=5, proxies=no_proxy)
 				if health_response.status_code == 200:
 					print(f"[Local] Service is ready! (via /health) URL: http://localhost:{host_port}")
 					return True
@@ -231,7 +233,7 @@ class LocalController(BaseModelController):
 				pass
 
 			try:
-				models_response = requests.get(models_url, timeout=5)
+				models_response = requests.get(models_url, timeout=5, proxies=no_proxy)
 				if models_response.status_code == 200:
 					print(f"[Local] Service is ready! (via /v1/models) URL: http://localhost:{host_port}")
 					return True

@@ -38,7 +38,7 @@ class LocalGPUInfo:
     def score(self) -> float:
         """
         Selection score for GPU allocation.
-        
+
         Prefers GPUs with:
         - More free memory
         - Lower utilization
@@ -47,8 +47,31 @@ class LocalGPUInfo:
         memory_score = self.memory_free_mb / max(self.memory_total_mb, 1)
         utilization_score = (100 - self.utilization_gpu) / 100
         process_penalty = len(self.processes) * 0.1
-        
+
         return memory_score * 0.6 + utilization_score * 0.3 - process_penalty
+
+    # Compatibility properties for code that uses different names
+    @property
+    def utilization_percent(self) -> int:
+        """Alias for utilization_gpu for backward compatibility."""
+        return self.utilization_gpu
+
+    @property
+    def memory_usage_percent(self) -> float:
+        """Calculate memory usage percentage."""
+        if self.memory_total_mb <= 0:
+            return 0.0
+        return (self.memory_used_mb / self.memory_total_mb) * 100
+
+    @property
+    def temperature_c(self) -> Optional[int]:
+        """Alias for temperature for backward compatibility."""
+        return self.temperature
+
+    @property
+    def power_draw_w(self) -> Optional[float]:
+        """Alias for power_draw for backward compatibility."""
+        return self.power_draw
 
 
 @dataclass

@@ -364,6 +364,9 @@ class AutotunerOrchestrator:
 			# Direct CLI execution with automatic port forwarding (OME) or direct URL (Docker)
 			# Merge slo_config into benchmark_config for SLO-aware filtering
 			benchmark_config_with_slo = task["benchmark"].copy()
+			# Auto-populate model_name from task config if not provided in benchmark config
+			if "model_name" not in benchmark_config_with_slo:
+				benchmark_config_with_slo["model_name"] = model_name
 			if "slo" in task:
 				benchmark_config_with_slo["slo_config"] = task["slo"]
 				slo_value = benchmark_config_with_slo.get("slo_config")
