@@ -145,19 +145,21 @@ async def health():
 
 # SPA catch-all route for client-side routing (only if frontend exists)
 if FRONTEND_PATH:
-	@app.get("/{path:path}", response_class=HTMLResponse, include_in_schema=False)
-	async def serve_spa(request: Request, path: str):
-		"""Serve frontend for SPA routes (fallback to index.html)."""
-		# Skip API routes and special endpoints
-		if path.startswith("api/") or path in ("docs", "redoc", "openapi.json", "health"):
-			return None
+	from starlette.exceptions import HTTPException as StarletteHTTPException
 
-		# Try to serve static file first
-		file_path = FRONTEND_PATH / path
-		if file_path.exists() and file_path.is_file():
-			return FileResponse(file_path)
+	@app.exception_handler(404)
+	async def spa_not_found_handler(request: Request, exc: StarletteHTTPException):
+		"""Handle 404s by serving index.html for SPA routes."""
+		path = request.url.path
 
-		# Fallback to index.html for SPA routing
+		# Skip API routes - return proper JSON 404
+		if path.startswith("/api/"):
+			return CustomORJSONResponse(
+				status_code=404,
+				content={"detail": "Not Found"}
+			)
+
+		# For non-API routes, serve index.html for SPA routing
 		index_file = FRONTEND_PATH / "index.html"
 		if index_file.exists():
 			return FileResponse(index_file, media_type="text/html")

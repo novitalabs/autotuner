@@ -10,7 +10,8 @@ env/
 venv/
 node_modules/
 frontend/node_modules/
-frontend/dist/
+# Allow frontend/dist/ to be copied (pre-built locally)
+!frontend/dist/
 docs/
 *.md
 !README.md
