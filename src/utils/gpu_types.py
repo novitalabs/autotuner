@@ -73,6 +73,14 @@ class LocalGPUInfo:
         """Alias for power_draw for backward compatibility."""
         return self.power_draw
 
+    @property
+    def is_available(self) -> bool:
+        """Check if GPU is available for allocation."""
+        # Consider GPU available if not in exclusive mode or has no processes
+        if self.compute_mode in ["Exclusive_Process", "Exclusive_Thread"]:
+            return len(self.processes) == 0
+        return True
+
 
 @dataclass
 class ClusterGPUInfo:
