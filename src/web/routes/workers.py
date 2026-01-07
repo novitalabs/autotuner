@@ -363,16 +363,29 @@ async def register_worker(registration: WorkerRegister):
 
 
 @router.post("/heartbeat", response_model=WorkerResponse)
-async def worker_heartbeat(heartbeat: WorkerHeartbeat):
+async def worker_heartbeat(
+	heartbeat: WorkerHeartbeat,
+	db: AsyncSession = Depends(get_db)
+):
 	"""Update worker heartbeat.
 
 	Workers should call this every 30 seconds to maintain their registration.
+	Also syncs the worker_id to the corresponding slot in the database.
 	"""
 	registry = await get_worker_registry()
 	worker = await registry.heartbeat(heartbeat)
 
 	if not worker:
 		raise HTTPException(status_code=404, detail=f"Worker not found: {heartbeat.worker_id}")
+
+	# Sync slot's worker_id if hostname matches (worker_id may change on restart)
+	if worker.hostname:
+		try:
+			service = WorkerService(db)
+			await service.sync_slot_worker_id(worker.hostname, heartbeat.worker_id)
+		except Exception as e:
+			import logging
+			logging.debug(f"Failed to sync slot worker_id: {e}")
 
 	return worker_info_to_response(worker)
 
@@ -408,12 +421,17 @@ async def deregister_worker(worker_id: str):
 
 
 @router.patch("/{worker_id}/alias", response_model=WorkerResponse)
-async def rename_worker(worker_id: str, request: WorkerRenameRequest):
+async def rename_worker(
+	worker_id: str,
+	request: WorkerRenameRequest,
+	db: AsyncSession = Depends(get_db)
+):
 	"""Set or clear a worker's alias (nickname).
 
-	This updates both:
+	This updates:
 	1. The registry (Redis) - immediate effect
 	2. The worker's local config file (via pub/sub) - persistent
+	3. The database worker_slots table (via worker_id lookup)
 
 	Args:
 		worker_id: Worker identifier
@@ -424,6 +442,17 @@ async def rename_worker(worker_id: str, request: WorkerRenameRequest):
 
 	if not worker:
 		raise HTTPException(status_code=404, detail=f"Worker not found: {worker_id}")
+
+	# Update database slot name if alias is provided
+	if request.alias:
+		try:
+			service = WorkerService(db)
+			slot = await service.get_slot_by_worker_id(worker_id)
+			if slot:
+				await service.update_slot_name(slot.id, request.alias)
+		except Exception as e:
+			import logging
+			logging.warning(f"Failed to update slot name for worker {worker_id}: {e}")
 
 	# Publish config update to worker so it saves to local config file
 	try:

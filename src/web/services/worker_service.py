@@ -646,6 +646,66 @@ class WorkerService:
         )
         return result.scalar_one_or_none()
 
+    async def get_slot_by_worker_id(self, worker_id: str) -> Optional[WorkerSlot]:
+        """Get worker slot by Redis worker_id."""
+        result = await self.db.execute(
+            select(WorkerSlot).where(WorkerSlot.worker_id == worker_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_slot_name(self, slot_id: int, name: str) -> Optional[WorkerSlot]:
+        """Update worker slot name.
+
+        Args:
+            slot_id: Slot ID to update
+            name: New name for the slot
+
+        Returns:
+            Updated WorkerSlot or None if not found
+        """
+        slot = await self.get_slot_by_id(slot_id)
+        if not slot:
+            return None
+
+        slot.name = name
+        slot.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(slot)
+        return slot
+
+    async def get_slot_by_hostname(self, hostname: str) -> Optional[WorkerSlot]:
+        """Get worker slot by hostname."""
+        result = await self.db.execute(
+            select(WorkerSlot).where(WorkerSlot.hostname == hostname)
+        )
+        return result.scalar_one_or_none()
+
+    async def sync_slot_worker_id(self, hostname: str, worker_id: str) -> Optional[WorkerSlot]:
+        """Sync slot's worker_id when a worker reconnects with new ID.
+
+        This is called during heartbeat to ensure the slot tracks the current
+        worker_id, which may change after worker restart.
+
+        Args:
+            hostname: Worker hostname (stable across restarts)
+            worker_id: Current worker_id from Redis
+
+        Returns:
+            Updated WorkerSlot or None if no matching slot found
+        """
+        slot = await self.get_slot_by_hostname(hostname)
+        if not slot:
+            return None
+
+        if slot.worker_id != worker_id:
+            logger.info(f"Updating slot {slot.id} worker_id: {slot.worker_id} -> {worker_id}")
+            slot.worker_id = worker_id
+            slot.last_seen_at = datetime.utcnow()
+            await self.db.commit()
+            await self.db.refresh(slot)
+
+        return slot
+
     async def get_all_slots(self) -> List[WorkerSlot]:
         """Get all worker slots."""
         result = await self.db.execute(select(WorkerSlot).order_by(WorkerSlot.created_at.desc()))

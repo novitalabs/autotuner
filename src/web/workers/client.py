@@ -80,6 +80,34 @@ async def select_worker_for_task(
 	return workers[0].worker_id
 
 
+async def check_worker_queue_active(worker_id: str) -> bool:
+	"""Check if a worker is actively polling its worker-specific queue.
+
+	Workers with the queue_name fix will have a health-check key for their queue.
+	If no health-check exists, the worker is likely polling the default queue.
+
+	Args:
+		worker_id: Worker ID to check
+
+	Returns:
+		True if worker has an active health-check for its queue
+	"""
+	import redis.asyncio as redis
+
+	client = redis.Redis(
+		host=settings.redis_host,
+		port=settings.redis_port,
+		db=settings.redis_db,
+	)
+	try:
+		# Check for worker-specific queue health-check
+		health_key = f"autotuner:{worker_id}:health-check"
+		exists = await client.exists(health_key)
+		return exists > 0
+	finally:
+		await client.aclose()
+
+
 async def enqueue_autotuning_task(task_id: int, task_config: dict = None) -> str:
 	"""Enqueue an autotuning task.
 
@@ -99,13 +127,21 @@ async def enqueue_autotuning_task(task_id: int, task_config: dict = None) -> str
 	worker_id = await select_worker_for_task(deployment_mode, gpu_type)
 
 	if worker_id:
-		# Enqueue to specific worker's queue
-		job = await pool.enqueue_job(
-			"run_autotuning_task",
-			task_id,
-			task_config,
-			_queue_name=f"autotuner:{worker_id}"
-		)
+		# Check if worker is actively polling its worker-specific queue
+		queue_active = await check_worker_queue_active(worker_id)
+
+		if queue_active:
+			# Worker has queue_name fix - use worker-specific queue
+			job = await pool.enqueue_job(
+				"run_autotuning_task",
+				task_id,
+				task_config,
+				_queue_name=f"autotuner:{worker_id}"
+			)
+		else:
+			# Worker using default queue - route there instead
+			# This handles workers without the queue_name fix
+			job = await pool.enqueue_job("run_autotuning_task", task_id, task_config)
 	else:
 		# Fallback to default queue (any available worker)
 		job = await pool.enqueue_job("run_autotuning_task", task_id, task_config)

@@ -1095,6 +1095,13 @@ class WorkerSettings:
 	# Worker identity (can be overridden via environment variable WORKER_ID)
 	worker_id: Optional[str] = None
 
+	# Queue name - listen to worker-specific queue if WORKER_ID is set
+	# Set at module load time based on environment variable
+	import os as _os
+	_worker_id_env = _os.environ.get("WORKER_ID")
+	queue_name = f"autotuner:{_worker_id_env}" if _worker_id_env else "arq:queue"
+	del _os, _worker_id_env
+
 	@staticmethod
 	def get_worker_id() -> str:
 		"""Get or generate worker ID."""

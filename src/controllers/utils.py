@@ -373,9 +373,10 @@ RUNTIME_CONFIGS = {
     },
     "vllm": {
         "image": "vllm/vllm-openai:latest",
-        "command": "python3 -m vllm.entrypoints.openai.api_server --model {model_path} --host 0.0.0.0 --port {port}",
-        "module": "-m vllm.entrypoints.openai.api_server",
-        "model_param": "--model"
+        # New vLLM image uses 'vllm serve' as entrypoint, so just pass args
+        "command": "{model_path} --host 0.0.0.0 --port {port}",
+        "module": "",  # Not needed for new image
+        "model_param": ""  # Model is positional arg now
     },
 }
 
