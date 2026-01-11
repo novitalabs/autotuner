@@ -290,16 +290,43 @@ def merge_parameters_with_quant_config(
         ...     {"tp-size": [1, 2]},
         ...     {"gemm_dtype": ["auto", "fp8"], "kvcache_dtype": ["fp8_e5m2"]}
         ... )
-        {"tp-size": [1, 2], "gemm-dtype": ["fp8"], "kv-cache-dtype": ["fp8_e5m2"]}
+        {"tp-size": [1, 2], "__quant__gemm_dtype": ["auto", "fp8"], "__quant__kvcache_dtype": ["fp8_e5m2"]}
     """
     # Start with base parameters
-    merged = base_parameters.copy() if base_parameters else {}
+    base_parameters = base_parameters or {}
+
+    quant_param_map = {
+        "gemm-dtype": "gemm_dtype",
+        "gemm_dtype": "gemm_dtype",
+        "kv-cache-dtype": "kvcache_dtype",
+        "kv_cache_dtype": "kvcache_dtype",
+        "kvcache-dtype": "kvcache_dtype",
+        "kvcache_dtype": "kvcache_dtype",
+        "attention-dtype": "attention_dtype",
+        "attention_dtype": "attention_dtype",
+        "moe-dtype": "moe_dtype",
+        "moe_dtype": "moe_dtype",
+    }
+
+    quant_overrides = {}
+    merged = {}
+
+    for key, value in base_parameters.items():
+        if key.startswith("__quant__"):
+            merged[key] = value
+            continue
+        mapped = quant_param_map.get(key)
+        if mapped:
+            quant_overrides[f"__quant__{mapped}"] = value
+        else:
+            merged[key] = value
 
     # Add quant_config parameters
     quant_params = expand_quant_config_to_parameter_spec(quant_config)
 
-    # Merge (quant_params can override base_parameters if same key exists)
+    # Merge (quant overrides take precedence over quant_config)
     merged.update(quant_params)
+    merged.update(quant_overrides)
 
     return merged
 
