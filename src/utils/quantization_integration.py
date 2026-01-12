@@ -291,6 +291,10 @@ def merge_parameters_with_quant_config(
         ...     {"gemm_dtype": ["auto", "fp8"], "kvcache_dtype": ["fp8_e5m2"]}
         ... )
         {"tp-size": [1, 2], "__quant__gemm_dtype": ["auto", "fp8"], "__quant__kvcache_dtype": ["fp8_e5m2"]}
+
+    Precedence:
+        - Aliased quantization keys in base_parameters (e.g., kv-cache-dtype) override
+          both quant_config and any existing __quant__* entries.
     """
     # Start with base parameters
     base_parameters = base_parameters or {}
