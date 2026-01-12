@@ -43,11 +43,9 @@ async def task_updates_websocket(websocket: WebSocket, task_id: int):
 
 	try:
 		# Send initial connection confirmation
-		await websocket.send_json({
-			"type": "connection_established",
-			"task_id": task_id,
-			"message": f"Subscribed to task {task_id} updates"
-		})
+		await websocket.send_json(
+			{"type": "connection_established", "task_id": task_id, "message": f"Subscribed to task {task_id} updates"}
+		)
 
 		# Event loop: receive events from broadcaster and send to client
 		while True:
@@ -101,11 +99,13 @@ async def experiment_updates_websocket(websocket: WebSocket, experiment_id: int)
 
 	try:
 		# Send initial connection confirmation
-		await websocket.send_json({
-			"type": "connection_established",
-			"experiment_id": experiment_id,
-			"message": f"Subscribed to experiment {experiment_id} updates"
-		})
+		await websocket.send_json(
+			{
+				"type": "connection_established",
+				"experiment_id": experiment_id,
+				"message": f"Subscribed to experiment {experiment_id} updates",
+			}
+		)
 
 		# Event loop
 		while True:
@@ -143,8 +143,4 @@ async def get_task_subscribers(task_id: int):
 	broadcaster = get_broadcaster()
 	count = await broadcaster.get_subscriber_count(task_id)
 
-	return {
-		"task_id": task_id,
-		"subscriber_count": count,
-		"status": "active" if count > 0 else "inactive"
-	}
+	return {"task_id": task_id, "subscriber_count": count, "status": "active" if count > 0 else "inactive"}

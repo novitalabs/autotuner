@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 		env_file=str(Path(__file__).parent.parent.parent / ".env"),
 		env_file_encoding='utf-8',
 		case_sensitive=False,
-		extra='ignore'  # Ignore frontend-only variables like VITE_*
+		extra='ignore',  # Ignore frontend-only variables like VITE_*
 	)
 
 	# Application
@@ -61,12 +61,17 @@ class Settings(BaseSettings):
 	hf_token: str = Field(default="", description="HuggingFace access token for downloading gated models")
 
 	# Timezone settings
-	timezone: str = Field(default="UTC", description="Timezone for displaying timestamps (e.g., 'UTC', 'Asia/Shanghai', 'America/New_York')")
+	timezone: str = Field(
+		default="UTC",
+		description="Timezone for displaying timestamps (e.g., 'UTC', 'Asia/Shanghai', 'America/New_York')",
+	)
 
 	# Agent configuration
 	agent_provider: str = Field(default="local", description="LLM provider: local, claude, openai, jiekou")
 	agent_model: str = Field(default="llama-3-70b-instruct", description="Model name for agent")
-	agent_base_url: str = Field(default="http://localhost:8000/v1", description="Base URL for local models (vLLM/SGLang) or Jiekou")
+	agent_base_url: str = Field(
+		default="http://localhost:8000/v1", description="Base URL for local models (vLLM/SGLang) or Jiekou"
+	)
 	agent_api_key: str = Field(default="", description="API key for Claude/OpenAI/Jiekou")
 	agent_max_context_messages: int = Field(default=20, description="Recent messages to keep in memory")
 	agent_context_summary_threshold: int = Field(default=30, description="Summarize context after N messages")

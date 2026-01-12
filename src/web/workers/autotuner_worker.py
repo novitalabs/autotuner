@@ -161,7 +161,7 @@ def calculate_failure_penalty(
 	timeout_seconds: int,
 	experiment_status: ExperimentStatus,
 	error_message: str,
-	objective_name: str
+	objective_name: str,
 ) -> float:
 	"""Calculate penalty score for failed experiment based on failure timing.
 
@@ -223,7 +223,6 @@ def calculate_failure_penalty(
 	return base_penalty
 
 
-
 async def run_experiment_with_timeout(
 	orchestrator: AutotunerOrchestrator,
 	task_config: Dict[str, Any],
@@ -231,7 +230,7 @@ async def run_experiment_with_timeout(
 	params: Dict[str, Any],
 	timeout_seconds: int,
 	logger: logging.Logger,
-	on_benchmark_start=None
+	on_benchmark_start=None,
 ) -> Dict[str, Any]:
 	"""
 	Run a single experiment with timeout enforcement.
@@ -263,9 +262,9 @@ async def run_experiment_with_timeout(
 				task_config,
 				iteration,
 				params,
-				on_benchmark_start  # Pass the callback
+				on_benchmark_start,  # Pass the callback
 			),
-			timeout=timeout_seconds
+			timeout=timeout_seconds,
 		)
 		return result
 
@@ -311,11 +310,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 			# Broadcast task started event
 			broadcaster.broadcast_sync(
 				task_id,
-				create_event(
-					EventType.TASK_STARTED,
-					task_id=task_id,
-					message=f"Task '{task.task_name}' started"
-				)
+				create_event(EventType.TASK_STARTED, task_id=task_id, message=f"Task '{task.task_name}' started"),
 			)
 
 			# Create task configuration dict (similar to JSON task file)
@@ -345,8 +340,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 
 				# Check if GPUs are available
 				is_available, availability_message = check_gpu_availability(
-					required_gpus=required_gpus,
-					min_memory_mb=estimated_memory_mb
+					required_gpus=required_gpus, min_memory_mb=estimated_memory_mb
 				)
 
 				if not is_available:
@@ -358,7 +352,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						required_gpus=required_gpus,
 						min_memory_mb=estimated_memory_mb,
 						timeout_seconds=300,  # 5 minutes
-						check_interval=30  # Check every 30 seconds
+						check_interval=30,  # Check every 30 seconds
 					)
 
 					if not is_available:
@@ -375,19 +369,10 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 
 						# Broadcast failure event
 						broadcaster.broadcast_sync(
-							task_id,
-							create_event(
-								EventType.TASK_FAILED,
-								task_id=task_id,
-								message=error_msg
-							)
+							task_id, create_event(EventType.TASK_FAILED, task_id=task_id, message=error_msg)
 						)
 
-						return {
-							"status": "failed",
-							"error": error_msg,
-							"elapsed_time": elapsed_time
-						}
+						return {"status": "failed", "error": error_msg, "elapsed_time": elapsed_time}
 					else:
 						logger.info(f"[ARQ Worker] ✓ GPUs became available: {availability_message}")
 				else:
@@ -419,10 +404,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					logger.error(f"[ARQ Worker] Failed to restore strategy from checkpoint: {e}")
 					logger.info(f"[ARQ Worker] Creating fresh strategy instead")
 					# Merge quant_config with parameters for fresh strategy
-					merged_parameters = merge_parameters_with_quant_config(
-						task.parameters or {},
-						task.quant_config
-					)
+					merged_parameters = merge_parameters_with_quant_config(task.parameters or {}, task.quant_config)
 					strategy = create_optimization_strategy(optimization_config, merged_parameters)
 
 				# Restore progress from checkpoint
@@ -430,25 +412,24 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 				best_experiment_id = checkpoint.get("best_experiment_id")
 				iteration = checkpoint["iteration"]
 
-				logger.info(f"[ARQ Worker] Restored state: iteration={iteration}, best_score={best_score}, best_experiment_id={best_experiment_id}")
+				logger.info(
+					f"[ARQ Worker] Restored state: iteration={iteration}, best_score={best_score}, best_experiment_id={best_experiment_id}"
+				)
 			else:
 				logger.info(f"[ARQ Worker] No checkpoint found, starting fresh")
 
 				# Merge quant_config and parallel_config with parameters to create full parameter spec
 				# First merge quant_config
-				merged_parameters = merge_parameters_with_quant_config(
-					task.parameters or {},
-					task.quant_config
-				)
+				merged_parameters = merge_parameters_with_quant_config(task.parameters or {}, task.quant_config)
 				logger.info(f"[ARQ Worker] Merged parameters (base + quant_config): {merged_parameters}")
 
 				# Then merge parallel_config
 				from utils.parallel_integration import merge_parameters_with_parallel_config
-				merged_parameters = merge_parameters_with_parallel_config(
-					merged_parameters,
-					task.parallel_config
+
+				merged_parameters = merge_parameters_with_parallel_config(merged_parameters, task.parallel_config)
+				logger.info(
+					f"[ARQ Worker] Merged parameters (base + quant_config + parallel_config): {merged_parameters}"
 				)
-				logger.info(f"[ARQ Worker] Merged parameters (base + quant_config + parallel_config): {merged_parameters}")
 
 				# Create fresh strategy with merged parameters
 				try:
@@ -466,10 +447,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 			if strategy_name == "grid_search":
 				# Grid search knows total upfront
 				# Use merged parameters to calculate total
-				merged_parameters = merge_parameters_with_quant_config(
-					task.parameters or {},
-					task.quant_config
-				)
+				merged_parameters = merge_parameters_with_quant_config(task.parameters or {}, task.quant_config)
 				param_grid = generate_parameter_grid(merged_parameters)
 				total_experiments = min(len(param_grid), max_iterations)
 			else:
@@ -534,12 +512,9 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						EventType.EXPERIMENT_STARTED,
 						task_id=task_id,
 						experiment_id=iteration,
-						data={
-							"parameters": params,
-							"status": "deploying"
-						},
-						message=f"Experiment {iteration} started"
-					)
+						data={"parameters": params, "status": "deploying"},
+						message=f"Experiment {iteration} started",
+					),
 				)
 
 				# Shared flag to signal when benchmark starts
@@ -566,8 +541,8 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 							task_id=task_id,
 							experiment_id=iteration,
 							data={"status": "benchmarking"},
-							message=f"Experiment {iteration} benchmarking in progress"
-						)
+							message=f"Experiment {iteration} benchmarking in progress",
+						),
 					)
 
 				monitor_task = asyncio.create_task(monitor_benchmark_status())
@@ -581,7 +556,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						params=params,
 						timeout_seconds=timeout_per_iteration,
 						logger=logger,
-						on_benchmark_start=on_benchmark_start
+						on_benchmark_start=on_benchmark_start,
 					)
 
 					logger.info(f"[Experiment {iteration}] Status: {result['status'].upper()}")
@@ -610,7 +585,9 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					db_experiment.metrics = result.get("metrics")
 					db_experiment.objective_score = result.get("objective_score")
 					db_experiment.gpu_info = result.get("gpu_info")  # Save GPU information
-					db_experiment.error_message = result.get("error_message")  # Save error message for failed experiments
+					db_experiment.error_message = result.get(
+						"error_message"
+					)  # Save error message for failed experiments
 					db_experiment.completed_at = datetime.utcnow()
 
 					# Save created resources to task (only on first experiment)
@@ -638,9 +615,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 
 						# Tell strategy about the result
 						strategy.tell_result(
-							parameters=params,
-							objective_score=objective_score,
-							metrics=result.get("metrics", {})
+							parameters=params, objective_score=objective_score, metrics=result.get("metrics", {})
 						)
 
 						# Check if this is the best experiment
@@ -659,21 +634,18 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 							timeout_seconds=timeout_per_iteration,
 							experiment_status=db_experiment.status,
 							error_message=result.get("error_message", ""),
-							objective_name=objective_name
+							objective_name=objective_name,
 						)
 						# Save penalty score to database for frontend display
 						db_experiment.objective_score = penalty_score
 
-
 						logger.info(f"[Experiment {iteration}] Failed with penalty score: {penalty_score:.1f}")
-						logger.info(f"[Experiment {iteration}] Elapsed: {(db_experiment.completed_at - db_experiment.started_at).total_seconds():.1f}s / {timeout_per_iteration}s")
+						logger.info(
+							f"[Experiment {iteration}] Elapsed: {(db_experiment.completed_at - db_experiment.started_at).total_seconds():.1f}s / {timeout_per_iteration}s"
+						)
 
 						# Tell strategy about failed experiment with graded penalty
-						strategy.tell_result(
-							parameters=params,
-							objective_score=penalty_score,
-							metrics={}
-						)
+						strategy.tell_result(parameters=params, objective_score=penalty_score, metrics={})
 
 					await db.commit()
 
@@ -681,17 +653,19 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					broadcaster.broadcast_sync(
 						task_id,
 						create_event(
-							EventType.EXPERIMENT_COMPLETED if result["status"] == "success" else EventType.EXPERIMENT_FAILED,
+							EventType.EXPERIMENT_COMPLETED
+							if result["status"] == "success"
+							else EventType.EXPERIMENT_FAILED,
 							task_id=task_id,
 							experiment_id=iteration,
 							data={
 								"status": result["status"],
 								"metrics": result.get("metrics"),
 								"objective_score": result.get("objective_score"),
-								"elapsed_time": elapsed if db_experiment.started_at else None
+								"elapsed_time": elapsed if db_experiment.started_at else None,
 							},
-							message=f"Experiment {iteration} {result['status']}"
-						)
+							message=f"Experiment {iteration} {result['status']}",
+						),
 					)
 
 					# Save checkpoint after each experiment
@@ -718,11 +692,13 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 									"current_experiment": iteration,
 									"total_experiments": total_experiments,
 									"successful_experiments": task.successful_experiments,
-									"progress_percent": (iteration / total_experiments * 100) if total_experiments > 0 else 0,
-									"best_score": best_score if best_score != float("inf") else None
+									"progress_percent": (iteration / total_experiments * 100)
+									if total_experiments > 0
+									else 0,
+									"best_score": best_score if best_score != float("inf") else None,
 								},
-								message=f"Progress: {iteration}/{total_experiments} experiments completed"
-							)
+								message=f"Progress: {iteration}/{total_experiments} experiments completed",
+							),
 						)
 					except Exception as checkpoint_error:
 						logger.warning(f"[ARQ Worker] Failed to save checkpoint: {checkpoint_error}")
@@ -746,7 +722,9 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 					logger.info(f"[Cleanup] Forcing cleanup of service '{service_id}' after timeout")
 					try:
 						loop = asyncio.get_event_loop()
-						await loop.run_in_executor(None, orchestrator.cleanup_experiment, service_id, None, namespace, iteration)
+						await loop.run_in_executor(
+							None, orchestrator.cleanup_experiment, service_id, None, namespace, iteration
+						)
 						logger.info(f"[Cleanup] Successfully cleaned up service '{service_id}'")
 					except Exception as cleanup_error:
 						logger.error(f"[Cleanup] Failed to cleanup service: {cleanup_error}")
@@ -764,20 +742,15 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						timeout_seconds=timeout_per_iteration,
 						experiment_status=db_experiment.status,
 						error_message=db_experiment.error_message,
-						objective_name=objective_name
+						objective_name=objective_name,
 					)
 					# Save penalty score to database for frontend display
 					db_experiment.objective_score = penalty_score
 
-
 					logger.info(f"[Experiment {iteration}] Timeout penalty score: {penalty_score:.1f}")
 
 					# Tell strategy about timeout with graded penalty
-					strategy.tell_result(
-						parameters=params,
-						objective_score=penalty_score,
-						metrics={}
-					)
+					strategy.tell_result(parameters=params, objective_score=penalty_score, metrics={})
 
 					# Save checkpoint after timeout
 					try:
@@ -818,20 +791,15 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						timeout_seconds=timeout_per_iteration,
 						experiment_status=db_experiment.status,
 						error_message=db_experiment.error_message,
-						objective_name=objective_name
+						objective_name=objective_name,
 					)
 					# Save penalty score to database for frontend display
 					db_experiment.objective_score = penalty_score
 
-
 					logger.info(f"[Experiment {iteration}] Exception penalty score: {penalty_score:.1f}")
 
 					# Tell strategy about exception with graded penalty
-					strategy.tell_result(
-						parameters=params,
-						objective_score=penalty_score,
-						metrics={}
-					)
+					strategy.tell_result(parameters=params, objective_score=penalty_score, metrics={})
 
 					# Save checkpoint after failed experiment
 					try:
@@ -890,10 +858,10 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int) -> Dict[str, An
 						"successful_experiments": task.successful_experiments,
 						"best_experiment_id": best_experiment_id,
 						"best_score": best_score if best_score != float("inf") else None,
-						"elapsed_time": elapsed if task.started_at else None
+						"elapsed_time": elapsed if task.started_at else None,
 					},
-					message=f"Task completed: {task.successful_experiments}/{iteration} experiments successful"
-				)
+					message=f"Task completed: {task.successful_experiments}/{iteration} experiments successful",
+				),
 			)
 
 			logger.info(

@@ -235,19 +235,17 @@ async def get_agent_status():
 		"provider": settings.agent_provider,
 		"model": settings.agent_model if is_configured else None,
 		"missing_config": missing_config if not is_configured else [],
-		"message": "Agent is available" if is_configured else "Agent not configured. Please set environment variables: " + ", ".join(missing_config)
+		"message": "Agent is available"
+		if is_configured
+		else "Agent not configured. Please set environment variables: " + ", ".join(missing_config),
 	}
 
 
 @router.post("/sessions", response_model=ChatSessionResponse)
-async def create_session(
-	session_data: ChatSessionCreate, db: AsyncSession = Depends(get_db)
-):
+async def create_session(session_data: ChatSessionCreate, db: AsyncSession = Depends(get_db)):
 	"""Create a new chat session."""
 	session_id = str(uuid.uuid4())
-	chat_session = ChatSession(
-		session_id=session_id, user_id=session_data.user_id, is_active=True
-	)
+	chat_session = ChatSession(session_id=session_id, user_id=session_data.user_id, is_active=True)
 	db.add(chat_session)
 	await db.commit()
 	await db.refresh(chat_session)
@@ -257,9 +255,7 @@ async def create_session(
 @router.get("/sessions/{session_id}", response_model=ChatSessionResponse)
 async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 	"""Get chat session details."""
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -267,14 +263,10 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/sessions/{session_id}/messages", response_model=List[ChatMessageResponse])
-async def get_messages(
-	session_id: str, limit: int = 50, db: AsyncSession = Depends(get_db)
-):
+async def get_messages(session_id: str, limit: int = 50, db: AsyncSession = Depends(get_db)):
 	"""Get message history for a session."""
 	# Verify session exists
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -291,10 +283,7 @@ async def get_messages(
 
 
 @router.post("/sessions/sync")
-async def sync_session(
-	session_data: SessionSyncRequest,
-	db: AsyncSession = Depends(get_db)
-):
+async def sync_session(session_data: SessionSyncRequest, db: AsyncSession = Depends(get_db)):
 	"""
 	Sync full session from frontend IndexedDB to backend.
 	Only called once per session (when synced_to_backend=false).
@@ -302,9 +291,7 @@ async def sync_session(
 	session_id = session_data.session_id
 
 	# Check if session already exists
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	existing = result.scalar_one_or_none()
 
 	if existing:
@@ -313,11 +300,7 @@ async def sync_session(
 		return {"status": "already_exists", "session_id": session_id}
 
 	# Create session
-	chat_session = ChatSession(
-		session_id=session_id,
-		created_at=session_data.created_at,
-		is_active=True
-	)
+	chat_session = ChatSession(session_id=session_id, created_at=session_data.created_at, is_active=True)
 	db.add(chat_session)
 
 	# Bulk insert messages
@@ -326,7 +309,7 @@ async def sync_session(
 			session_id=session_id,
 			role=MessageRole(msg_data.role),
 			content=msg_data.content,
-			created_at=msg_data.created_at
+			created_at=msg_data.created_at,
 		)
 		db.add(message)
 
@@ -361,9 +344,7 @@ async def send_message(
 		logger.debug(f"Cache miss for session {session_id}, loading from database")
 
 		# Verify session exists
-		result = await db.execute(
-			select(ChatSession).where(ChatSession.session_id == session_id)
-		)
+		result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 		session = result.scalar_one_or_none()
 		if not session:
 			raise HTTPException(status_code=404, detail="Session not found")
@@ -382,32 +363,26 @@ async def send_message(
 		for msg in messages_from_db:
 			if msg.role == MessageRole.ASSISTANT and msg.tool_calls:
 				# Assistant message with tool calls
-				recent_messages.append({
-					"role": "assistant",
-					"content": msg.content
-				})
+				recent_messages.append({"role": "assistant", "content": msg.content})
 				# Add tool results as separate ToolMessage entries
 				for tool_call in msg.tool_calls:
 					if tool_call.get("result"):
-						recent_messages.append({
-							"role": "tool",
-							"content": tool_call["result"],
-							"tool_call_id": tool_call.get("id", tool_call.get("tool_name"))
-						})
+						recent_messages.append(
+							{
+								"role": "tool",
+								"content": tool_call["result"],
+								"tool_call_id": tool_call.get("id", tool_call.get("tool_name")),
+							}
+						)
 			else:
 				# Regular message (user or simple assistant)
-				recent_messages.append({
-					"role": msg.role.value,
-					"content": msg.content
-				})
+				recent_messages.append({"role": msg.role.value, "content": msg.content})
 
 		# Populate cache for next time
 		cache.set(session_id, recent_messages)
 
 	# 2. Save user message to database
-	user_message = ChatMessage(
-		session_id=session_id, role=MessageRole.USER, content=message_data.content
-	)
+	user_message = ChatMessage(session_id=session_id, role=MessageRole.USER, content=message_data.content)
 	db.add(user_message)
 	await db.commit()
 	await db.refresh(user_message)
@@ -417,23 +392,19 @@ async def send_message(
 		llm_messages = []
 
 		# Add system message with tool usage instructions
-		llm_messages.append({
-			"role": "system",
-			"content": AGENT_SYSTEM_PROMPT
-		})
+		llm_messages.append({"role": "system", "content": AGENT_SYSTEM_PROMPT})
 
 		# Add conversation history from cache
 		llm_messages.extend(recent_messages)
 
 		# Add current user message
-		llm_messages.append({
-			"role": "user",
-			"content": message_data.content
-		})
+		llm_messages.append({"role": "user", "content": message_data.content})
 
 		# 4. Get tools for this session
 		executor = ToolExecutor(session_id, db)
-		available_tools = executor.get_available_tools(include_privileged=True)  # Include all tools, auth checked at execution time
+		available_tools = executor.get_available_tools(
+			include_privileged=True
+		)  # Include all tools, auth checked at execution time
 
 		# 5. Multi-turn tool calling loop
 		llm_client = get_llm_client()
@@ -468,10 +439,7 @@ async def send_message(
 			auth_required = []
 			for result in tool_results:
 				if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
-					auth_required.append({
-						"tool_name": result["tool_name"],
-						"auth_scope": result["auth_scope"]
-					})
+					auth_required.append({"tool_name": result["tool_name"], "auth_scope": result["auth_scope"]})
 
 			# If any tools require authorization, stop loop and return auth request
 			if auth_required:
@@ -479,9 +447,7 @@ async def send_message(
 				termination_reason = "auth_required"
 
 				# Save pending tool calls to session metadata for later retry
-				session_result = await db.execute(
-					select(ChatSession).where(ChatSession.session_id == session_id)
-				)
+				session_result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 				chat_session = session_result.scalar_one_or_none()
 				if chat_session:
 					if not chat_session.session_metadata:
@@ -494,19 +460,26 @@ async def send_message(
 				assistant_message = ChatMessage(
 					session_id=session_id,
 					role=MessageRole.ASSISTANT,
-					content=assistant_content if assistant_content else "I need authorization to perform some operations.",
-					tool_calls=[{
-						"tool_name": tc["name"],
-						"args": {k: v for k, v in tc["args"].items() if k != "db"},
-						"id": tc["id"],
-						"status": "requires_auth",
-						"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
-					} for tc in tool_calls],
+					content=assistant_content
+					if assistant_content
+					else "I need authorization to perform some operations.",
+					tool_calls=[
+						{
+							"tool_name": tc["name"],
+							"args": {k: v for k, v in tc["args"].items() if k != "db"},
+							"id": tc["id"],
+							"status": "requires_auth",
+							"auth_scope": next(
+								(r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None
+							),
+						}
+						for tc in tool_calls
+					],
 					message_metadata={
 						"auth_required": auth_required,
 						"iterations": iteration,
-						"termination_reason": termination_reason
-					}
+						"termination_reason": termination_reason,
+					},
 				)
 				db.add(assistant_message)
 				await db.commit()
@@ -520,13 +493,17 @@ async def send_message(
 			# especially when tools fail. So we stop here instead of continuing.
 			failed_tools = [r for r in tool_results if not r["success"]]
 			if failed_tools:
-				logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, terminating loop (Jiekou API limitation)")
+				logger.warning(
+					f"{len(failed_tools)} tools failed in iteration {iteration}, terminating loop (Jiekou API limitation)"
+				)
 				termination_reason = "tool_execution_error"
 
 				# Build error summary for user
 				error_summary = "\n\nSome tool calls failed:\n"
 				for failed in failed_tools:
-					error_summary += f"- {failed.get('tool_name', 'unknown')}: {failed.get('result', 'Unknown error')}\n"
+					error_summary += (
+						f"- {failed.get('tool_name', 'unknown')}: {failed.get('result', 'Unknown error')}\n"
+					)
 				assistant_content = (assistant_content or "") + error_summary
 
 				# Break out of loop - don't add ToolMessage to avoid Jiekou API 400 error
@@ -535,19 +512,12 @@ async def send_message(
 				break
 
 			# 5f. Add assistant message with tool calls to context
-			llm_messages.append({
-				"role": "assistant",
-				"content": assistant_content if assistant_content else ""
-			})
+			llm_messages.append({"role": "assistant", "content": assistant_content if assistant_content else ""})
 
 			# 5g. Add tool results to context as ToolMessage
 			for result in tool_results:
 				call_id = result.get("call_id") or result.get("tool_name", "unknown")
-				llm_messages.append({
-					"role": "tool",
-					"content": result["result"],
-					"tool_call_id": call_id
-				})
+				llm_messages.append({"role": "tool", "content": result["result"], "tool_call_id": call_id})
 
 			# 5h. Track all tool calls and results for database storage
 			all_tool_calls.extend(tool_calls)
@@ -557,7 +527,9 @@ async def send_message(
 		if iteration >= max_iterations:
 			logger.warning(f"Reached max iterations ({max_iterations}) for session {session_id}")
 			termination_reason = "max_iterations"
-			assistant_content += "\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
+			assistant_content += (
+				"\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
+			)
 
 		# 6. Save final assistant message with complete tool execution history
 		if all_tool_calls:
@@ -580,7 +552,7 @@ async def send_message(
 					"id": tc["id"],
 					"status": "executed" if success else "failed",
 					"result": result if success else None,
-					"error": result if not success else None
+					"error": result if not success else None,
 				}
 
 			assistant_message = ChatMessage(
@@ -588,20 +560,17 @@ async def send_message(
 				role=MessageRole.ASSISTANT,
 				content=assistant_content,
 				tool_calls=[build_tool_call_entry(tc) for tc in all_tool_calls],
-				message_metadata={
-					"iterations": iteration,
-					"termination_reason": termination_reason
-				}
+				message_metadata={"iterations": iteration, "termination_reason": termination_reason},
 			)
 		else:
 			# No tool calls at all - simple response
 			assistant_message = ChatMessage(
-				session_id=session_id,
-				role=MessageRole.ASSISTANT,
-				content=assistant_content
+				session_id=session_id, role=MessageRole.ASSISTANT, content=assistant_content
 			)
 
-		logger.info(f"Multi-turn conversation completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}")
+		logger.info(
+			f"Multi-turn conversation completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}"
+		)
 
 		db.add(assistant_message)
 		await db.commit()
@@ -618,11 +587,7 @@ async def send_message(
 				for tc in all_tool_calls:
 					result = next((r.get("result") for r in all_tool_results if r.get("call_id") == tc["id"]), None)
 					if result:
-						cached_entry.messages.append({
-							"role": "tool",
-							"content": result,
-							"tool_call_id": tc["id"]
-						})
+						cached_entry.messages.append({"role": "tool", "content": result, "tool_call_id": tc["id"]})
 
 			# Keep only last 20 messages
 			cached_entry.messages = cached_entry.messages[-20:]
@@ -635,11 +600,7 @@ async def send_message(
 		# Save error message
 		error_message = str(e)
 		error_content = f"❌ **Error:** {error_message}"
-		assistant_message = ChatMessage(
-			session_id=session_id,
-			role=MessageRole.ASSISTANT,
-			content=error_content
-		)
+		assistant_message = ChatMessage(session_id=session_id, role=MessageRole.ASSISTANT, content=error_content)
 		db.add(assistant_message)
 		await db.commit()
 		await db.refresh(assistant_message)
@@ -670,9 +631,7 @@ async def send_message_stream(
 				logger.debug(f"Cache hit for session {session_id}")
 			else:
 				logger.debug(f"Cache miss for session {session_id}, loading from database")
-				result = await db.execute(
-					select(ChatSession).where(ChatSession.session_id == session_id)
-				)
+				result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 				session = result.scalar_one_or_none()
 				if not session:
 					yield f"data: {json.dumps({'type': 'error', 'error': 'Session not found'})}\n\n"
@@ -691,46 +650,39 @@ async def send_message_stream(
 				for msg in messages_from_db:
 					if msg.role == MessageRole.ASSISTANT and msg.tool_calls:
 						# Assistant message with tool calls
-						recent_messages.append({
-							"role": "assistant",
-							"content": msg.content
-						})
+						recent_messages.append({"role": "assistant", "content": msg.content})
 						# Add tool results as separate ToolMessage entries
 						for tool_call in msg.tool_calls:
 							if tool_call.get("result"):
-								recent_messages.append({
-									"role": "tool",
-									"content": tool_call["result"],
-									"tool_call_id": tool_call.get("id", tool_call.get("tool_name"))
-								})
+								recent_messages.append(
+									{
+										"role": "tool",
+										"content": tool_call["result"],
+										"tool_call_id": tool_call.get("id", tool_call.get("tool_name")),
+									}
+								)
 					else:
 						# Regular message (user or simple assistant)
-						recent_messages.append({
-							"role": msg.role.value,
-							"content": msg.content
-						})
+						recent_messages.append({"role": msg.role.value, "content": msg.content})
 
 				cache.set(session_id, recent_messages)
 
 			# 2. Save user message
-			user_message = ChatMessage(
-				session_id=session_id, role=MessageRole.USER, content=message_data.content
-			)
+			user_message = ChatMessage(session_id=session_id, role=MessageRole.USER, content=message_data.content)
 			db.add(user_message)
 			await db.commit()
 			await db.refresh(user_message)
 
 			# 3. Build LLM context
-			llm_messages = [{
-				"role": "system",
-				"content": AGENT_SYSTEM_PROMPT
-			}]
+			llm_messages = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
 			llm_messages.extend(recent_messages)
 			llm_messages.append({"role": "user", "content": message_data.content})
 
 			# 4. Get tools
 			executor = ToolExecutor(session_id, db)
-			available_tools = executor.get_available_tools(include_privileged=True)  # Include all tools, auth checked at execution time
+			available_tools = executor.get_available_tools(
+				include_privileged=True
+			)  # Include all tools, auth checked at execution time
 
 			# 5. Multi-turn tool calling loop with streaming
 			llm_client = get_llm_client()
@@ -770,7 +722,9 @@ async def send_message_stream(
 						original_count = len(tool_calls)
 						tool_calls = [tc for tc in tool_calls if tc.get("name", "").strip()]
 						if original_count != len(tool_calls):
-							logger.warning(f"Filtered out {original_count - len(tool_calls)} tool calls with empty names")
+							logger.warning(
+								f"Filtered out {original_count - len(tool_calls)} tool calls with empty names"
+							)
 
 				# Accumulate content across iterations
 				if iteration_content:
@@ -781,11 +735,7 @@ async def send_message_stream(
 					logger.info(f"LLM returned no tool calls - natural termination at iteration {iteration}")
 
 					# Store final iteration data without tool calls
-					iteration_data.append({
-						"iteration": iteration,
-						"content": iteration_content,
-						"tool_calls": []
-					})
+					iteration_data.append({"iteration": iteration, "content": iteration_content, "tool_calls": []})
 
 					# Send iteration complete event
 					yield f"data: {json.dumps({'type': 'iteration_complete', 'iteration': iteration, 'tool_calls_count': 0})}\n\n"
@@ -806,24 +756,26 @@ async def send_message_stream(
 				yield f"data: {json.dumps({'type': 'tool_results', 'results': tool_results})}\n\n"
 
 				# Store iteration data (before any early exits)
-				iteration_data.append({
-					"iteration": iteration,
-					"content": iteration_content,
-					"tool_calls": [{
-						"tool_name": tc["name"],
-						"args": {k: v for k, v in tc["args"].items() if k != "db"},
-						"id": tc["id"]
-					} for tc in tool_calls]
-				})
+				iteration_data.append(
+					{
+						"iteration": iteration,
+						"content": iteration_content,
+						"tool_calls": [
+							{
+								"tool_name": tc["name"],
+								"args": {k: v for k, v in tc["args"].items() if k != "db"},
+								"id": tc["id"],
+							}
+							for tc in tool_calls
+						],
+					}
+				)
 
 				# 5d. Check for authorization errors
 				auth_required = []
 				for result in tool_results:
 					if not result["success"] and result.get("requires_auth") and not result.get("authorized"):
-						auth_required.append({
-							"tool_name": result["tool_name"],
-							"auth_scope": result["auth_scope"]
-						})
+						auth_required.append({"tool_name": result["tool_name"], "auth_scope": result["auth_scope"]})
 
 				# If any tools require authorization, stop loop and return auth request
 				if auth_required:
@@ -831,9 +783,7 @@ async def send_message_stream(
 					termination_reason = "auth_required"
 
 					# Save pending tool calls to session metadata for later retry
-					session_result = await db.execute(
-						select(ChatSession).where(ChatSession.session_id == session_id)
-					)
+					session_result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 					chat_session = session_result.scalar_one_or_none()
 					if chat_session:
 						if not chat_session.session_metadata:
@@ -845,25 +795,34 @@ async def send_message_stream(
 
 					# Debug: Log tool_results and tool_calls for auth_scope matching
 					logger.info(f"Auth required - tool_calls: {[tc['name'] for tc in tool_calls]}")
-					logger.info(f"Auth required - tool_results: {[(r.get('tool_name'), r.get('auth_scope')) for r in tool_results]}")
+					logger.info(
+						f"Auth required - tool_results: {[(r.get('tool_name'), r.get('auth_scope')) for r in tool_results]}"
+					)
 
 					assistant_message = ChatMessage(
 						session_id=session_id,
 						role=MessageRole.ASSISTANT,
-						content=assistant_content if assistant_content else "I need authorization to perform some operations.",
-						tool_calls=[{
-							"tool_name": tc["name"],
-							"args": {k: v for k, v in tc["args"].items() if k != "db"},
-							"id": tc["id"],
-							"status": "requires_auth",
-							"auth_scope": next((r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None)
-						} for tc in tool_calls],
+						content=assistant_content
+						if assistant_content
+						else "I need authorization to perform some operations.",
+						tool_calls=[
+							{
+								"tool_name": tc["name"],
+								"args": {k: v for k, v in tc["args"].items() if k != "db"},
+								"id": tc["id"],
+								"status": "requires_auth",
+								"auth_scope": next(
+									(r["auth_scope"] for r in tool_results if r["tool_name"] == tc["name"]), None
+								),
+							}
+							for tc in tool_calls
+						],
 						message_metadata={
 							"auth_required": auth_required,
 							"iterations": iteration,
 							"termination_reason": termination_reason,
-							"iteration_data": iteration_data
-						}
+							"iteration_data": iteration_data,
+						},
 					)
 					db.add(assistant_message)
 					await db.commit()
@@ -877,15 +836,16 @@ async def send_message_stream(
 				# Let LLM see all tool results (including failures) so it can handle errors appropriately
 				failed_tools = [r for r in tool_results if not r["success"]]
 				if failed_tools:
-					logger.warning(f"{len(failed_tools)} tools failed in iteration {iteration}, but letting LLM handle the errors")
+					logger.warning(
+						f"{len(failed_tools)} tools failed in iteration {iteration}, but letting LLM handle the errors"
+					)
 
 				# 5f. Add assistant message with tool calls to context
 				# Note: For Claude, we don't add tool messages separately (they get skipped)
 				# Instead, we add the tool results as a user message summary
-				llm_messages.append({
-					"role": "assistant",
-					"content": iteration_content if iteration_content else "(Called tools)"
-				})
+				llm_messages.append(
+					{"role": "assistant", "content": iteration_content if iteration_content else "(Called tools)"}
+				)
 
 				# 5g. Add tool results as a user message (Claude-compatible format)
 				# This allows Claude to see what the tools returned without needing tool_use/tool_result pairing
@@ -900,10 +860,14 @@ async def send_message_stream(
 					status = "SUCCESS" if success else "FAILED"
 					tool_results_summary.append(f"[{tool_name}] {status}:\n{result_text}")
 
-				llm_messages.append({
-					"role": "user",
-					"content": "Tool execution results:\n\n" + "\n\n---\n\n".join(tool_results_summary) + "\n\nPlease continue based on these results. If you have enough information, provide your final answer. If you need more information, call additional tools."
-				})
+				llm_messages.append(
+					{
+						"role": "user",
+						"content": "Tool execution results:\n\n"
+						+ "\n\n---\n\n".join(tool_results_summary)
+						+ "\n\nPlease continue based on these results. If you have enough information, provide your final answer. If you need more information, call additional tools.",
+					}
+				)
 
 				# 5h. Track all tool calls and results for database storage
 				all_tool_calls.extend(tool_calls)
@@ -916,7 +880,9 @@ async def send_message_stream(
 			if iteration >= max_iterations:
 				logger.warning(f"Reached max iterations ({max_iterations}) for session {session_id}")
 				termination_reason = "max_iterations"
-				assistant_content += "\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
+				assistant_content += (
+					"\n\n[Note: Reached maximum thinking steps. Providing answer based on information gathered so far.]"
+				)
 
 			# 6. Save final assistant message with complete tool execution history
 			if all_tool_calls:
@@ -939,7 +905,7 @@ async def send_message_stream(
 						"id": tc["id"],
 						"status": "executed" if success else "failed",
 						"result": result if success else None,
-						"error": result if not success else None
+						"error": result if not success else None,
 					}
 
 				assistant_message = ChatMessage(
@@ -950,18 +916,18 @@ async def send_message_stream(
 					message_metadata={
 						"iterations": iteration,
 						"termination_reason": termination_reason,
-						"iteration_data": iteration_data
-					}
+						"iteration_data": iteration_data,
+					},
 				)
 			else:
 				# No tool calls at all - simple response
 				assistant_message = ChatMessage(
-					session_id=session_id,
-					role=MessageRole.ASSISTANT,
-					content=assistant_content
+					session_id=session_id, role=MessageRole.ASSISTANT, content=assistant_content
 				)
 
-			logger.info(f"Multi-turn streaming completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}")
+			logger.info(
+				f"Multi-turn streaming completed: {iteration} iterations, {len(all_tool_calls)} total tool calls, termination: {termination_reason}"
+			)
 
 			db.add(assistant_message)
 			await db.commit()
@@ -978,11 +944,7 @@ async def send_message_stream(
 					for tc in all_tool_calls:
 						result = next((r.get("result") for r in all_tool_results if r.get("call_id") == tc["id"]), None)
 						if result:
-							cached_entry.messages.append({
-								"role": "tool",
-								"content": result,
-								"tool_call_id": tc["id"]
-							})
+							cached_entry.messages.append({"role": "tool", "content": result, "tool_call_id": tc["id"]})
 
 				cached_entry.messages = cached_entry.messages[-20:]
 
@@ -1009,9 +971,7 @@ async def send_message_stream(
 					if not existing_user_msg:
 						# User message wasn't saved yet, save it now
 						user_message_recovery = ChatMessage(
-							session_id=session_id,
-							role=MessageRole.USER,
-							content=message_data.content
+							session_id=session_id, role=MessageRole.USER, content=message_data.content
 						)
 						db.add(user_message_recovery)
 						await db.commit()
@@ -1023,9 +983,7 @@ async def send_message_stream(
 				error_message = str(e)
 				error_content = f"❌ **Error:** {error_message}"
 				assistant_message = ChatMessage(
-					session_id=session_id,
-					role=MessageRole.ASSISTANT,
-					content=error_content
+					session_id=session_id, role=MessageRole.ASSISTANT, content=error_content
 				)
 				db.add(assistant_message)
 				await db.commit()
@@ -1052,14 +1010,12 @@ async def send_message_stream(
 		headers={
 			"Cache-Control": "no-cache",
 			"Connection": "keep-alive",
-			"X-Accel-Buffering": "no"  # Disable nginx buffering
-		}
+			"X-Accel-Buffering": "no",  # Disable nginx buffering
+		},
 	)
 
 
-@router.post(
-	"/sessions/{session_id}/subscribe", response_model=AgentEventSubscriptionResponse
-)
+@router.post("/sessions/{session_id}/subscribe", response_model=AgentEventSubscriptionResponse)
 async def subscribe_to_task(
 	session_id: str,
 	subscription_data: AgentEventSubscriptionCreate,
@@ -1067,9 +1023,7 @@ async def subscribe_to_task(
 ):
 	"""Subscribe to task events."""
 	# Verify session exists
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1099,9 +1053,7 @@ async def subscribe_to_task(
 
 
 @router.delete("/sessions/{session_id}/subscribe/{task_id}")
-async def unsubscribe_from_task(
-	session_id: str, task_id: int, db: AsyncSession = Depends(get_db)
-):
+async def unsubscribe_from_task(session_id: str, task_id: int, db: AsyncSession = Depends(get_db)):
 	"""Unsubscribe from task events."""
 	result = await db.execute(
 		select(AgentEventSubscription)
@@ -1119,16 +1071,10 @@ async def unsubscribe_from_task(
 
 
 @router.get("/sessions", response_model=List[SessionListItem])
-async def list_sessions(
-	limit: int = 50,
-	db: AsyncSession = Depends(get_db)
-):
+async def list_sessions(limit: int = 50, db: AsyncSession = Depends(get_db)):
 	"""List all sessions, most recent first."""
 	result = await db.execute(
-		select(ChatSession)
-		.where(ChatSession.is_active == True)
-		.order_by(ChatSession.updated_at.desc())
-		.limit(limit)
+		select(ChatSession).where(ChatSession.is_active == True).order_by(ChatSession.updated_at.desc()).limit(limit)
 	)
 	sessions = result.scalars().all()
 
@@ -1145,20 +1091,19 @@ async def list_sessions(
 		last_message = msg_result.scalar_one_or_none()
 
 		# Get message count
-		count_result = await db.execute(
-			select(ChatMessage)
-			.where(ChatMessage.session_id == session.session_id)
-		)
+		count_result = await db.execute(select(ChatMessage).where(ChatMessage.session_id == session.session_id))
 		message_count = len(count_result.scalars().all())
 
-		session_list.append(SessionListItem(
-			session_id=session.session_id,
-			created_at=session.created_at,
-			updated_at=session.updated_at,
-			title=session.title,
-			last_message_preview=last_message.content[:100] if last_message else "",
-			message_count=message_count
-		))
+		session_list.append(
+			SessionListItem(
+				session_id=session.session_id,
+				created_at=session.created_at,
+				updated_at=session.updated_at,
+				title=session.title,
+				last_message_preview=last_message.content[:100] if last_message else "",
+				message_count=message_count,
+			)
+		)
 
 	return session_list
 
@@ -1179,15 +1124,10 @@ async def get_subscriptions(session_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/sessions/{session_id}/title/generate")
-async def generate_title(
-	session_id: str,
-	db: AsyncSession = Depends(get_db)
-):
+async def generate_title(session_id: str, db: AsyncSession = Depends(get_db)):
 	"""Generate title for session based on first user message."""
 	# 1. Get session
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1209,12 +1149,12 @@ async def generate_title(
 	messages = [
 		{
 			"role": "system",
-			"content": "You are a title generator. Generate a concise, descriptive title (6-8 words maximum) for a chat conversation based on the user's first message. Output ONLY the title text, nothing else. Do not use quotes or punctuation at the end. Do not add explanations, greetings, or any other text."
+			"content": "You are a title generator. Generate a concise, descriptive title (6-8 words maximum) for a chat conversation based on the user's first message. Output ONLY the title text, nothing else. Do not use quotes or punctuation at the end. Do not add explanations, greetings, or any other text.",
 		},
 		{
 			"role": "user",
-			"content": f"Generate a short title (6-8 words) for this conversation:\n\n{first_message.content}"
-		}
+			"content": f"Generate a short title (6-8 words) for this conversation:\n\n{first_message.content}",
+		},
 	]
 
 	try:
@@ -1249,15 +1189,9 @@ async def generate_title(
 
 
 @router.patch("/sessions/{session_id}/title", response_model=ChatSessionResponse)
-async def update_title(
-	session_id: str,
-	title_data: TitleUpdateRequest,
-	db: AsyncSession = Depends(get_db)
-):
+async def update_title(session_id: str, title_data: TitleUpdateRequest, db: AsyncSession = Depends(get_db)):
 	"""Update session title."""
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1273,11 +1207,10 @@ async def update_title(
 # Tool Authorization Endpoints
 # ============================================================================
 
+
 @router.post("/sessions/{session_id}/authorize", response_model=AuthorizationResponse)
 async def grant_tool_authorization(
-	session_id: str,
-	auth_data: ToolAuthorizationRequest,
-	db: AsyncSession = Depends(get_db)
+	session_id: str, auth_data: ToolAuthorizationRequest, db: AsyncSession = Depends(get_db)
 ):
 	"""
 	Grant authorization for specific tool scopes.
@@ -1292,9 +1225,7 @@ async def grant_tool_authorization(
 	# Use fresh query with no caching to ensure we get latest data
 	# expire_all() clears the session cache first
 	db.expire_all()
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1310,7 +1241,7 @@ async def grant_tool_authorization(
 		metadata["tool_authorizations"][scope] = {
 			"granted": True,
 			"granted_at": now.isoformat(),
-			"expires_at": auth_data.expires_at.isoformat() if auth_data.expires_at else None
+			"expires_at": auth_data.expires_at.isoformat() if auth_data.expires_at else None,
 		}
 		logger.info(f"Granted authorization for scope '{scope}' in session {session_id}")
 
@@ -1353,10 +1284,14 @@ async def grant_tool_authorization(
 
 				# Add tool results to LLM messages
 				llm_messages = pending_llm_messages.copy()
-				llm_messages.append({
-					"role": "user",
-					"content": "Tool execution results:\n\n" + "\n\n---\n\n".join(tool_results_summary) + "\n\nPlease provide your response based on these results."
-				})
+				llm_messages.append(
+					{
+						"role": "user",
+						"content": "Tool execution results:\n\n"
+						+ "\n\n---\n\n".join(tool_results_summary)
+						+ "\n\nPlease provide your response based on these results.",
+					}
+				)
 
 				# Call LLM to continue conversation
 				llm_client = get_llm_client()
@@ -1370,17 +1305,24 @@ async def grant_tool_authorization(
 						session_id=session_id,
 						role=MessageRole.ASSISTANT,
 						content=llm_continuation,
-						tool_calls=[{
-							"tool_name": tc["name"],
-							"args": {k: v for k, v in tc["args"].items() if k != "db"},
-							"id": tc["id"],
-							"status": "executed" if next((r.get("success", True) for r in tool_results if r.get("tool_name") == tc["name"]), True) else "failed",
-							"result": next((r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None)
-						} for tc in pending_tool_calls],
-						message_metadata={
-							"post_authorization": True,
-							"tool_count": len(pending_tool_calls)
-						}
+						tool_calls=[
+							{
+								"tool_name": tc["name"],
+								"args": {k: v for k, v in tc["args"].items() if k != "db"},
+								"id": tc["id"],
+								"status": "executed"
+								if next(
+									(r.get("success", True) for r in tool_results if r.get("tool_name") == tc["name"]),
+									True,
+								)
+								else "failed",
+								"result": next(
+									(r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None
+								),
+							}
+							for tc in pending_tool_calls
+						],
+						message_metadata={"post_authorization": True, "tool_count": len(pending_tool_calls)},
 					)
 					db.add(assistant_message)
 					await db.commit()
@@ -1393,13 +1335,13 @@ async def grant_tool_authorization(
 						cached_entry.messages.append({"role": "assistant", "content": llm_continuation})
 						# Add tool results
 						for tc in pending_tool_calls:
-							result = next((r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None)
+							result = next(
+								(r.get("result") for r in tool_results if r.get("tool_name") == tc["name"]), None
+							)
 							if result:
-								cached_entry.messages.append({
-									"role": "tool",
-									"content": result,
-									"tool_call_id": tc["id"]
-								})
+								cached_entry.messages.append(
+									{"role": "tool", "content": result, "tool_call_id": tc["id"]}
+								)
 						cached_entry.messages = cached_entry.messages[-20:]
 
 				except Exception as llm_error:
@@ -1417,10 +1359,7 @@ async def grant_tool_authorization(
 	flag_modified(session, "session_metadata")  # Tell SQLAlchemy the JSON field changed
 	await db.commit()
 
-	response_data = {
-		"status": "granted",
-		"scopes": auth_data.scopes
-	}
+	response_data = {"status": "granted", "scopes": auth_data.scopes}
 
 	# Include tool results if any were executed
 	if tool_results:
@@ -1434,18 +1373,13 @@ async def grant_tool_authorization(
 
 
 @router.get("/sessions/{session_id}/authorizations")
-async def get_authorizations(
-	session_id: str,
-	db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+async def get_authorizations(session_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
 	"""
 	Get current authorization grants for a session.
 
 	Returns only active (non-expired) authorizations.
 	"""
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1469,19 +1403,13 @@ async def get_authorizations(
 
 
 @router.delete("/sessions/{session_id}/authorize/{scope}", response_model=AuthorizationResponse)
-async def revoke_authorization(
-	session_id: str,
-	scope: str,
-	db: AsyncSession = Depends(get_db)
-):
+async def revoke_authorization(session_id: str, scope: str, db: AsyncSession = Depends(get_db)):
 	"""
 	Revoke authorization for a specific scope.
 
 	This immediately removes the user's authorization for the specified operation type.
 	"""
-	result = await db.execute(
-		select(ChatSession).where(ChatSession.session_id == session_id)
-	)
+	result = await db.execute(select(ChatSession).where(ChatSession.session_id == session_id))
 	session = result.scalar_one_or_none()
 	if not session:
 		raise HTTPException(status_code=404, detail="Session not found")
@@ -1498,9 +1426,6 @@ async def revoke_authorization(
 		logger.info(f"Revoked authorization for scope '{scope}' in session {session_id}")
 
 	if not revoked:
-		raise HTTPException(
-			status_code=404,
-			detail=f"No active authorization found for scope '{scope}'"
-		)
+		raise HTTPException(status_code=404, detail=f"No active authorization found for scope '{scope}'")
 
 	return AuthorizationResponse(status="revoked", scopes=[scope])

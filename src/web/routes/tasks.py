@@ -61,7 +61,9 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/", response_model=List[TaskListResponse])
-async def list_tasks(skip: int = 0, limit: int = 100, status_filter: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def list_tasks(
+	skip: int = 0, limit: int = 100, status_filter: Optional[str] = None, db: AsyncSession = Depends(get_db)
+):
 	"""List all autotuning tasks."""
 	# Use TaskService for business logic
 	tasks = await TaskService.list_tasks(db, status=status_filter, skip=skip, limit=limit)
@@ -87,7 +89,9 @@ async def get_task_by_name(task_name: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
-async def update_task(task_update: TaskUpdate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
+async def update_task(
+	task_update: TaskUpdate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)
+):
 	"""Update task."""
 	# Update fields
 	if task_update.description is not None:
@@ -102,7 +106,9 @@ async def update_task(task_update: TaskUpdate, task: Task = Depends(get_task_or_
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
-async def replace_task(task_data: TaskCreate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)):
+async def replace_task(
+	task_data: TaskCreate, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)
+):
 	"""Replace task configuration (for editing)."""
 	# Check if new task name conflicts with another task (not this one)
 	if task_data.task_name != task.task_name:
@@ -111,16 +117,12 @@ async def replace_task(task_data: TaskCreate, task: Task = Depends(get_task_or_4
 
 		if existing_task:
 			raise HTTPException(
-				status_code=status.HTTP_400_BAD_REQUEST,
-				detail=f"Task '{task_data.task_name}' already exists"
+				status_code=status.HTTP_400_BAD_REQUEST, detail=f"Task '{task_data.task_name}' already exists"
 			)
 
 	# Only allow editing if task is not running
 	if task.status == TaskStatus.RUNNING:
-		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Cannot edit a running task"
-		)
+		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit a running task")
 
 	# Update all fields
 	task.task_name = task_data.task_name
@@ -231,7 +233,7 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 	if task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
-			detail=f"Task must be completed, failed, or cancelled to restart. Current status: {task.status}"
+			detail=f"Task must be completed, failed, or cancelled to restart. Current status: {task.status}",
 		)
 
 	# Delete old experiments from previous runs
@@ -239,6 +241,7 @@ async def restart_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 	# Reset task fields
 	from datetime import datetime
+
 	task.completed_at = None
 	task.elapsed_time = None
 	# Reset experiment counters
@@ -277,8 +280,7 @@ async def clear_task(task: Task = Depends(get_task_or_404), db: AsyncSession = D
 	# Don't allow clearing running tasks
 	if task.status == TaskStatus.RUNNING:
 		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Cannot clear running task. Cancel it first."
+			status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot clear running task. Cancel it first."
 		)
 
 	# Delete all experiments for this task
@@ -354,12 +356,12 @@ async def stream_log_file(log_file: Path, follow: bool = False):
 			last_pos = log_file.stat().st_size
 			while True:
 				await asyncio.sleep(0.5)  # Poll every 500ms
-				
+
 				# Check if file still exists
 				if not log_file.exists():
 					yield "data: [Log file removed]\n\n"
 					break
-					
+
 				current_size = log_file.stat().st_size
 				if current_size > last_pos:
 					with open(log_file, "r") as f:
@@ -376,10 +378,7 @@ async def stream_log_file(log_file: Path, follow: bool = False):
 
 
 @router.get("/{task_id}/logs")
-async def get_task_logs(
-	task: Task = Depends(get_task_or_404),
-	follow: bool = False
-):
+async def get_task_logs(task: Task = Depends(get_task_or_404), follow: bool = False):
 	"""
 	Get task execution logs.
 
@@ -391,7 +390,7 @@ async def get_task_logs(
 		Log content as text or streaming response
 	"""
 	log_file = get_task_log_file(task.id)
-	
+
 	# If follow mode, return streaming response (Server-Sent Events)
 	if follow:
 		return StreamingResponse(
@@ -400,17 +399,17 @@ async def get_task_logs(
 			headers={
 				"Cache-Control": "no-cache",
 				"Connection": "keep-alive",
-				"X-Accel-Buffering": "no"  # Disable nginx buffering
-			}
+				"X-Accel-Buffering": "no",  # Disable nginx buffering
+			},
 		)
-	
+
 	# Otherwise return static log content
 	if not log_file.exists():
 		return {"logs": "No logs available yet."}
-	
+
 	with open(log_file, "r") as f:
 		logs = f.read()
-	
+
 	return {"logs": logs}
 
 
@@ -423,12 +422,10 @@ async def clear_task_logs(task: Task = Depends(get_task_or_404)):
 		with open(log_file, 'w') as f:
 			pass  # Empty write truncates the file
 
+
 @router.get("/{task_id}/experiments/{experiment_id}/logs")
 async def get_experiment_logs(
-	experiment_id: int,
-	follow: bool = False,
-	task: Task = Depends(get_task_or_404),
-	db: AsyncSession = Depends(get_db)
+	experiment_id: int, follow: bool = False, task: Task = Depends(get_task_or_404), db: AsyncSession = Depends(get_db)
 ):
 	"""
 	Get experiment-specific execution logs.
@@ -443,39 +440,34 @@ async def get_experiment_logs(
 	"""
 	# Verify experiment exists
 	from web.db.models import Experiment
+
 	result = await db.execute(
-		select(Experiment).where(
-			Experiment.task_id == task.id,
-			Experiment.experiment_id == experiment_id
-		).order_by(Experiment.created_at.desc())
+		select(Experiment)
+		.where(Experiment.task_id == task.id, Experiment.experiment_id == experiment_id)
+		.order_by(Experiment.created_at.desc())
 	)
 	experiment = result.scalars().first()
 
 	if not experiment:
 		raise HTTPException(
-			status_code=status.HTTP_404_NOT_FOUND,
-			detail=f"Experiment {experiment_id} not found for task {task.id}"
+			status_code=status.HTTP_404_NOT_FOUND, detail=f"Experiment {experiment_id} not found for task {task.id}"
 		)
 
 	log_file = get_experiment_log_file(task.id, experiment_id)
-	
+
 	# If follow mode, return streaming response (Server-Sent Events)
 	if follow:
 		return StreamingResponse(
 			stream_log_file(log_file, follow=True),
 			media_type="text/event-stream",
-			headers={
-				"Cache-Control": "no-cache",
-				"Connection": "keep-alive",
-				"X-Accel-Buffering": "no"
-			}
+			headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
 		)
-	
+
 	# Otherwise return static log content
 	if not log_file.exists():
 		return {"logs": "No logs available yet for this experiment."}
-	
+
 	with open(log_file, "r") as f:
 		logs = f.read()
-	
+
 	return {"logs": logs}

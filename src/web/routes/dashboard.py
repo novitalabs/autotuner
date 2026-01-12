@@ -32,11 +32,11 @@ async def get_gpu_status() -> Dict[str, Any]:
 			[
 				"nvidia-smi",
 				"--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
-				"--format=csv,noheader,nounits"
+				"--format=csv,noheader,nounits",
 			],
 			capture_output=True,
 			text=True,
-			timeout=5
+			timeout=5,
 		)
 
 		if result.returncode != 0:
@@ -49,22 +49,20 @@ async def get_gpu_status() -> Dict[str, Any]:
 
 			parts = [p.strip() for p in line.split(",")]
 			if len(parts) >= 7:
-				gpus.append({
-					"index": int(parts[0]),
-					"name": parts[1],
-					"memory_total_mb": int(parts[2]),
-					"memory_used_mb": int(parts[3]),
-					"memory_free_mb": int(parts[4]),
-					"utilization_percent": int(parts[5]),
-					"temperature_c": int(parts[6]),
-					"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
-				})
+				gpus.append(
+					{
+						"index": int(parts[0]),
+						"name": parts[1],
+						"memory_total_mb": int(parts[2]),
+						"memory_used_mb": int(parts[3]),
+						"memory_free_mb": int(parts[4]),
+						"utilization_percent": int(parts[5]),
+						"temperature_c": int(parts[6]),
+						"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1),
+					}
+				)
 
-		return {
-			"available": True,
-			"gpus": gpus,
-			"timestamp": datetime.now().isoformat()
-		}
+		return {"available": True, "gpus": gpus, "timestamp": datetime.now().isoformat()}
 
 	except FileNotFoundError:
 		return {"available": False, "error": "nvidia-smi not found"}
@@ -105,11 +103,9 @@ async def get_worker_status() -> Dict[str, Any]:
 		redis_available = False
 		try:
 			import redis
+
 			r = redis.Redis(
-				host=settings.redis_host,
-				port=settings.redis_port,
-				db=settings.redis_db,
-				socket_connect_timeout=2
+				host=settings.redis_host, port=settings.redis_port, db=settings.redis_db, socket_connect_timeout=2
 			)
 			redis_available = r.ping()
 		except Exception:
@@ -122,31 +118,22 @@ async def get_worker_status() -> Dict[str, Any]:
 			"worker_memory_mb": worker_memory_mb,
 			"worker_uptime_seconds": worker_uptime,
 			"redis_available": redis_available,
-			"timestamp": datetime.now().isoformat()
+			"timestamp": datetime.now().isoformat(),
 		}
 
 	except Exception as e:
-		return {
-			"error": str(e),
-			"timestamp": datetime.now().isoformat()
-		}
+		return {"error": str(e), "timestamp": datetime.now().isoformat()}
 
 
 @router.get("/db-statistics")
 async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
 	"""Get database statistics summary."""
 	# Total tasks by status
-	result = await db.execute(
-		select(Task.status, func.count(Task.id))
-		.group_by(Task.status)
-	)
+	result = await db.execute(select(Task.status, func.count(Task.id)).group_by(Task.status))
 	tasks_by_status = {status.value: count for status, count in result.all()}
 
 	# Total experiments by status
-	result = await db.execute(
-		select(Experiment.status, func.count(Experiment.id))
-		.group_by(Experiment.status)
-	)
+	result = await db.execute(select(Experiment.status, func.count(Experiment.id)).group_by(Experiment.status))
 	experiments_by_status = {status.value: count for status, count in result.all()}
 
 	# Total counts
@@ -158,16 +145,10 @@ async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
 
 	# Recent activity (last 24 hours)
 	yesterday = datetime.now() - timedelta(hours=24)
-	result = await db.execute(
-		select(func.count(Task.id))
-		.where(Task.created_at >= yesterday)
-	)
+	result = await db.execute(select(func.count(Task.id)).where(Task.created_at >= yesterday))
 	tasks_last_24h = result.scalar()
 
-	result = await db.execute(
-		select(func.count(Experiment.id))
-		.where(Experiment.created_at >= yesterday)
-	)
+	result = await db.execute(select(func.count(Experiment.id)).where(Experiment.created_at >= yesterday))
 	experiments_last_24h = result.scalar()
 
 	# Average experiment duration
@@ -179,11 +160,7 @@ async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
 	avg_experiment_duration = result.scalar()
 
 	# Running tasks
-	result = await db.execute(
-		select(Task)
-		.where(Task.status == TaskStatus.RUNNING)
-		.order_by(Task.started_at.desc())
-	)
+	result = await db.execute(select(Task).where(Task.status == TaskStatus.RUNNING).order_by(Task.started_at.desc()))
 	running_tasks = result.scalars().all()
 
 	running_tasks_info = []
@@ -196,13 +173,15 @@ async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
 		)
 		completed_count = result.scalar()
 
-		running_tasks_info.append({
-			"id": task.id,
-			"name": task.task_name,
-			"started_at": task.started_at.isoformat() if task.started_at else None,
-			"max_iterations": task.optimization_config.get("max_iterations", 0) if task.optimization_config else 0,
-			"completed_experiments": completed_count
-		})
+		running_tasks_info.append(
+			{
+				"id": task.id,
+				"name": task.task_name,
+				"started_at": task.started_at.isoformat() if task.started_at else None,
+				"max_iterations": task.optimization_config.get("max_iterations", 0) if task.optimization_config else 0,
+				"completed_experiments": completed_count,
+			}
+		)
 
 	return {
 		"total_tasks": total_tasks,
@@ -213,7 +192,7 @@ async def get_db_statistics(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
 		"experiments_last_24h": experiments_last_24h,
 		"avg_experiment_duration_seconds": round(avg_experiment_duration, 1) if avg_experiment_duration else None,
 		"running_tasks": running_tasks_info,
-		"timestamp": datetime.now().isoformat()
+		"timestamp": datetime.now().isoformat(),
 	}
 
 
@@ -222,31 +201,16 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 	"""Get GPU status across all nodes in the Kubernetes cluster with detailed metrics."""
 	try:
 		# Get current node hostname to use local nvidia-smi for it
-		local_hostname = subprocess.run(
-			["hostname"],
-			capture_output=True,
-			text=True,
-			timeout=2
-		).stdout.strip()
+		local_hostname = subprocess.run(["hostname"], capture_output=True, text=True, timeout=2).stdout.strip()
 
 		# Query Kubernetes nodes with GPU resources
-		result = subprocess.run(
-			[
-				"kubectl",
-				"get",
-				"nodes",
-				"-o",
-				"json"
-			],
-			capture_output=True,
-			text=True,
-			timeout=10
-		)
+		result = subprocess.run(["kubectl", "get", "nodes", "-o", "json"], capture_output=True, text=True, timeout=10)
 
 		if result.returncode != 0:
 			return {"available": False, "error": "kubectl command failed", "mode": "cluster"}
 
 		import json
+
 		nodes_data = json.loads(result.stdout)
 
 		cluster_gpus = []
@@ -286,11 +250,11 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 							[
 								"nvidia-smi",
 								"--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
-								"--format=csv,noheader,nounits"
+								"--format=csv,noheader,nounits",
 							],
 							capture_output=True,
 							text=True,
-							timeout=5
+							timeout=5,
 						)
 
 						if nvidia_result.returncode == 0 and nvidia_result.stdout:
@@ -307,7 +271,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 										"memory_free_mb": int(parts[4]),
 										"utilization_percent": int(parts[5]),
 										"temperature_c": int(parts[6]),
-										"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
+										"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1),
 									}
 					except Exception as e:
 						logger.error(f"Error getting local GPU metrics: {e}")
@@ -323,11 +287,11 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 								"--field-selector",
 								f"spec.nodeName={node_name}",
 								"-o",
-								"json"
+								"json",
 							],
 							capture_output=True,
 							text=True,
-							timeout=5
+							timeout=5,
 						)
 
 						if pod_result.returncode == 0:
@@ -348,7 +312,9 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 									limits = resources.get("limits", {})
 									requests = resources.get("requests", {})
 
-									if any("nvidia.com/gpu" in key for key in list(limits.keys()) + list(requests.keys())):
+									if any(
+										"nvidia.com/gpu" in key for key in list(limits.keys()) + list(requests.keys())
+									):
 										target_pod = pod_name
 										target_namespace = pod_namespace
 										break
@@ -368,11 +334,11 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 										"--",
 										"nvidia-smi",
 										"--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
-										"--format=csv,noheader,nounits"
+										"--format=csv,noheader,nounits",
 									],
 									capture_output=True,
 									text=True,
-									timeout=5
+									timeout=5,
 								)
 
 								if nvidia_result.returncode == 0 and nvidia_result.stdout:
@@ -389,7 +355,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 												"memory_free_mb": int(parts[4]),
 												"utilization_percent": int(parts[5]),
 												"temperature_c": int(parts[6]),
-												"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1)
+												"memory_usage_percent": round(int(parts[3]) / int(parts[2]) * 100, 1),
 											}
 					except Exception as e:
 						logger.warning(f"Could not get GPU metrics for remote node {node_name}: {e}")
@@ -406,20 +372,22 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 						"name": gpu_metrics.get(i, {}).get("name", gpu_type),
 						"capacity": 1,
 						"allocatable": 1 if i < gpu_allocatable else 0,
-						"is_local": node_name == local_hostname
+						"is_local": node_name == local_hostname,
 					}
 
 					# Add detailed metrics if available
 					if i in gpu_metrics:
-						gpu_entry.update({
-							"memory_total_mb": gpu_metrics[i]["memory_total_mb"],
-							"memory_used_mb": gpu_metrics[i]["memory_used_mb"],
-							"memory_free_mb": gpu_metrics[i]["memory_free_mb"],
-							"memory_usage_percent": gpu_metrics[i]["memory_usage_percent"],
-							"utilization_percent": gpu_metrics[i]["utilization_percent"],
-							"temperature_c": gpu_metrics[i]["temperature_c"],
-							"has_metrics": True
-						})
+						gpu_entry.update(
+							{
+								"memory_total_mb": gpu_metrics[i]["memory_total_mb"],
+								"memory_used_mb": gpu_metrics[i]["memory_used_mb"],
+								"memory_free_mb": gpu_metrics[i]["memory_free_mb"],
+								"memory_usage_percent": gpu_metrics[i]["memory_usage_percent"],
+								"utilization_percent": gpu_metrics[i]["utilization_percent"],
+								"temperature_c": gpu_metrics[i]["temperature_c"],
+								"has_metrics": True,
+							}
+						)
 					else:
 						gpu_entry["has_metrics"] = False
 
@@ -434,7 +402,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 			"total_gpus": total_gpus,
 			"total_allocatable_gpus": total_allocatable_gpus,
 			"local_hostname": local_hostname,
-			"timestamp": datetime.now().isoformat()
+			"timestamp": datetime.now().isoformat(),
 		}
 
 	except FileNotFoundError:
@@ -444,10 +412,7 @@ async def get_cluster_gpu_status() -> Dict[str, Any]:
 
 
 @router.get("/experiment-timeline")
-async def get_experiment_timeline(
-	hours: int = 24,
-	db: AsyncSession = Depends(get_db)
-) -> List[Dict[str, Any]]:
+async def get_experiment_timeline(hours: int = 24, db: AsyncSession = Depends(get_db)) -> List[Dict[str, Any]]:
 	"""
 	Get experiment timeline data for visualization.
 
@@ -457,24 +422,24 @@ async def get_experiment_timeline(
 	cutoff_time = datetime.now() - timedelta(hours=hours)
 
 	result = await db.execute(
-		select(Experiment)
-		.where(Experiment.created_at >= cutoff_time)
-		.order_by(Experiment.created_at)
+		select(Experiment).where(Experiment.created_at >= cutoff_time).order_by(Experiment.created_at)
 	)
 	experiments = result.scalars().all()
 
 	timeline = []
 	for exp in experiments:
-		timeline.append({
-			"id": exp.id,
-			"task_id": exp.task_id,
-			"experiment_id": exp.experiment_id,
-			"status": exp.status.value,
-			"created_at": exp.created_at.isoformat() if exp.created_at else None,
-			"started_at": exp.started_at.isoformat() if exp.started_at else None,
-			"completed_at": exp.completed_at.isoformat() if exp.completed_at else None,
-			"elapsed_time": exp.elapsed_time,
-			"objective_score": exp.objective_score
-		})
+		timeline.append(
+			{
+				"id": exp.id,
+				"task_id": exp.task_id,
+				"experiment_id": exp.experiment_id,
+				"status": exp.status.value,
+				"created_at": exp.created_at.isoformat() if exp.created_at else None,
+				"started_at": exp.started_at.isoformat() if exp.started_at else None,
+				"completed_at": exp.completed_at.isoformat() if exp.completed_at else None,
+				"elapsed_time": exp.elapsed_time,
+				"objective_score": exp.objective_score,
+			}
+		)
 
 	return timeline

@@ -62,7 +62,7 @@ class DirectBenchmarkController:
 		gpu_indices: List[int],
 		duration_seconds: float,
 		interval_seconds: float = 1.0,
-		stop_event: Optional[threading.Event] = None
+		stop_event: Optional[threading.Event] = None,
 	) -> List[GPUSnapshot]:
 		"""Monitor GPUs during benchmark execution (runs in background thread).
 
@@ -94,11 +94,12 @@ class DirectBenchmarkController:
 				if filtered_gpus:
 					from utils.gpu_monitor import GPUSnapshot
 					from datetime import datetime
+
 					filtered_snapshot = GPUSnapshot(
 						timestamp=datetime.now(),
 						gpus=filtered_gpus,
 						total_gpus=len(filtered_gpus),
-						available_gpus=sum(1 for gpu in filtered_gpus if gpu.is_available)
+						available_gpus=sum(1 for gpu in filtered_gpus if gpu.is_available),
 					)
 					snapshots.append(filtered_snapshot)
 
@@ -168,13 +169,10 @@ class DirectBenchmarkController:
 
 			# Download tokenizer using Python subprocess
 			import subprocess
+
 			code = f"from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('{model_tokenizer}')"
 			result = subprocess.run(
-				["python3", "-c", code],
-				env=env,
-				capture_output=True,
-				text=True,
-				timeout=120  # 2 minutes timeout
+				["python3", "-c", code], env=env, capture_output=True, text=True, timeout=120  # 2 minutes timeout
 			)
 
 			if result.returncode != 0:
@@ -289,13 +287,12 @@ class DirectBenchmarkController:
 				self.port_forward_proc = None
 				self.local_port = None
 
-
 	def _warmup_service(self, endpoint_url: str, model_name: str, num_requests: int = 3):
 		"""Warmup the inference service by sending a few requests.
-		
+
 		This triggers torch compile, CUDA graph capture, and other JIT optimizations
 		that would otherwise impact the first benchmark batch.
-		
+
 		Args:
 		    endpoint_url: Service endpoint URL
 		    model_name: Model name for the API request
@@ -303,36 +300,31 @@ class DirectBenchmarkController:
 		"""
 		import requests
 		import time
-		
+
 		print(f"[Warmup] Sending {num_requests} warmup requests to trigger JIT compilation...")
-		
+
 		warmup_prompt = "Hello, this is a warmup request."
-		
+
 		for i in range(num_requests):
 			try:
 				response = requests.post(
 					f"{endpoint_url}/v1/completions",
-					json={
-						"model": model_name,
-						"prompt": warmup_prompt,
-						"max_tokens": 10,
-						"temperature": 0.0
-					},
-					timeout=30
+					json={"model": model_name, "prompt": warmup_prompt, "max_tokens": 10, "temperature": 0.0},
+					timeout=30,
 				)
-				
+
 				if response.status_code == 200:
 					print(f"[Warmup] Request {i+1}/{num_requests} completed")
 				else:
 					print(f"[Warmup] Request {i+1}/{num_requests} returned status {response.status_code}")
-					
+
 			except Exception as e:
 				print(f"[Warmup] Request {i+1}/{num_requests} failed: {e}")
-			
+
 			# Small delay between requests
 			if i < num_requests - 1:
 				time.sleep(0.5)
-		
+
 		# Wait a bit for compilation to fully complete
 		print(f"[Warmup] Waiting 2 seconds for JIT compilation to complete...")
 		time.sleep(2)
@@ -375,7 +367,7 @@ class DirectBenchmarkController:
 		if not tokenizer_success:
 			print(f"[Benchmark] Failed to ensure tokenizer is cached: {model_tokenizer}")
 			print(f"[Benchmark] Continuing anyway, offline mode may fail if tokenizer not cached")
-		
+
 		# Track offline mode for later use
 		use_offline_mode = is_fully_cached
 
@@ -457,6 +449,7 @@ class DirectBenchmarkController:
 		if "dataset_url" in benchmark_config:
 			print(f"[Benchmark] DEBUG: dataset_url = {benchmark_config['dataset_url'][:100]}...")
 			from utils.dataset_manager import DatasetManager
+
 			dm = DatasetManager()
 			try:
 				dataset_path = dm.get_dataset(
@@ -474,10 +467,12 @@ class DirectBenchmarkController:
 
 		# Setup environment with proxy settings for HuggingFace downloads
 		import os
+
 		env = os.environ.copy()
 
 		# Check if proxy is configured in environment or use default from config
 		from web.config import get_settings
+
 		settings = get_settings()
 		proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy') or settings.https_proxy
 		if proxy_url:
@@ -525,10 +520,10 @@ class DirectBenchmarkController:
 						gpu_indices=gpu_indices,
 						duration_seconds=timeout + 60,  # Give extra buffer
 						interval_seconds=1.0,
-						stop_event=stop_gpu_monitoring
+						stop_event=stop_gpu_monitoring,
 					)
 				),
-				daemon=True
+				daemon=True,
 			)
 			gpu_monitor_thread.start()
 		else:
@@ -546,7 +541,15 @@ class DirectBenchmarkController:
 			if self.verbose:
 				# Stream output in real-time
 				print(f"[Benchmark] Starting genai-bench (streaming output)...")
-				process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, cwd=str(work_dir))
+				process = subprocess.Popen(
+					cmd,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.STDOUT,
+					text=True,
+					bufsize=1,
+					env=env,
+					cwd=str(work_dir),
+				)
 
 				stdout_lines = []
 				for line in process.stdout:
@@ -690,7 +693,7 @@ class DirectBenchmarkController:
 				print(f"[Benchmark] Filtering {len(all_metrics)} batches by SLO compliance...")
 				slo_compliant_metrics = []
 				slo_violated_metrics = []
-				
+
 				for batch_metrics in all_metrics:
 					is_compliant, violations = check_batch_slo_compliance(batch_metrics, slo_config)
 					if is_compliant:
@@ -699,7 +702,7 @@ class DirectBenchmarkController:
 						slo_violated_metrics.append(batch_metrics)
 						concurrency = batch_metrics.get("num_concurrency", "?")
 						print(f"[Benchmark] ✗ Batch concurrency={concurrency} violated SLO: {violations}")
-				
+
 				if slo_compliant_metrics:
 					print(f"[Benchmark] ✓ {len(slo_compliant_metrics)}/{len(all_metrics)} batches passed SLO")
 					# Use only SLO-compliant batches for aggregation

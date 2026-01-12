@@ -40,7 +40,9 @@ class Task(Base):
 	optimization_config = Column(JSON, nullable=False)  # strategy, objective
 	benchmark_config = Column(JSON, nullable=False)  # benchmark settings
 	slo_config = Column(JSON, nullable=True)  # SLO configuration (ttft, tpot, latency, steepness)
-	quant_config = Column(JSON, nullable=True)  # runtime quantization config (gemm_dtype, kvcache_dtype, attention_dtype, moe_dtype)
+	quant_config = Column(
+		JSON, nullable=True
+	)  # runtime quantization config (gemm_dtype, kvcache_dtype, attention_dtype, moe_dtype)
 	parallel_config = Column(JSON, nullable=True)  # parallel execution config (tp, pp, dp, cp, moe_tp, moe_ep)
 
 	# OME Resource Configuration (for auto-creation)
@@ -90,28 +92,30 @@ class Task(Base):
 		}
 
 		if include_full_config:
-			base.update({
-				"description": self.description,
-				"base_runtime": self.base_runtime,
-				"runtime_image_tag": self.runtime_image_tag,
-				"model_config": self.model_config,
-				"parameters": self.parameters,
-				"optimization_config": self.optimization_config,
-				"benchmark_config": self.benchmark_config,
-				"slo_config": self.slo_config,
-				"quant_config": self.quant_config,
-				"parallel_config": self.parallel_config,
-				"clusterbasemodel_config": self.clusterbasemodel_config,
-				"clusterservingruntime_config": self.clusterservingruntime_config,
-				"created_clusterbasemodel": self.created_clusterbasemodel,
-				"created_clusterservingruntime": self.created_clusterservingruntime,
-				"task_metadata": self.task_metadata,
-				"successful_experiments": self.successful_experiments,
-				"failed_experiments": getattr(self, 'failed_experiments', 0),
-				"started_at": self.started_at.isoformat() if self.started_at else None,
-				"completed_at": self.completed_at.isoformat() if self.completed_at else None,
-				"elapsed_time": self.elapsed_time,
-			})
+			base.update(
+				{
+					"description": self.description,
+					"base_runtime": self.base_runtime,
+					"runtime_image_tag": self.runtime_image_tag,
+					"model_config": self.model_config,
+					"parameters": self.parameters,
+					"optimization_config": self.optimization_config,
+					"benchmark_config": self.benchmark_config,
+					"slo_config": self.slo_config,
+					"quant_config": self.quant_config,
+					"parallel_config": self.parallel_config,
+					"clusterbasemodel_config": self.clusterbasemodel_config,
+					"clusterservingruntime_config": self.clusterservingruntime_config,
+					"created_clusterbasemodel": self.created_clusterbasemodel,
+					"created_clusterservingruntime": self.created_clusterservingruntime,
+					"task_metadata": self.task_metadata,
+					"successful_experiments": self.successful_experiments,
+					"failed_experiments": getattr(self, 'failed_experiments', 0),
+					"started_at": self.started_at.isoformat() if self.started_at else None,
+					"completed_at": self.completed_at.isoformat() if self.completed_at else None,
+					"elapsed_time": self.elapsed_time,
+				}
+			)
 
 		return base
 

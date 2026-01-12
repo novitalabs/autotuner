@@ -23,14 +23,21 @@ from .utils import (
 	parse_parallel_config,
 	setup_proxy_environment,
 	build_param_list,
-	get_runtime_config
+	get_runtime_config,
 )
 
 
 class DockerController(BaseModelController):
 	"""Controller for managing standalone Docker container deployments."""
 
-	def __init__(self, model_base_path: str = "/mnt/data/models", http_proxy: str = "", https_proxy: str = "", no_proxy: str = "", hf_token: str = ""):
+	def __init__(
+		self,
+		model_base_path: str = "/mnt/data/models",
+		http_proxy: str = "",
+		https_proxy: str = "",
+		no_proxy: str = "",
+		hf_token: str = "",
+	):
 		"""Initialize the Docker controller.
 
 		Args:
@@ -219,7 +226,7 @@ class DockerController(BaseModelController):
 			# Prepare environment variables
 			env_vars = {
 				"MODEL_PATH": model_identifier,
-				"HF_HOME": "/root/.cache/huggingface"  # Cache directory for downloaded models
+				"HF_HOME": "/root/.cache/huggingface",  # Cache directory for downloaded models
 			}
 
 			# Note: CUDA_VISIBLE_DEVICES is NOT set here because we use device_requests
@@ -232,7 +239,7 @@ class DockerController(BaseModelController):
 				http_proxy=self.http_proxy,
 				https_proxy=self.https_proxy,
 				no_proxy=self.no_proxy,
-				hf_token=self.hf_token
+				hf_token=self.hf_token,
 			)
 
 			# Debug: Print env vars being passed to container
@@ -342,7 +349,7 @@ class DockerController(BaseModelController):
 						# Check both endpoints, service is ready if either returns 200
 						health_response = requests.get(health_url, timeout=5)
 						models_response = requests.get(models_url, timeout=5)
-						
+
 						if health_response.status_code == 200:
 							print(f"[Docker] Service is ready! (via /health) URL: http://localhost:{host_port}")
 							return True
@@ -353,11 +360,12 @@ class DockerController(BaseModelController):
 						# Endpoints not ready yet, continue waiting
 						pass
 
-
 				elif container.status in ["exited", "dead"]:
 					# Container has stopped - this is a failure
 					consecutive_exits += 1
-					print(f"[Docker] Container status: {container.status} (attempt {consecutive_exits}/{max_consecutive_exits})")
+					print(
+						f"[Docker] Container status: {container.status} (attempt {consecutive_exits}/{max_consecutive_exits})"
+					)
 
 					# Get exit code for more information
 					exit_code = container.attrs.get('State', {}).get('ExitCode', 'unknown')
@@ -411,7 +419,9 @@ class DockerController(BaseModelController):
 				if elapsed >= log_snapshot_intervals[next_snapshot_idx]:
 					print(f"\n[Docker] === Log Snapshot at {elapsed}s ===")
 					try:
-						snapshot_logs = container.logs(tail=50, stdout=True, stderr=True).decode("utf-8", errors="replace")
+						snapshot_logs = container.logs(tail=50, stdout=True, stderr=True).decode(
+							"utf-8", errors="replace"
+						)
 						print(snapshot_logs)
 						print(f"[Docker] === End Snapshot ===\n")
 					except Exception as e:
@@ -547,7 +557,7 @@ class DockerController(BaseModelController):
 				"model": container_info.get("gpu_model", "Unknown"),
 				"count": len(container_info.get("gpu_devices", [])),
 				"device_ids": container_info.get("gpu_devices", []),
-				"world_size": container_info.get("world_size", 1)
+				"world_size": container_info.get("world_size", 1),
 			}
 		except Exception as e:
 			print(f"[Docker] Error retrieving GPU info for '{service_id}': {e}")
@@ -649,4 +659,3 @@ class DockerController(BaseModelController):
 		except Exception as e:
 			print(f"[Docker] Error checking image: {e}")
 			return False
-
