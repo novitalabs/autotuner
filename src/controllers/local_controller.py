@@ -20,7 +20,7 @@ from .utils import (
 	parse_parallel_config,
 	setup_proxy_environment,
 	build_param_list,
-	get_runtime_config
+	get_runtime_config,
 )
 
 
@@ -148,7 +148,7 @@ class LocalController(BaseModelController):
 			http_proxy=self.http_proxy,
 			https_proxy=self.https_proxy,
 			no_proxy=self.no_proxy,
-			hf_token=self.hf_token
+			hf_token=self.hf_token,
 		)
 
 		# Log file
@@ -363,7 +363,7 @@ class LocalController(BaseModelController):
 			"model": proc_info.get("gpu_model", "Unknown"),
 			"count": len(proc_info.get("gpu_devices", [])),
 			"device_ids": proc_info.get("gpu_devices", []),
-			"world_size": proc_info.get("world_size", 1)
+			"world_size": proc_info.get("world_size", 1),
 		}
 
 	def _resolve_model_path(self, model_name: str) -> Optional[str]:
@@ -443,27 +443,25 @@ class LocalController(BaseModelController):
 			http_proxy=self.http_proxy,
 			https_proxy=self.https_proxy,
 			no_proxy=self.no_proxy,
-			hf_token=self.hf_token
+			hf_token=self.hf_token,
 		)
 
 		# Use huggingface-cli to download
 		cmd = [
-			self.python_path, "-m", "huggingface_hub.commands.huggingface_cli",
-			"download", model_name,
-			"--local-dir-use-symlinks", "False"
+			self.python_path,
+			"-m",
+			"huggingface_hub.commands.huggingface_cli",
+			"download",
+			model_name,
+			"--local-dir-use-symlinks",
+			"False",
 		]
 
 		try:
 			print(f"[Local] Running: {' '.join(cmd)}")
 			start_time = time.time()
 
-			process = subprocess.Popen(
-				cmd,
-				stdout=subprocess.PIPE,
-				stderr=subprocess.STDOUT,
-				text=True,
-				env=env
-			)
+			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
 
 			# Stream output and check for progress
 			last_progress_time = time.time()
@@ -496,7 +494,9 @@ class LocalController(BaseModelController):
 			print(f"[Local] Error downloading model: {e}")
 			return False
 
-	def _build_command(self, runtime_name: str, model_path: str, port: int, parameters: Dict[str, Any]) -> Optional[List[str]]:
+	def _build_command(
+		self, runtime_name: str, model_path: str, port: int, parameters: Dict[str, Any]
+	) -> Optional[List[str]]:
 		"""Build command line for the inference server using shared utilities.
 
 		Args:
@@ -527,15 +527,21 @@ class LocalController(BaseModelController):
 
 		if "sglang" in runtime_lower:
 			cmd = module_parts + [
-				runtime_config["model_param"], model_path,
-				"--host", "0.0.0.0",
-				"--port", str(port),
+				runtime_config["model_param"],
+				model_path,
+				"--host",
+				"0.0.0.0",
+				"--port",
+				str(port),
 			]
 		elif "vllm" in runtime_lower:
 			cmd = module_parts + [
-				runtime_config["model_param"], model_path,
-				"--host", "0.0.0.0",
-				"--port", str(port),
+				runtime_config["model_param"],
+				model_path,
+				"--host",
+				"0.0.0.0",
+				"--port",
+				str(port),
 			]
 		else:
 			return None

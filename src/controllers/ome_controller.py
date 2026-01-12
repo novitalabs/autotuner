@@ -19,7 +19,7 @@ from .utils import sanitize_dns_name
 # Import GPU discovery utility with absolute import
 # Add parent directory to path if needed
 if str(Path(__file__).parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+	sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.gpu_discovery import find_best_node_for_deployment
 
@@ -282,7 +282,7 @@ class OMEController(BaseModelController):
 		name: str,
 		spec: Dict[str, Any],
 		labels: Optional[Dict[str, str]] = None,
-		annotations: Optional[Dict[str, str]] = None
+		annotations: Optional[Dict[str, str]] = None,
 	) -> bool:
 		"""Ensure ClusterBaseModel exists, create if missing.
 
@@ -298,10 +298,7 @@ class OMEController(BaseModelController):
 		try:
 			# Check if ClusterBaseModel already exists
 			self.custom_api.get_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterbasemodels",
-				name=name
+				group="ome.io", version="v1beta1", plural="clusterbasemodels", name=name
 			)
 			print(f"ClusterBaseModel '{name}' already exists")
 			return True
@@ -318,7 +315,7 @@ class OMEController(BaseModelController):
 		name: str,
 		spec: Dict[str, Any],
 		labels: Optional[Dict[str, str]] = None,
-		annotations: Optional[Dict[str, str]] = None
+		annotations: Optional[Dict[str, str]] = None,
 	) -> bool:
 		"""Create ClusterBaseModel from spec.
 
@@ -334,19 +331,13 @@ class OMEController(BaseModelController):
 		try:
 			# Render template
 			rendered = self.cbm_template.render(
-				name=name,
-				spec=spec,
-				labels=labels or {},
-				annotations=annotations or {}
+				name=name, spec=spec, labels=labels or {}, annotations=annotations or {}
 			)
 
 			# Parse YAML and create resource
 			resource = yaml.safe_load(rendered)
 			self.custom_api.create_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterbasemodels",
-				body=resource
+				group="ome.io", version="v1beta1", plural="clusterbasemodels", body=resource
 			)
 			print(f"Created ClusterBaseModel '{name}'")
 			return True
@@ -362,9 +353,7 @@ class OMEController(BaseModelController):
 		"""
 		try:
 			result = self.custom_api.list_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterbasemodels"
+				group="ome.io", version="v1beta1", plural="clusterbasemodels"
 			)
 			return result
 		except ApiException as e:
@@ -377,7 +366,7 @@ class OMEController(BaseModelController):
 		name: str,
 		spec: Dict[str, Any],
 		labels: Optional[Dict[str, str]] = None,
-		annotations: Optional[Dict[str, str]] = None
+		annotations: Optional[Dict[str, str]] = None,
 	) -> bool:
 		"""Ensure ClusterServingRuntime exists, create if missing.
 
@@ -393,10 +382,7 @@ class OMEController(BaseModelController):
 		try:
 			# Check if ClusterServingRuntime already exists
 			self.custom_api.get_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterservingruntimes",
-				name=name
+				group="ome.io", version="v1beta1", plural="clusterservingruntimes", name=name
 			)
 			print(f"ClusterServingRuntime '{name}' already exists")
 			return True
@@ -413,7 +399,7 @@ class OMEController(BaseModelController):
 		name: str,
 		spec: Dict[str, Any],
 		labels: Optional[Dict[str, str]] = None,
-		annotations: Optional[Dict[str, str]] = None
+		annotations: Optional[Dict[str, str]] = None,
 	) -> bool:
 		"""Create ClusterServingRuntime from spec.
 
@@ -429,19 +415,13 @@ class OMEController(BaseModelController):
 		try:
 			# Render template
 			rendered = self.csr_template.render(
-				name=name,
-				spec=spec,
-				labels=labels or {},
-				annotations=annotations or {}
+				name=name, spec=spec, labels=labels or {}, annotations=annotations or {}
 			)
 
 			# Parse YAML and create resource
 			resource = yaml.safe_load(rendered)
 			self.custom_api.create_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterservingruntimes",
-				body=resource
+				group="ome.io", version="v1beta1", plural="clusterservingruntimes", body=resource
 			)
 			print(f"Created ClusterServingRuntime '{name}'")
 			return True
@@ -457,9 +437,7 @@ class OMEController(BaseModelController):
 		"""
 		try:
 			result = self.custom_api.list_cluster_custom_object(
-				group="ome.io",
-				version="v1beta1",
-				plural="clusterservingruntimes"
+				group="ome.io", version="v1beta1", plural="clusterservingruntimes"
 			)
 			return result
 		except ApiException as e:

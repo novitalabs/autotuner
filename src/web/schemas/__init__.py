@@ -55,8 +55,12 @@ class TaskCreate(BaseModel):
 	slo: Optional[Dict[str, Any]] = Field(None, description="SLO configuration")
 	quant_config: Optional[Dict[str, Any]] = Field(None, description="Quantization configuration")
 	parallel_config: Optional[Dict[str, Any]] = Field(None, description="Parallel execution configuration")
-	clusterbasemodel_config: Optional[Dict[str, Any]] = Field(None, description="ClusterBaseModel preset or custom config (OME mode)")
-	clusterservingruntime_config: Optional[Dict[str, Any]] = Field(None, description="ClusterServingRuntime preset or custom config (OME mode)")
+	clusterbasemodel_config: Optional[Dict[str, Any]] = Field(
+		None, description="ClusterBaseModel preset or custom config (OME mode)"
+	)
+	clusterservingruntime_config: Optional[Dict[str, Any]] = Field(
+		None, description="ClusterServingRuntime preset or custom config (OME mode)"
+	)
 	deployment_mode: str = Field(default_factory=lambda: DEFAULT_DEPLOYMENT_MODE, description="Deployment mode")
 
 
@@ -98,8 +102,6 @@ class TaskResponse(BaseModel):
 	completed_at: Optional[datetime]
 	elapsed_time: Optional[float]
 
-
-
 	# Datetime serializers to add 'Z' suffix for UTC timezone
 	@field_serializer('created_at', 'started_at', 'completed_at', when_used='json')
 	def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
@@ -124,8 +126,6 @@ class TaskListResponse(BaseModel):
 	created_at: datetime
 	elapsed_time: Optional[float]
 	slo: Optional[Dict[str, Any]] = Field(None, alias="slo_config", serialization_alias="slo")
-
-
 
 	# Datetime serializers to add 'Z' suffix for UTC timezone
 	@field_serializer('created_at', when_used='json')
@@ -156,8 +156,6 @@ class ExperimentResponse(BaseModel):
 	started_at: Optional[datetime]
 	completed_at: Optional[datetime]
 	elapsed_time: Optional[float]
-
-
 
 	# Datetime serializers to add 'Z' suffix for UTC timezone
 	@field_serializer('created_at', 'started_at', 'completed_at', when_used='json')

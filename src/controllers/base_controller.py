@@ -54,7 +54,9 @@ class BaseModelController(ABC):
 		"""
 		return parse_parallel_config(parameters)
 
-	def _select_gpus_intelligent(self, num_gpus: int, min_memory_mb: int = 8000, log_prefix: str = "") -> Optional[Dict[str, Any]]:
+	def _select_gpus_intelligent(
+		self, num_gpus: int, min_memory_mb: int = 8000, log_prefix: str = ""
+	) -> Optional[Dict[str, Any]]:
 		"""
 		Intelligent GPU selection with fallback logic.
 
@@ -80,19 +82,12 @@ class BaseModelController(ABC):
 			return {
 				"device_ids": [str(i) for i in range(num_gpus)],
 				"gpu_model": "Unknown",
-				"gpu_info": {
-					"count": num_gpus,
-					"indices": list(range(num_gpus)),
-					"allocation_method": "fallback"
-				}
+				"gpu_info": {"count": num_gpus, "indices": list(range(num_gpus)), "allocation_method": "fallback"},
 			}
 
 		# Use intelligent GPU allocation
 		try:
-			allocated_gpus, success = gpu_monitor.allocate_gpus(
-				count=num_gpus,
-				min_memory_mb=min_memory_mb
-			)
+			allocated_gpus, success = gpu_monitor.allocate_gpus(count=num_gpus, min_memory_mb=min_memory_mb)
 
 			if not success or len(allocated_gpus) < num_gpus:
 				print(f"{log_prefix} Could not allocate {num_gpus} GPU(s) with {min_memory_mb}MB free memory")
@@ -116,26 +111,30 @@ class BaseModelController(ABC):
 			gpu_model = None
 			for gpu in snapshot.gpus:
 				if gpu.index in allocated_gpus:
-					gpu_details.append({
-						"index": gpu.index,
-						"name": gpu.name,
-						"uuid": gpu.uuid,
-						"memory_total_mb": gpu.memory_total_mb,
-						"memory_free_mb": gpu.memory_free_mb,
-						"memory_usage_percent": gpu.memory_usage_percent,
-						"utilization_percent": gpu.utilization_percent,
-						"temperature_c": gpu.temperature_c,
-						"power_draw_w": gpu.power_draw_w,
-						"availability_score": gpu.score
-					})
+					gpu_details.append(
+						{
+							"index": gpu.index,
+							"name": gpu.name,
+							"uuid": gpu.uuid,
+							"memory_total_mb": gpu.memory_total_mb,
+							"memory_free_mb": gpu.memory_free_mb,
+							"memory_usage_percent": gpu.memory_usage_percent,
+							"utilization_percent": gpu.utilization_percent,
+							"temperature_c": gpu.temperature_c,
+							"power_draw_w": gpu.power_draw_w,
+							"availability_score": gpu.score,
+						}
+					)
 					if gpu_model is None:
 						gpu_model = gpu.name
 
 			print(f"{log_prefix} Selected GPUs: {allocated_gpus}")
 			print(f"{log_prefix} GPU Model: {gpu_model}")
 			for detail in gpu_details:
-				print(f"{log_prefix}   GPU {detail['index']}: {detail['memory_free_mb']}/{detail['memory_total_mb']}MB free, "
-					  f"{detail['utilization_percent']}% utilized, Score: {detail['availability_score']:.2f}")
+				print(
+					f"{log_prefix}   GPU {detail['index']}: {detail['memory_free_mb']}/{detail['memory_total_mb']}MB free, "
+					f"{detail['utilization_percent']}% utilized, Score: {detail['availability_score']:.2f}"
+				)
 
 			return {
 				"device_ids": [str(idx) for idx in allocated_gpus],
@@ -145,8 +144,8 @@ class BaseModelController(ABC):
 					"indices": allocated_gpus,
 					"allocation_method": "intelligent",
 					"details": gpu_details,
-					"allocated_at": snapshot.timestamp.isoformat()
-				}
+					"allocated_at": snapshot.timestamp.isoformat(),
+				},
 			}
 
 		except Exception as e:
@@ -160,8 +159,8 @@ class BaseModelController(ABC):
 				"gpu_info": {
 					"count": num_gpus,
 					"indices": list(range(num_gpus)),
-					"allocation_method": "fallback_error"
-				}
+					"allocation_method": "fallback_error",
+				},
 			}
 
 	@abstractmethod

@@ -69,8 +69,7 @@ def generate_parameter_grid(parameter_spec: Dict[str, Any]) -> List[Dict[str, An
 
 
 def calculate_slo_penalty(
-	metrics: Dict[str, Any],
-	slo_config: Optional[Dict[str, Any]] = None
+	metrics: Dict[str, Any], slo_config: Optional[Dict[str, Any]] = None
 ) -> Tuple[float, bool, Dict[str, Any]]:
 	"""Calculate SLO penalty with exponential curve near boundaries.
 
@@ -140,7 +139,7 @@ def calculate_slo_penalty(
 					"threshold": threshold,
 					"actual": actual_value,
 					"violation_ratio": violation_ratio,
-					"severity": "HARD_FAIL"
+					"severity": "HARD_FAIL",
 				}
 			else:
 				# Calculate exponential penalty
@@ -155,7 +154,7 @@ def calculate_slo_penalty(
 					"actual": actual_value,
 					"violation_ratio": violation_ratio,
 					"penalty": penalty,
-					"severity": severity
+					"severity": severity,
 				}
 
 	# Process TTFT SLO
@@ -178,7 +177,7 @@ def calculate_slo_penalty(
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"severity": "HARD_FAIL"
+						"severity": "HARD_FAIL",
 					}
 				else:
 					penalty = weight * math.exp(violation_ratio / steepness)
@@ -190,7 +189,7 @@ def calculate_slo_penalty(
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
 						"penalty": penalty,
-						"severity": severity
+						"severity": severity,
 					}
 
 	# Process TPOT SLO
@@ -213,7 +212,7 @@ def calculate_slo_penalty(
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"severity": "HARD_FAIL"
+						"severity": "HARD_FAIL",
 					}
 				else:
 					penalty = weight * math.exp(violation_ratio / steepness)
@@ -225,7 +224,7 @@ def calculate_slo_penalty(
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
 						"penalty": penalty,
-						"severity": severity
+						"severity": severity,
 					}
 
 	# Calculate final penalty multiplier
@@ -235,8 +234,9 @@ def calculate_slo_penalty(
 	return penalty_multiplier, is_hard_failure, violation_details
 
 
-
-def check_batch_slo_compliance(batch_metrics: Dict[str, Any], slo_config: Optional[Dict[str, Any]] = None) -> Tuple[bool, Dict[str, Any]]:
+def check_batch_slo_compliance(
+	batch_metrics: Dict[str, Any], slo_config: Optional[Dict[str, Any]] = None
+) -> Tuple[bool, Dict[str, Any]]:
 	"""Check if a single batch (concurrency level) meets SLO requirements.
 
 	This is used to filter out batches that violate SLO constraints before aggregation.
@@ -294,7 +294,7 @@ def check_batch_slo_compliance(batch_metrics: Dict[str, Any], slo_config: Option
 					"threshold": threshold,
 					"actual": actual_value,
 					"violation_ratio": violation_ratio,
-					"type": "HARD_FAIL"
+					"type": "HARD_FAIL",
 				}
 			else:
 				# Soft violation - still compliant, but log it
@@ -302,7 +302,7 @@ def check_batch_slo_compliance(batch_metrics: Dict[str, Any], slo_config: Option
 					"threshold": threshold,
 					"actual": actual_value,
 					"violation_ratio": violation_ratio,
-					"type": "SOFT_VIOLATION"
+					"type": "SOFT_VIOLATION",
 				}
 
 	# Check TTFT SLO
@@ -325,14 +325,14 @@ def check_batch_slo_compliance(batch_metrics: Dict[str, Any], slo_config: Option
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"type": "HARD_FAIL"
+						"type": "HARD_FAIL",
 					}
 				else:
 					violation_details["ttft"] = {
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"type": "SOFT_VIOLATION"
+						"type": "SOFT_VIOLATION",
 					}
 
 	# Check TPOT SLO
@@ -355,20 +355,22 @@ def check_batch_slo_compliance(batch_metrics: Dict[str, Any], slo_config: Option
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"type": "HARD_FAIL"
+						"type": "HARD_FAIL",
 					}
 				else:
 					violation_details["tpot"] = {
 						"threshold": threshold,
 						"actual": actual_value,
 						"violation_ratio": violation_ratio,
-						"type": "SOFT_VIOLATION"
+						"type": "SOFT_VIOLATION",
 					}
 
 	return is_compliant, violation_details
 
 
-def calculate_objective_score(results: Dict[str, Any], objective: str = "minimize_latency", slo_config: Optional[Dict[str, Any]] = None) -> float:
+def calculate_objective_score(
+	results: Dict[str, Any], objective: str = "minimize_latency", slo_config: Optional[Dict[str, Any]] = None
+) -> float:
 	"""Calculate objective score from benchmark results with optional SLO penalties.
 
 	Args:
@@ -443,7 +445,9 @@ def calculate_objective_score(results: Dict[str, Any], objective: str = "minimiz
 				print(f"[Optimizer] HARD SLO FAILURE detected:")
 				for metric, details in violation_details.items():
 					if details.get("severity") == "HARD_FAIL":
-						print(f"  {metric}: {details['actual']:.4f} >> {details['threshold']:.4f} (violation: {details['violation_ratio']*100:.1f}%)")
+						print(
+							f"  {metric}: {details['actual']:.4f} >> {details['threshold']:.4f} (violation: {details['violation_ratio']*100:.1f}%)"
+						)
 				return float("inf") if "minimize" in objective else float("-inf")
 
 			# NOTE: Batch-level SLO filtering already handles hard failures and filtering.
@@ -465,12 +469,16 @@ def calculate_objective_score(results: Dict[str, Any], objective: str = "minimiz
 					# base_score is positive, adding penalty makes it larger (worse)
 					final_score = base_score + penalty_value
 
-				print(f"[Optimizer] Base score: {base_score:.4f}, SLO penalty: +{penalty_value:.2f}, Final: {final_score:.4f}")
+				print(
+					f"[Optimizer] Base score: {base_score:.4f}, SLO penalty: +{penalty_value:.2f}, Final: {final_score:.4f}"
+				)
 				if violation_details:
 					print(f"[Optimizer] SLO violations detected:")
 					for metric, details in violation_details.items():
-						print(f"  {metric}: {details['actual']:.4f} > {details['threshold']:.4f} "
-						      f"(+{details['violation_ratio']*100:.1f}%, penalty: +{details['penalty']:.2f}, severity: {details['severity']})")
+						print(
+							f"  {metric}: {details['actual']:.4f} > {details['threshold']:.4f} "
+							f"(+{details['violation_ratio']*100:.1f}%, penalty: +{details['penalty']:.2f}, severity: {details['severity']})"
+						)
 				return final_score
 			else:
 				print(f"[Optimizer] Score: {base_score:.4f} (no SLO violations)")
@@ -561,7 +569,9 @@ class OptimizationStrategy(ABC):
 class GridSearchStrategy(OptimizationStrategy):
 	"""Grid search optimization - exhaustive evaluation of all combinations."""
 
-	def __init__(self, parameter_spec: Dict[str, Any], objective: str = "minimize_latency", max_iterations: Optional[int] = None):
+	def __init__(
+		self, parameter_spec: Dict[str, Any], objective: str = "minimize_latency", max_iterations: Optional[int] = None
+	):
 		"""Initialize grid search strategy.
 
 		Args:
@@ -592,11 +602,7 @@ class GridSearchStrategy(OptimizationStrategy):
 
 	def tell_result(self, parameters: Dict[str, Any], objective_score: float, metrics: Dict[str, Any]):
 		"""Record result (grid search doesn't adapt)."""
-		self.history.append({
-			"parameters": parameters,
-			"objective_score": objective_score,
-			"metrics": metrics
-		})
+		self.history.append({"parameters": parameters, "objective_score": objective_score, "metrics": metrics})
 		print(f"[GridSearch] Recorded result: score={objective_score:.4f}")
 
 	def should_stop(self) -> bool:
@@ -606,11 +612,13 @@ class GridSearchStrategy(OptimizationStrategy):
 	def get_state(self) -> Dict[str, Any]:
 		"""Serialize GridSearch state for checkpoint."""
 		base_state = super().get_state()
-		base_state.update({
-			"strategy_class": "GridSearchStrategy",
-			"current_index": self.current_index,
-			"param_grid": self.param_grid,
-		})
+		base_state.update(
+			{
+				"strategy_class": "GridSearchStrategy",
+				"current_index": self.current_index,
+				"param_grid": self.param_grid,
+			}
+		)
 		return base_state
 
 	@classmethod
@@ -620,7 +628,7 @@ class GridSearchStrategy(OptimizationStrategy):
 		strategy = cls(
 			parameter_spec=state["parameter_spec"],
 			objective=state["objective"],
-			max_iterations=None  # Already limited in param_grid
+			max_iterations=None,  # Already limited in param_grid
 		)
 		# Restore state
 		strategy.current_index = state["current_index"]
@@ -639,7 +647,7 @@ class BayesianStrategy(OptimizationStrategy):
 		max_iterations: int = 100,
 		n_initial_random: int = 5,
 		study_name: Optional[str] = None,
-		storage: Optional[str] = None
+		storage: Optional[str] = None,
 	):
 		"""Initialize Bayesian optimization strategy.
 
@@ -671,7 +679,7 @@ class BayesianStrategy(OptimizationStrategy):
 			sampler=sampler,
 			study_name=study_name or f"autotuner_{objective}",
 			storage=storage,
-			load_if_exists=True  # Resume if study exists
+			load_if_exists=True,  # Resume if study exists
 		)
 
 		print(f"[Bayesian] Initialized with {len(self.search_space)} parameters")
@@ -698,10 +706,7 @@ class BayesianStrategy(OptimizationStrategy):
 				# Skip empty lists (no values to search)
 				if len(spec) == 0:
 					continue
-				search_space[param_name] = {
-					"type": "categorical",
-					"choices": spec
-				}
+				search_space[param_name] = {"type": "categorical", "choices": spec}
 			elif isinstance(spec, dict):
 				param_type = spec.get("type", "categorical")
 
@@ -711,17 +716,14 @@ class BayesianStrategy(OptimizationStrategy):
 					# Skip empty value lists
 					if len(values) == 0:
 						continue
-					search_space[param_name] = {
-						"type": "categorical",
-						"choices": values
-					}
+					search_space[param_name] = {"type": "categorical", "choices": values}
 				elif param_type == "continuous":
 					# Continuous (float) parameter
 					search_space[param_name] = {
 						"type": "continuous",
 						"low": spec["low"],
 						"high": spec["high"],
-						"log": spec.get("log", False)  # Log scale for parameters like learning rate
+						"log": spec.get("log", False),  # Log scale for parameters like learning rate
 					}
 				elif param_type == "integer":
 					# Integer parameter
@@ -729,7 +731,7 @@ class BayesianStrategy(OptimizationStrategy):
 						"type": "integer",
 						"low": spec["low"],
 						"high": spec["high"],
-						"log": spec.get("log", False)
+						"log": spec.get("log", False),
 					}
 				else:
 					raise ValueError(f"Unsupported parameter type: {param_type}")
@@ -759,17 +761,11 @@ class BayesianStrategy(OptimizationStrategy):
 				params[param_name] = trial.suggest_categorical(param_name, space_def["choices"])
 			elif space_def["type"] == "continuous":
 				params[param_name] = trial.suggest_float(
-					param_name,
-					space_def["low"],
-					space_def["high"],
-					log=space_def.get("log", False)
+					param_name, space_def["low"], space_def["high"], log=space_def.get("log", False)
 				)
 			elif space_def["type"] == "integer":
 				params[param_name] = trial.suggest_int(
-					param_name,
-					space_def["low"],
-					space_def["high"],
-					log=space_def.get("log", False)
+					param_name, space_def["low"], space_def["high"], log=space_def.get("log", False)
 				)
 
 		# Create hashable representation for duplicate checking
@@ -863,11 +859,7 @@ class BayesianStrategy(OptimizationStrategy):
 		self.study.tell(self.current_trial, objective_score)
 
 		# Record in history
-		self.history.append({
-			"parameters": parameters,
-			"objective_score": objective_score,
-			"metrics": metrics
-		})
+		self.history.append({"parameters": parameters, "objective_score": objective_score, "metrics": metrics})
 
 		# Print progress
 		best_score = self.study.best_value
@@ -898,13 +890,15 @@ class BayesianStrategy(OptimizationStrategy):
 	def get_state(self) -> Dict[str, Any]:
 		"""Serialize Bayesian state for checkpoint."""
 		base_state = super().get_state()
-		base_state.update({
-			"strategy_class": "BayesianStrategy",
-			"trial_count": self.trial_count,
-			"max_iterations": self.max_iterations,
-			"n_initial_random": self.n_initial_random,
-			"tried_params": [list(p) for p in self.tried_params],  # Convert tuples to lists for JSON serialization
-		})
+		base_state.update(
+			{
+				"strategy_class": "BayesianStrategy",
+				"trial_count": self.trial_count,
+				"max_iterations": self.max_iterations,
+				"n_initial_random": self.n_initial_random,
+				"tried_params": [list(p) for p in self.tried_params],  # Convert tuples to lists for JSON serialization
+			}
+		)
 		return base_state
 
 	@classmethod
@@ -953,7 +947,7 @@ class RandomSearchStrategy(OptimizationStrategy):
 		parameter_spec: Dict[str, Any],
 		objective: str = "minimize_latency",
 		max_iterations: int = 100,
-		seed: Optional[int] = None
+		seed: Optional[int] = None,
 	):
 		"""Initialize random search strategy.
 
@@ -969,14 +963,13 @@ class RandomSearchStrategy(OptimizationStrategy):
 
 		# Use Optuna's RandomSampler for convenience
 		import random
+
 		if seed is not None:
 			random.seed(seed)
 
 		sampler = optuna.samplers.RandomSampler(seed=seed)
 		self.study = optuna.create_study(
-			direction="minimize",
-			sampler=sampler,
-			study_name=f"autotuner_random_{objective}"
+			direction="minimize", sampler=sampler, study_name=f"autotuner_random_{objective}"
 		)
 
 		# Parse search space (reuse BayesianStrategy's parser)
@@ -1002,17 +995,11 @@ class RandomSearchStrategy(OptimizationStrategy):
 				params[param_name] = trial.suggest_categorical(param_name, space_def["choices"])
 			elif space_def["type"] == "continuous":
 				params[param_name] = trial.suggest_float(
-					param_name,
-					space_def["low"],
-					space_def["high"],
-					log=space_def.get("log", False)
+					param_name, space_def["low"], space_def["high"], log=space_def.get("log", False)
 				)
 			elif space_def["type"] == "integer":
 				params[param_name] = trial.suggest_int(
-					param_name,
-					space_def["low"],
-					space_def["high"],
-					log=space_def.get("log", False)
+					param_name, space_def["low"], space_def["high"], log=space_def.get("log", False)
 				)
 
 		print(f"[Random] Sample {self.trial_count}/{self.max_iterations}: {params}")
@@ -1021,11 +1008,7 @@ class RandomSearchStrategy(OptimizationStrategy):
 	def tell_result(self, parameters: Dict[str, Any], objective_score: float, metrics: Dict[str, Any]):
 		"""Record result."""
 		self.study.tell(self.current_trial, objective_score)
-		self.history.append({
-			"parameters": parameters,
-			"objective_score": objective_score,
-			"metrics": metrics
-		})
+		self.history.append({"parameters": parameters, "objective_score": objective_score, "metrics": metrics})
 
 	def should_stop(self) -> bool:
 		"""Stop after max iterations."""
@@ -1034,11 +1017,13 @@ class RandomSearchStrategy(OptimizationStrategy):
 	def get_state(self) -> Dict[str, Any]:
 		"""Serialize Random state for checkpoint."""
 		base_state = super().get_state()
-		base_state.update({
-			"strategy_class": "RandomSearchStrategy",
-			"trial_count": self.trial_count,
-			"max_iterations": self.max_iterations,
-		})
+		base_state.update(
+			{
+				"strategy_class": "RandomSearchStrategy",
+				"trial_count": self.trial_count,
+				"max_iterations": self.max_iterations,
+			}
+		)
 		return base_state
 
 	@classmethod
@@ -1060,8 +1045,7 @@ class RandomSearchStrategy(OptimizationStrategy):
 
 
 def create_optimization_strategy(
-	optimization_config: Dict[str, Any],
-	parameter_spec: Dict[str, Any]
+	optimization_config: Dict[str, Any], parameter_spec: Dict[str, Any]
 ) -> OptimizationStrategy:
 	"""Factory function to create optimization strategy.
 
@@ -1078,11 +1062,7 @@ def create_optimization_strategy(
 	max_iterations = optimization_config.get("max_iterations", 100)
 
 	if strategy_name == "grid_search":
-		return GridSearchStrategy(
-			parameter_spec=parameter_spec,
-			objective=objective,
-			max_iterations=max_iterations
-		)
+		return GridSearchStrategy(parameter_spec=parameter_spec, objective=objective, max_iterations=max_iterations)
 
 	elif strategy_name == "bayesian":
 		n_initial_random = optimization_config.get("n_initial_random", 5)
@@ -1095,23 +1075,19 @@ def create_optimization_strategy(
 			max_iterations=max_iterations,
 			n_initial_random=n_initial_random,
 			study_name=study_name,
-			storage=storage
+			storage=storage,
 		)
 
 	elif strategy_name == "random":
 		seed = optimization_config.get("seed")
 
 		return RandomSearchStrategy(
-			parameter_spec=parameter_spec,
-			objective=objective,
-			max_iterations=max_iterations,
-			seed=seed
+			parameter_spec=parameter_spec, objective=objective, max_iterations=max_iterations, seed=seed
 		)
 
 	else:
 		raise ValueError(
-			f"Unsupported optimization strategy: {strategy_name}. "
-			f"Supported: grid_search, bayesian, random"
+			f"Unsupported optimization strategy: {strategy_name}. " f"Supported: grid_search, bayesian, random"
 		)
 
 

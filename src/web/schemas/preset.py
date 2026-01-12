@@ -13,13 +13,16 @@ class PresetBase(BaseModel):
 	name: str = Field(..., min_length=1, max_length=255, description="Unique preset name")
 	description: Optional[str] = Field(None, description="Preset description")
 	category: Optional[str] = Field(None, description="Preset category (e.g., performance, memory, custom)")
-	runtime: Optional[Literal["sglang", "vllm"]] = Field(None, description="Target runtime (sglang, vllm, or None for universal)")
+	runtime: Optional[Literal["sglang", "vllm"]] = Field(
+		None, description="Target runtime (sglang, vllm, or None for universal)"
+	)
 	parameters: Dict[str, Any] = Field(..., description="Parameter configuration")
 	metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class PresetCreate(PresetBase):
 	"""Schema for creating a new preset."""
+
 	pass
 
 
@@ -69,7 +72,9 @@ class PresetMergeRequest(BaseModel):
 	"""Schema for merging multiple presets."""
 
 	preset_ids: List[int] = Field(..., min_items=1, description="List of preset IDs to merge")
-	merge_strategy: str = Field(default="union", pattern="^(union|intersection|last_wins)$", description="Merge strategy")
+	merge_strategy: str = Field(
+		default="union", pattern="^(union|intersection|last_wins)$", description="Merge strategy"
+	)
 
 
 class PresetMergeResponse(BaseModel):

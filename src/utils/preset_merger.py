@@ -19,8 +19,7 @@ class PresetMerger:
 
 	@staticmethod
 	def merge_parameters(
-		presets: List[Dict[str, Any]],
-		strategy: MergeStrategy = MergeStrategy.UNION
+		presets: List[Dict[str, Any]], strategy: MergeStrategy = MergeStrategy.UNION
 	) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
 		"""
 		Merge multiple parameter presets.
@@ -118,10 +117,7 @@ class PresetMerger:
 				merged[param_name] = sorted(list(common_values))
 			else:
 				# Track conflict: parameter exists but no common values
-				conflicts.append({
-					"parameter": param_name,
-					"reason": "No common values across all presets"
-				})
+				conflicts.append({"parameter": param_name, "reason": "No common values across all presets"})
 
 		return merged, conflicts
 
@@ -143,12 +139,14 @@ class PresetMerger:
 			for param_name, values in parameters.items():
 				if param_name in merged:
 					# Track conflict
-					conflicts.append({
-						"parameter": param_name,
-						"overridden_by": preset.get("name", "unknown"),
-						"previous_values": merged[param_name],
-						"new_values": values if isinstance(values, list) else [values]
-					})
+					conflicts.append(
+						{
+							"parameter": param_name,
+							"overridden_by": preset.get("name", "unknown"),
+							"previous_values": merged[param_name],
+							"new_values": values if isinstance(values, list) else [values],
+						}
+					)
 
 				merged[param_name] = values if isinstance(values, list) else [values]
 

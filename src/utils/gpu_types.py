@@ -12,120 +12,122 @@ from typing import Optional, List, Dict, Any
 
 @dataclass
 class LocalGPUInfo:
-    """
-    GPU information for local machine (nvidia-smi output).
-    
-    Used by gpu_monitor.py for single-machine GPU allocation.
-    """
-    index: int
-    uuid: str
-    name: str
-    memory_total_mb: int
-    memory_free_mb: int
-    memory_used_mb: int
-    utilization_gpu: int
-    utilization_memory: float
-    temperature: Optional[int] = None
-    power_draw: Optional[float] = None
-    power_limit: Optional[float] = None
-    compute_mode: Optional[str] = None
-    processes: List[dict] = field(default_factory=list)
+	"""
+	GPU information for local machine (nvidia-smi output).
 
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+	Used by gpu_monitor.py for single-machine GPU allocation.
+	"""
 
-    @property
-    def score(self) -> float:
-        """
-        Selection score for GPU allocation.
+	index: int
+	uuid: str
+	name: str
+	memory_total_mb: int
+	memory_free_mb: int
+	memory_used_mb: int
+	utilization_gpu: int
+	utilization_memory: float
+	temperature: Optional[int] = None
+	power_draw: Optional[float] = None
+	power_limit: Optional[float] = None
+	compute_mode: Optional[str] = None
+	processes: List[dict] = field(default_factory=list)
 
-        Prefers GPUs with:
-        - More free memory
-        - Lower utilization
-        - Fewer running processes
-        """
-        memory_score = self.memory_free_mb / max(self.memory_total_mb, 1)
-        utilization_score = (100 - self.utilization_gpu) / 100
-        process_penalty = len(self.processes) * 0.1
+	def to_dict(self) -> Dict[str, Any]:
+		return asdict(self)
 
-        return memory_score * 0.6 + utilization_score * 0.3 - process_penalty
+	@property
+	def score(self) -> float:
+		"""
+		Selection score for GPU allocation.
 
-    # Compatibility properties for code that uses different names
-    @property
-    def utilization_percent(self) -> int:
-        """Alias for utilization_gpu for backward compatibility."""
-        return self.utilization_gpu
+		Prefers GPUs with:
+		- More free memory
+		- Lower utilization
+		- Fewer running processes
+		"""
+		memory_score = self.memory_free_mb / max(self.memory_total_mb, 1)
+		utilization_score = (100 - self.utilization_gpu) / 100
+		process_penalty = len(self.processes) * 0.1
 
-    @property
-    def memory_usage_percent(self) -> float:
-        """Calculate memory usage percentage."""
-        if self.memory_total_mb <= 0:
-            return 0.0
-        return (self.memory_used_mb / self.memory_total_mb) * 100
+		return memory_score * 0.6 + utilization_score * 0.3 - process_penalty
 
-    @property
-    def temperature_c(self) -> Optional[int]:
-        """Alias for temperature for backward compatibility."""
-        return self.temperature
+	# Compatibility properties for code that uses different names
+	@property
+	def utilization_percent(self) -> int:
+		"""Alias for utilization_gpu for backward compatibility."""
+		return self.utilization_gpu
 
-    @property
-    def power_draw_w(self) -> Optional[float]:
-        """Alias for power_draw for backward compatibility."""
-        return self.power_draw
+	@property
+	def memory_usage_percent(self) -> float:
+		"""Calculate memory usage percentage."""
+		if self.memory_total_mb <= 0:
+			return 0.0
+		return (self.memory_used_mb / self.memory_total_mb) * 100
 
-    @property
-    def is_available(self) -> bool:
-        """Check if GPU is available for allocation."""
-        # Consider GPU available if not in exclusive mode or has no processes
-        if self.compute_mode in ["Exclusive_Process", "Exclusive_Thread"]:
-            return len(self.processes) == 0
-        return True
+	@property
+	def temperature_c(self) -> Optional[int]:
+		"""Alias for temperature for backward compatibility."""
+		return self.temperature
+
+	@property
+	def power_draw_w(self) -> Optional[float]:
+		"""Alias for power_draw for backward compatibility."""
+		return self.power_draw
+
+	@property
+	def is_available(self) -> bool:
+		"""Check if GPU is available for allocation."""
+		# Consider GPU available if not in exclusive mode or has no processes
+		if self.compute_mode in ["Exclusive_Process", "Exclusive_Thread"]:
+			return len(self.processes) == 0
+		return True
 
 
 @dataclass
 class ClusterGPUInfo:
-    """
-    GPU information for Kubernetes cluster nodes.
-    
-    Used by gpu_discovery.py for cluster-wide GPU discovery and allocation.
-    """
-    node_name: str
-    gpu_index: int
-    gpu_model: str
-    memory_total_mb: int
-    memory_free_mb: int
-    memory_used_mb: int
-    utilization_gpu: int
-    has_metrics: bool
-    allocatable: bool = True  # Whether GPU is available for allocation
-    pod_name: Optional[str] = None  # Current pod using this GPU (if any)
-    namespace: Optional[str] = None
+	"""
+	GPU information for Kubernetes cluster nodes.
 
-    @property
-    def index(self) -> int:
-        return self.gpu_index
+	Used by gpu_discovery.py for cluster-wide GPU discovery and allocation.
+	"""
 
-    @property
-    def name(self) -> str:
-        return self.gpu_model
+	node_name: str
+	gpu_index: int
+	gpu_model: str
+	memory_total_mb: int
+	memory_free_mb: int
+	memory_used_mb: int
+	utilization_gpu: int
+	has_metrics: bool
+	allocatable: bool = True  # Whether GPU is available for allocation
+	pod_name: Optional[str] = None  # Current pod using this GPU (if any)
+	namespace: Optional[str] = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+	@property
+	def index(self) -> int:
+		return self.gpu_index
 
-    @property
-    def score(self) -> float:
-        """
-        Selection score for GPU allocation.
-        
-        Similar to LocalGPUInfo but considers cluster-specific factors.
-        """
-        if not self.allocatable or not self.has_metrics:
-            return -1.0  # Not suitable for allocation
+	@property
+	def name(self) -> str:
+		return self.gpu_model
 
-        memory_score = self.memory_free_mb / max(self.memory_total_mb, 1)
-        utilization_score = (100 - self.utilization_gpu) / 100
-        
-        return memory_score * 0.7 + utilization_score * 0.3
+	def to_dict(self) -> Dict[str, Any]:
+		return asdict(self)
+
+	@property
+	def score(self) -> float:
+		"""
+		Selection score for GPU allocation.
+
+		Similar to LocalGPUInfo but considers cluster-specific factors.
+		"""
+		if not self.allocatable or not self.has_metrics:
+			return -1.0  # Not suitable for allocation
+
+		memory_score = self.memory_free_mb / max(self.memory_total_mb, 1)
+		utilization_score = (100 - self.utilization_gpu) / 100
+
+		return memory_score * 0.7 + utilization_score * 0.3
 
 
 # Type aliases for backward compatibility
@@ -135,41 +137,41 @@ GPUInfo = LocalGPUInfo  # Default to local for backward compatibility
 
 
 def is_gpu_available(gpu: LocalGPUInfo, min_memory_mb: int = 0) -> bool:
-    """
-    Check if a GPU is available for allocation.
-    
-    Args:
-        gpu: GPU information
-        min_memory_mb: Minimum free memory required (MB)
-        
-    Returns:
-        True if GPU has sufficient free memory and is not in exclusive mode
-    """
-    if gpu.memory_free_mb < min_memory_mb:
-        return False
-        
-    # Check if GPU is in exclusive compute mode (only one process allowed)
-    if gpu.compute_mode in ["Exclusive_Process", "Exclusive_Thread"]:
-        # Only available if no processes are running
-        return len(gpu.processes) == 0
-        
-    return True
+	"""
+	Check if a GPU is available for allocation.
+
+	Args:
+	    gpu: GPU information
+	    min_memory_mb: Minimum free memory required (MB)
+
+	Returns:
+	    True if GPU has sufficient free memory and is not in exclusive mode
+	"""
+	if gpu.memory_free_mb < min_memory_mb:
+		return False
+
+	# Check if GPU is in exclusive compute mode (only one process allowed)
+	if gpu.compute_mode in ["Exclusive_Process", "Exclusive_Thread"]:
+		# Only available if no processes are running
+		return len(gpu.processes) == 0
+
+	return True
 
 
 def is_cluster_gpu_available(gpu: ClusterGPUInfo, min_memory_mb: int = 0) -> bool:
-    """
-    Check if a cluster GPU is available for allocation.
-    
-    Args:
-        gpu: Cluster GPU information
-        min_memory_mb: Minimum free memory required (MB)
-        
-    Returns:
-        True if GPU is allocatable, has metrics, and meets memory requirement
-    """
-    return (
-        gpu.allocatable
-        and gpu.has_metrics
-        and gpu.memory_free_mb >= min_memory_mb
-        and gpu.pod_name is None  # Not currently allocated
-    )
+	"""
+	Check if a cluster GPU is available for allocation.
+
+	Args:
+	    gpu: Cluster GPU information
+	    min_memory_mb: Minimum free memory required (MB)
+
+	Returns:
+	    True if GPU is allocatable, has metrics, and meets memory requirement
+	"""
+	return (
+		gpu.allocatable
+		and gpu.has_metrics
+		and gpu.memory_free_mb >= min_memory_mb
+		and gpu.pod_name is None  # Not currently allocated
+	)

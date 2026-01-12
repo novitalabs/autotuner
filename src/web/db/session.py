@@ -17,8 +17,8 @@ engine = create_async_engine(
 	future=True,
 	connect_args={
 		"check_same_thread": False,  # Allow SQLite to work across threads
-		"timeout": 30,                # 30-second timeout for lock acquisition
-	}
+		"timeout": 30,  # 30-second timeout for lock acquisition
+	},
 )
 
 # Create async session factory

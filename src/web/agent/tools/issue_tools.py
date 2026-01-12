@@ -85,33 +85,39 @@ async def search_known_issues(query: str) -> str:
 	cached_results = _search_cache(query, cache)
 
 	if cached_results:
-		return json.dumps({
-			"success": True,
-			"source": "cache",
-			"count": len(cached_results),
-			"issues": [
-				{
-					"number": i.get("number"),
-					"title": i.get("title"),
-					"state": i.get("state"),
-					"labels": i.get("labels", []),
-					"url": i.get("url"),
-					"created_at": i.get("created_at")
-				}
-				for i in cached_results[:10]  # Limit to 10 results
-			],
-			"cache_updated": cache.get("last_updated")
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": True,
+				"source": "cache",
+				"count": len(cached_results),
+				"issues": [
+					{
+						"number": i.get("number"),
+						"title": i.get("title"),
+						"state": i.get("state"),
+						"labels": i.get("labels", []),
+						"url": i.get("url"),
+						"created_at": i.get("created_at"),
+					}
+					for i in cached_results[:10]  # Limit to 10 results
+				],
+				"cache_updated": cache.get("last_updated"),
+			},
+			indent=2,
+		)
 
 	# If no cached results and repo is configured, search GitHub
 	if not settings.gh_repo:
-		return json.dumps({
-			"success": True,
-			"source": "cache",
-			"count": 0,
-			"issues": [],
-			"message": "No matching issues in cache. GH_REPO not configured for GitHub search."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": True,
+				"source": "cache",
+				"count": 0,
+				"issues": [],
+				"message": "No matching issues in cache. GH_REPO not configured for GitHub search.",
+			},
+			indent=2,
+		)
 
 	# Search GitHub API
 	try:
@@ -121,10 +127,7 @@ async def search_known_issues(query: str) -> str:
 		async with httpx.AsyncClient(proxy=proxy, timeout=30.0) as client:
 			# Search issues using GitHub search API
 			search_url = f"https://api.github.com/search/issues?q={query}+repo:{settings.gh_repo}+is:issue"
-			response = await client.get(
-				search_url,
-				headers=_get_github_headers(settings.gh_token)
-			)
+			response = await client.get(search_url, headers=_get_github_headers(settings.gh_token))
 
 			if response.status_code == 200:
 				data = response.json()
@@ -136,41 +139,48 @@ async def search_known_issues(query: str) -> str:
 				cache["last_updated"] = datetime.now(timezone.utc).isoformat()
 				_save_cache(cache)
 
-				return json.dumps({
-					"success": True,
-					"source": "github",
-					"count": len(items),
-					"issues": [
-						{
-							"number": i.get("number"),
-							"title": i.get("title"),
-							"state": i.get("state"),
-							"labels": [l.get("name") for l in i.get("labels", [])],
-							"url": i.get("html_url"),
-							"created_at": i.get("created_at")
-						}
-						for i in items[:10]
-					]
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": True,
+						"source": "github",
+						"count": len(items),
+						"issues": [
+							{
+								"number": i.get("number"),
+								"title": i.get("title"),
+								"state": i.get("state"),
+								"labels": [l.get("name") for l in i.get("labels", [])],
+								"url": i.get("html_url"),
+								"created_at": i.get("created_at"),
+							}
+							for i in items[:10]
+						],
+					},
+					indent=2,
+				)
 			elif response.status_code == 403:
-				return json.dumps({
-					"success": False,
-					"error": "GitHub API rate limited. Try again later or use cached results.",
-					"cached_count": len(cache.get("issues", []))
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "GitHub API rate limited. Try again later or use cached results.",
+						"cached_count": len(cache.get("issues", [])),
+					},
+					indent=2,
+				)
 			else:
-				return json.dumps({
-					"success": False,
-					"error": f"GitHub API error: {response.status_code}",
-					"message": response.text[:200]
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"GitHub API error: {response.status_code}",
+						"message": response.text[:200],
+					},
+					indent=2,
+				)
 
 	except httpx.RequestError as e:
-		return json.dumps({
-			"success": False,
-			"error": f"Network error: {str(e)}",
-			"message": "Falling back to cache only"
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": f"Network error: {str(e)}", "message": "Falling back to cache only"}, indent=2
+		)
 
 
 def _update_cache_issue(cache: dict, github_issue: dict) -> None:
@@ -183,7 +193,7 @@ def _update_cache_issue(cache: dict, github_issue: dict) -> None:
 		"labels": [l.get("name") for l in github_issue.get("labels", [])],
 		"created_at": github_issue.get("created_at"),
 		"updated_at": github_issue.get("updated_at"),
-		"url": github_issue.get("html_url")
+		"url": github_issue.get("html_url"),
 	}
 
 	# Update existing or add new
@@ -216,18 +226,24 @@ async def create_issue(title: str, body: str, labels: Optional[str] = None) -> s
 
 	# Validate configuration
 	if not settings.gh_token:
-		return json.dumps({
-			"success": False,
-			"error": "GH_TOKEN not configured",
-			"message": "Set GH_TOKEN environment variable with a GitHub personal access token that has 'repo' scope."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "GH_TOKEN not configured",
+				"message": "Set GH_TOKEN environment variable with a GitHub personal access token that has 'repo' scope.",
+			},
+			indent=2,
+		)
 
 	if not settings.gh_repo:
-		return json.dumps({
-			"success": False,
-			"error": "GH_REPO not configured",
-			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner')."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "GH_REPO not configured",
+				"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner').",
+			},
+			indent=2,
+		)
 
 	# Parse labels
 	label_list = []
@@ -247,11 +263,7 @@ async def create_issue(title: str, body: str, labels: Optional[str] = None) -> s
 			if label_list:
 				payload["labels"] = label_list
 
-			response = await client.post(
-				create_url,
-				headers=_get_github_headers(settings.gh_token),
-				json=payload
-			)
+			response = await client.post(create_url, headers=_get_github_headers(settings.gh_token), json=payload)
 
 			if response.status_code == 201:
 				data = response.json()
@@ -263,45 +275,59 @@ async def create_issue(title: str, body: str, labels: Optional[str] = None) -> s
 				cache["last_updated"] = datetime.now(timezone.utc).isoformat()
 				_save_cache(cache)
 
-				return json.dumps({
-					"success": True,
-					"issue_number": data.get("number"),
-					"url": data.get("html_url"),
-					"title": data.get("title"),
-					"state": data.get("state"),
-					"message": f"Issue #{data.get('number')} created successfully"
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": True,
+						"issue_number": data.get("number"),
+						"url": data.get("html_url"),
+						"title": data.get("title"),
+						"state": data.get("state"),
+						"message": f"Issue #{data.get('number')} created successfully",
+					},
+					indent=2,
+				)
 			elif response.status_code == 401:
-				return json.dumps({
-					"success": False,
-					"error": "Authentication failed",
-					"message": "GH_TOKEN is invalid or expired. Generate a new token with 'repo' scope."
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "Authentication failed",
+						"message": "GH_TOKEN is invalid or expired. Generate a new token with 'repo' scope.",
+					},
+					indent=2,
+				)
 			elif response.status_code == 403:
-				return json.dumps({
-					"success": False,
-					"error": "Permission denied or rate limited",
-					"message": "Check that GH_TOKEN has write access to the repository."
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "Permission denied or rate limited",
+						"message": "Check that GH_TOKEN has write access to the repository.",
+					},
+					indent=2,
+				)
 			elif response.status_code == 404:
-				return json.dumps({
-					"success": False,
-					"error": "Repository not found",
-					"message": f"GH_REPO '{settings.gh_repo}' does not exist or token lacks access."
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "Repository not found",
+						"message": f"GH_REPO '{settings.gh_repo}' does not exist or token lacks access.",
+					},
+					indent=2,
+				)
 			else:
-				return json.dumps({
-					"success": False,
-					"error": f"GitHub API error: {response.status_code}",
-					"message": response.text[:300]
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"GitHub API error: {response.status_code}",
+						"message": response.text[:300],
+					},
+					indent=2,
+				)
 
 	except httpx.RequestError as e:
-		return json.dumps({
-			"success": False,
-			"error": f"Network error: {str(e)}",
-			"message": "Could not connect to GitHub API"
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": f"Network error: {str(e)}", "message": "Could not connect to GitHub API"},
+			indent=2,
+		)
 
 
 @tool
@@ -318,11 +344,14 @@ async def refresh_issues_cache() -> str:
 	settings = get_settings()
 
 	if not settings.gh_repo:
-		return json.dumps({
-			"success": False,
-			"error": "GH_REPO not configured",
-			"message": "Set GH_REPO environment variable to refresh cache."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "GH_REPO not configured",
+				"message": "Set GH_REPO environment variable to refresh cache.",
+			},
+			indent=2,
+		)
 
 	try:
 		proxy = settings.https_proxy or settings.http_proxy or None
@@ -335,27 +364,22 @@ async def refresh_issues_cache() -> str:
 
 			while True:
 				list_url = f"https://api.github.com/repos/{settings.gh_repo}/issues"
-				params = {
-					"state": "all",  # Get both open and closed
-					"per_page": per_page,
-					"page": page
-				}
+				params = {"state": "all", "per_page": per_page, "page": page}  # Get both open and closed
 
-				response = await client.get(
-					list_url,
-					params=params,
-					headers=_get_github_headers(settings.gh_token)
-				)
+				response = await client.get(list_url, params=params, headers=_get_github_headers(settings.gh_token))
 
 				if response.status_code != 200:
 					if response.status_code == 403:
 						# Rate limited, save what we have
 						break
-					return json.dumps({
-						"success": False,
-						"error": f"GitHub API error: {response.status_code}",
-						"message": response.text[:200]
-					}, indent=2)
+					return json.dumps(
+						{
+							"success": False,
+							"error": f"GitHub API error: {response.status_code}",
+							"message": response.text[:200],
+						},
+						indent=2,
+					)
 
 				issues = response.json()
 				if not issues:
@@ -374,11 +398,7 @@ async def refresh_issues_cache() -> str:
 					break
 
 			# Build new cache
-			cache = {
-				"last_updated": datetime.now(timezone.utc).isoformat(),
-				"repo": settings.gh_repo,
-				"issues": []
-			}
+			cache = {"last_updated": datetime.now(timezone.utc).isoformat(), "repo": settings.gh_repo, "issues": []}
 
 			for issue in all_issues:
 				_update_cache_issue(cache, issue)
@@ -388,22 +408,24 @@ async def refresh_issues_cache() -> str:
 			open_count = sum(1 for i in cache["issues"] if i.get("state") == "open")
 			closed_count = len(cache["issues"]) - open_count
 
-			return json.dumps({
-				"success": True,
-				"total_issues": len(cache["issues"]),
-				"open_issues": open_count,
-				"closed_issues": closed_count,
-				"last_updated": cache["last_updated"],
-				"repo": settings.gh_repo,
-				"message": f"Cache refreshed with {len(cache['issues'])} issues"
-			}, indent=2)
+			return json.dumps(
+				{
+					"success": True,
+					"total_issues": len(cache["issues"]),
+					"open_issues": open_count,
+					"closed_issues": closed_count,
+					"last_updated": cache["last_updated"],
+					"repo": settings.gh_repo,
+					"message": f"Cache refreshed with {len(cache['issues'])} issues",
+				},
+				indent=2,
+			)
 
 	except httpx.RequestError as e:
-		return json.dumps({
-			"success": False,
-			"error": f"Network error: {str(e)}",
-			"message": "Could not connect to GitHub API"
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": f"Network error: {str(e)}", "message": "Could not connect to GitHub API"},
+			indent=2,
+		)
 
 
 @tool
@@ -425,25 +447,29 @@ async def add_issue_comment(issue_number: int, body: str) -> str:
 
 	# Validate configuration
 	if not settings.gh_token:
-		return json.dumps({
-			"success": False,
-			"error": "GH_TOKEN not configured",
-			"message": "Set GH_TOKEN environment variable with a GitHub personal access token that has 'repo' scope."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "GH_TOKEN not configured",
+				"message": "Set GH_TOKEN environment variable with a GitHub personal access token that has 'repo' scope.",
+			},
+			indent=2,
+		)
 
 	if not settings.gh_repo:
-		return json.dumps({
-			"success": False,
-			"error": "GH_REPO not configured",
-			"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner')."
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "GH_REPO not configured",
+				"message": "Set GH_REPO environment variable in format 'owner/repo' (e.g., 'myorg/autotuner').",
+			},
+			indent=2,
+		)
 
 	if not body or not body.strip():
-		return json.dumps({
-			"success": False,
-			"error": "Empty comment body",
-			"message": "Comment body cannot be empty."
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": "Empty comment body", "message": "Comment body cannot be empty."}, indent=2
+		)
 
 	try:
 		proxy = settings.https_proxy or settings.http_proxy or None
@@ -452,53 +478,63 @@ async def add_issue_comment(issue_number: int, body: str) -> str:
 			comment_url = f"https://api.github.com/repos/{settings.gh_repo}/issues/{issue_number}/comments"
 			payload = {"body": body}
 
-			response = await client.post(
-				comment_url,
-				headers=_get_github_headers(settings.gh_token),
-				json=payload
-			)
+			response = await client.post(comment_url, headers=_get_github_headers(settings.gh_token), json=payload)
 
 			if response.status_code == 201:
 				data = response.json()
-				return json.dumps({
-					"success": True,
-					"comment_id": data.get("id"),
-					"url": data.get("html_url"),
-					"issue_number": issue_number,
-					"created_at": data.get("created_at"),
-					"message": f"Comment added to issue #{issue_number} successfully"
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": True,
+						"comment_id": data.get("id"),
+						"url": data.get("html_url"),
+						"issue_number": issue_number,
+						"created_at": data.get("created_at"),
+						"message": f"Comment added to issue #{issue_number} successfully",
+					},
+					indent=2,
+				)
 			elif response.status_code == 401:
-				return json.dumps({
-					"success": False,
-					"error": "Authentication failed",
-					"message": "GH_TOKEN is invalid or expired. Generate a new token with 'repo' scope."
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "Authentication failed",
+						"message": "GH_TOKEN is invalid or expired. Generate a new token with 'repo' scope.",
+					},
+					indent=2,
+				)
 			elif response.status_code == 403:
-				return json.dumps({
-					"success": False,
-					"error": "Permission denied or rate limited",
-					"message": "Check that GH_TOKEN has write access to the repository."
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": "Permission denied or rate limited",
+						"message": "Check that GH_TOKEN has write access to the repository.",
+					},
+					indent=2,
+				)
 			elif response.status_code == 404:
-				return json.dumps({
-					"success": False,
-					"error": f"Issue #{issue_number} not found",
-					"message": f"No issue with number {issue_number} exists in {settings.gh_repo}"
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"Issue #{issue_number} not found",
+						"message": f"No issue with number {issue_number} exists in {settings.gh_repo}",
+					},
+					indent=2,
+				)
 			else:
-				return json.dumps({
-					"success": False,
-					"error": f"GitHub API error: {response.status_code}",
-					"message": response.text[:300]
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"GitHub API error: {response.status_code}",
+						"message": response.text[:300],
+					},
+					indent=2,
+				)
 
 	except httpx.RequestError as e:
-		return json.dumps({
-			"success": False,
-			"error": f"Network error: {str(e)}",
-			"message": "Could not connect to GitHub API"
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": f"Network error: {str(e)}", "message": "Could not connect to GitHub API"},
+			indent=2,
+		)
 
 
 @tool
@@ -518,19 +554,18 @@ async def get_issue_by_number(issue_number: int) -> str:
 	cache = _load_cache()
 	for issue in cache.get("issues", []):
 		if issue.get("number") == issue_number:
-			return json.dumps({
-				"success": True,
-				"source": "cache",
-				"issue": issue
-			}, indent=2)
+			return json.dumps({"success": True, "source": "cache", "issue": issue}, indent=2)
 
 	# Not in cache, fetch from GitHub
 	if not settings.gh_repo:
-		return json.dumps({
-			"success": False,
-			"error": "Issue not in cache and GH_REPO not configured",
-			"message": "Configure GH_REPO to fetch from GitHub"
-		}, indent=2)
+		return json.dumps(
+			{
+				"success": False,
+				"error": "Issue not in cache and GH_REPO not configured",
+				"message": "Configure GH_REPO to fetch from GitHub",
+			},
+			indent=2,
+		)
 
 	try:
 		proxy = settings.https_proxy or settings.http_proxy or None
@@ -538,10 +573,7 @@ async def get_issue_by_number(issue_number: int) -> str:
 		async with httpx.AsyncClient(proxy=proxy, timeout=30.0) as client:
 			issue_url = f"https://api.github.com/repos/{settings.gh_repo}/issues/{issue_number}"
 
-			response = await client.get(
-				issue_url,
-				headers=_get_github_headers(settings.gh_token)
-			)
+			response = await client.get(issue_url, headers=_get_github_headers(settings.gh_token))
 
 			if response.status_code == 200:
 				data = response.json()
@@ -551,37 +583,45 @@ async def get_issue_by_number(issue_number: int) -> str:
 				cache["last_updated"] = datetime.now(timezone.utc).isoformat()
 				_save_cache(cache)
 
-				return json.dumps({
-					"success": True,
-					"source": "github",
-					"issue": {
-						"number": data.get("number"),
-						"title": data.get("title"),
-						"body": data.get("body"),
-						"state": data.get("state"),
-						"labels": [l.get("name") for l in data.get("labels", [])],
-						"created_at": data.get("created_at"),
-						"updated_at": data.get("updated_at"),
-						"url": data.get("html_url"),
-						"author": data.get("user", {}).get("login")
-					}
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": True,
+						"source": "github",
+						"issue": {
+							"number": data.get("number"),
+							"title": data.get("title"),
+							"body": data.get("body"),
+							"state": data.get("state"),
+							"labels": [l.get("name") for l in data.get("labels", [])],
+							"created_at": data.get("created_at"),
+							"updated_at": data.get("updated_at"),
+							"url": data.get("html_url"),
+							"author": data.get("user", {}).get("login"),
+						},
+					},
+					indent=2,
+				)
 			elif response.status_code == 404:
-				return json.dumps({
-					"success": False,
-					"error": f"Issue #{issue_number} not found",
-					"message": f"No issue with number {issue_number} exists in {settings.gh_repo}"
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"Issue #{issue_number} not found",
+						"message": f"No issue with number {issue_number} exists in {settings.gh_repo}",
+					},
+					indent=2,
+				)
 			else:
-				return json.dumps({
-					"success": False,
-					"error": f"GitHub API error: {response.status_code}",
-					"message": response.text[:200]
-				}, indent=2)
+				return json.dumps(
+					{
+						"success": False,
+						"error": f"GitHub API error: {response.status_code}",
+						"message": response.text[:200],
+					},
+					indent=2,
+				)
 
 	except httpx.RequestError as e:
-		return json.dumps({
-			"success": False,
-			"error": f"Network error: {str(e)}",
-			"message": "Could not connect to GitHub API"
-		}, indent=2)
+		return json.dumps(
+			{"success": False, "error": f"Network error: {str(e)}", "message": "Could not connect to GitHub API"},
+			indent=2,
+		)

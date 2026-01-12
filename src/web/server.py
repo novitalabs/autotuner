@@ -13,6 +13,7 @@ if __name__ == "__main__":
 
 	# Import settings after path is configured
 	from web.config import get_settings
+
 	settings = get_settings()
 
 	uvicorn.run(

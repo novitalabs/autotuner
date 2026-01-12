@@ -15,7 +15,18 @@ import orjson
 from web.config import get_settings
 from web.db.session import init_db, get_db
 from web.db.seed_presets import seed_system_presets
-from web.routes import tasks, experiments, system, docker, presets, runtime_params, dashboard, websocket, ome_resources, agent
+from web.routes import (
+	tasks,
+	experiments,
+	system,
+	docker,
+	presets,
+	runtime_params,
+	dashboard,
+	websocket,
+	ome_resources,
+	agent,
+)
 
 
 # Detect frontend dist directory early (before app creation)
@@ -35,16 +46,14 @@ def _find_frontend_dist() -> Path | None:
 
 	return None
 
+
 # Detect frontend before creating routes
 FRONTEND_PATH = _find_frontend_dist()
 
 
-
-
-
 class CustomORJSONResponse(ORJSONResponse):
 	"""Custom ORJSON response with UTC timezone handling."""
-	
+
 	@staticmethod
 	def orjson_default(obj):
 		"""Custom serializer for types not handled by orjson."""
@@ -52,10 +61,11 @@ class CustomORJSONResponse(ORJSONResponse):
 			# Add 'Z' suffix to indicate UTC timezone
 			return obj.isoformat() + 'Z'
 		raise TypeError(f"Type {type(obj)} not serializable")
-	
+
 	def render(self, content) -> bytes:
 		"""Render with custom default serializer."""
 		return orjson.dumps(content, default=self.orjson_default)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,6 +133,7 @@ if FRONTEND_PATH:
 		if index_file.exists():
 			return FileResponse(index_file, media_type="text/html")
 		return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+
 else:
 	print("⚠️  Frontend dist not found, serving API only")
 
@@ -154,10 +165,7 @@ if FRONTEND_PATH:
 
 		# Skip API routes - return proper JSON 404
 		if path.startswith("/api/"):
-			return CustomORJSONResponse(
-				status_code=404,
-				content={"detail": "Not Found"}
-			)
+			return CustomORJSONResponse(status_code=404, content={"detail": "Not Found"})
 
 		# For non-API routes, serve index.html for SPA routing
 		index_file = FRONTEND_PATH / "index.html"

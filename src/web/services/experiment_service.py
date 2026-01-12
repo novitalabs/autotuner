@@ -16,11 +16,7 @@ class ExperimentService:
 
 	@staticmethod
 	async def list_experiments(
-		db: AsyncSession,
-		task_id: Optional[int] = None,
-		status: Optional[str] = None,
-		skip: int = 0,
-		limit: int = 100
+		db: AsyncSession, task_id: Optional[int] = None, status: Optional[str] = None, skip: int = 0, limit: int = 100
 	) -> List[Experiment]:
 		"""
 		List experiments with optional filtering.
@@ -79,14 +75,14 @@ class ExperimentService:
 			Best experiment or None
 		"""
 		from web.db.models import Task
-		
+
 		# Get task to find best_experiment_id
 		result = await db.execute(select(Task).where(Task.id == task_id))
 		task = result.scalar_one_or_none()
-		
+
 		if not task or not task.best_experiment_id:
 			return None
-		
+
 		return await ExperimentService.get_experiment_by_id(db, task.best_experiment_id)
 
 	@staticmethod

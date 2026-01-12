@@ -16,11 +16,7 @@ class PresetService:
 
 	@staticmethod
 	async def list_presets(
-		db: AsyncSession,
-		category: Optional[str] = None,
-		runtime: Optional[str] = None,
-		skip: int = 0,
-		limit: int = 100
+		db: AsyncSession, category: Optional[str] = None, runtime: Optional[str] = None, skip: int = 0, limit: int = 100
 	) -> List[ParameterPreset]:
 		"""
 		List parameter presets with optional filtering.

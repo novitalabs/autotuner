@@ -154,10 +154,7 @@ class LangChainLLMClient:
 		return ""
 
 	async def chat_with_tools(
-		self,
-		messages: List[Dict[str, str]],
-		tools: List[BaseTool],
-		temperature: float = 0.7
+		self, messages: List[Dict[str, str]], tools: List[BaseTool], temperature: float = 0.7
 	) -> Dict[str, Any]:
 		"""
 		Send chat messages with tool binding and get response.
@@ -196,10 +193,7 @@ class LangChainLLMClient:
 				langchain_messages.append(AIMessage(content=content))
 			elif role == "tool":
 				# Tool result messages
-				langchain_messages.append(ToolMessage(
-					content=content,
-					tool_call_id=msg.get("tool_call_id", "")
-				))
+				langchain_messages.append(ToolMessage(content=content, tool_call_id=msg.get("tool_call_id", "")))
 
 		# Get chat model
 		chat_model = self._get_chat_model()
@@ -224,11 +218,7 @@ class LangChainLLMClient:
 			response = await chat_model_with_tools.ainvoke(langchain_messages)
 
 			# Parse response
-			result = {
-				"content": response.content if response.content else "",
-				"tool_calls": [],
-				"message": response
-			}
+			result = {"content": response.content if response.content else "", "tool_calls": [], "message": response}
 
 			# Extract tool calls if present
 			if hasattr(response, "tool_calls") and response.tool_calls:
@@ -237,10 +227,12 @@ class LangChainLLMClient:
 					parsed_call = {
 						"name": tool_call.get("name", ""),
 						"args": tool_call.get("args", {}),
-						"id": tool_call.get("id", "")
+						"id": tool_call.get("id", ""),
 					}
 					result["tool_calls"].append(parsed_call)
-					logger.info(f"Parsed tool call: name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}")
+					logger.info(
+						f"Parsed tool call: name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}"
+					)
 				logger.info(f"LLM requested {len(result['tool_calls'])} tool calls")
 
 			return result
@@ -250,10 +242,7 @@ class LangChainLLMClient:
 			raise
 
 	async def _chat_with_tools_anthropic(
-		self,
-		messages: List[Dict[str, str]],
-		tools: List[BaseTool],
-		temperature: float = 0.7
+		self, messages: List[Dict[str, str]], tools: List[BaseTool], temperature: float = 0.7
 	) -> Dict[str, Any]:
 		"""Chat with tools using native Anthropic SDK."""
 		import asyncio
@@ -266,11 +255,7 @@ class LangChainLLMClient:
 			tool_schema = {
 				"name": tool.name,
 				"description": tool.description,
-				"input_schema": {
-					"type": "object",
-					"properties": {},
-					"required": []
-				}
+				"input_schema": {"type": "object", "properties": {}, "required": []},
 			}
 
 			# Extract schema from tool
@@ -323,23 +308,17 @@ class LangChainLLMClient:
 			response = await asyncio.to_thread(sync_call)
 
 			# Parse response
-			result = {
-				"content": "",
-				"tool_calls": [],
-				"message": response
-			}
+			result = {"content": "", "tool_calls": [], "message": response}
 
 			for block in response.content:
 				if block.type == "text":
 					result["content"] += block.text
 				elif block.type == "tool_use":
-					parsed_call = {
-						"name": block.name,
-						"args": block.input,
-						"id": block.id
-					}
+					parsed_call = {"name": block.name, "args": block.input, "id": block.id}
 					result["tool_calls"].append(parsed_call)
-					logger.info(f"Anthropic tool call: name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}")
+					logger.info(
+						f"Anthropic tool call: name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}"
+					)
 
 			if result["tool_calls"]:
 				logger.info(f"Anthropic requested {len(result['tool_calls'])} tool calls")
@@ -351,10 +330,7 @@ class LangChainLLMClient:
 			raise
 
 	async def chat_with_tools_stream(
-		self,
-		messages: List[Dict[str, str]],
-		tools: List[BaseTool],
-		temperature: float = 0.7
+		self, messages: List[Dict[str, str]], tools: List[BaseTool], temperature: float = 0.7
 	) -> AsyncIterator[Dict[str, Any]]:
 		"""
 		Stream chat messages with tool binding.
@@ -372,7 +348,9 @@ class LangChainLLMClient:
 				- 'complete_message': Full message (for type='done')
 		"""
 		provider = self.settings.agent_provider
-		logger.info(f"chat_with_tools_stream called with {len(tools)} tools, {len(messages)} messages, provider={provider}")
+		logger.info(
+			f"chat_with_tools_stream called with {len(tools)} tools, {len(messages)} messages, provider={provider}"
+		)
 
 		if provider == "claude":
 			# Use native Anthropic SDK streaming
@@ -393,10 +371,7 @@ class LangChainLLMClient:
 			elif role == "assistant":
 				langchain_messages.append(AIMessage(content=content))
 			elif role == "tool":
-				langchain_messages.append(ToolMessage(
-					content=content,
-					tool_call_id=msg.get("tool_call_id", "")
-				))
+				langchain_messages.append(ToolMessage(content=content, tool_call_id=msg.get("tool_call_id", "")))
 
 		# Get chat model
 		chat_model = self._get_chat_model()
@@ -424,15 +399,14 @@ class LangChainLLMClient:
 
 			async for chunk in chat_model_with_tools.astream(langchain_messages):
 				chunk_count += 1
-				logger.debug(f"Stream chunk #{chunk_count}: has content={bool(chunk.content)}, has tool_calls={hasattr(chunk, 'tool_calls') and bool(chunk.tool_calls)}")
+				logger.debug(
+					f"Stream chunk #{chunk_count}: has content={bool(chunk.content)}, has tool_calls={hasattr(chunk, 'tool_calls') and bool(chunk.tool_calls)}"
+				)
 
 				# Handle content chunks
 				if chunk.content:
 					full_content += chunk.content
-					yield {
-						"type": "content",
-						"content": chunk.content
-					}
+					yield {"type": "content", "content": chunk.content}
 
 				# Handle tool calls (accumulated in final chunk)
 				if hasattr(chunk, "tool_calls") and chunk.tool_calls:
@@ -441,30 +415,25 @@ class LangChainLLMClient:
 						parsed_call = {
 							"name": tool_call.get("name", ""),
 							"args": tool_call.get("args", {}),
-							"id": tool_call.get("id", "")
+							"id": tool_call.get("id", ""),
 						}
 						tool_calls.append(parsed_call)
-						logger.info(f"Parsed tool call (stream): name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}")
+						logger.info(
+							f"Parsed tool call (stream): name='{parsed_call['name']}', id='{parsed_call['id']}', args={parsed_call['args']}"
+						)
 
 			# Send complete message at end
 			logger.info(f"Stream complete: {chunk_count} chunks, {len(tool_calls)} tool calls")
 			if tool_calls:
 				logger.info(f"Total tool calls collected in stream: {len(tool_calls)}")
-			yield {
-				"type": "done",
-				"content": full_content,
-				"tool_calls": tool_calls
-			}
+			yield {"type": "done", "content": full_content, "tool_calls": tool_calls}
 
 		except Exception as e:
 			logger.error(f"Error in chat_with_tools_stream: {str(e)}")
 			raise
 
 	async def _chat_with_tools_stream_anthropic(
-		self,
-		messages: List[Dict[str, str]],
-		tools: List[BaseTool],
-		temperature: float = 0.7
+		self, messages: List[Dict[str, str]], tools: List[BaseTool], temperature: float = 0.7
 	) -> AsyncIterator[Dict[str, Any]]:
 		"""Stream chat with tools using native Anthropic SDK."""
 		import asyncio
@@ -477,11 +446,7 @@ class LangChainLLMClient:
 			tool_schema = {
 				"name": tool.name,
 				"description": tool.description,
-				"input_schema": {
-					"type": "object",
-					"properties": {},
-					"required": []
-				}
+				"input_schema": {"type": "object", "properties": {}, "required": []},
 			}
 
 			# Extract schema from tool
@@ -569,22 +534,17 @@ class LangChainLLMClient:
 
 				if item_type == "text":
 					full_content += item_data
-					yield {
-						"type": "content",
-						"content": item_data
-					}
+					yield {"type": "content", "content": item_data}
 				elif item_type == "final":
 					# Extract tool calls from final message
 					response = item_data
 					for block in response.content:
 						if block.type == "tool_use":
-							parsed_call = {
-								"name": block.name,
-								"args": block.input,
-								"id": block.id
-							}
+							parsed_call = {"name": block.name, "args": block.input, "id": block.id}
 							tool_calls.append(parsed_call)
-							logger.info(f"Anthropic tool call (stream): name='{parsed_call['name']}', id='{parsed_call['id']}'")
+							logger.info(
+								f"Anthropic tool call (stream): name='{parsed_call['name']}', id='{parsed_call['id']}'"
+							)
 				elif item_type == "done":
 					break
 
@@ -595,11 +555,7 @@ class LangChainLLMClient:
 
 			# Send complete message at end
 			logger.info(f"Anthropic stream complete: {len(tool_calls)} tool calls")
-			yield {
-				"type": "done",
-				"content": full_content,
-				"tool_calls": tool_calls
-			}
+			yield {"type": "done", "content": full_content, "tool_calls": tool_calls}
 
 		except Exception as e:
 			logger.error(f"Error in _chat_with_tools_stream_anthropic: {str(e)}")

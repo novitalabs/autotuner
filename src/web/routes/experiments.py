@@ -11,15 +11,14 @@ from web.db.session import get_db
 from web.db.models import Experiment
 from web.schemas import ExperimentResponse
 from web.routes.deps import get_experiment_or_404
+
 router = APIRouter()
 
 
 @router.get("/", response_model=List[ExperimentResponse])
 async def list_all_experiments(db: AsyncSession = Depends(get_db)):
 	"""List all experiments."""
-	result = await db.execute(
-		select(Experiment).order_by(Experiment.created_at.desc())
-	)
+	result = await db.execute(select(Experiment).order_by(Experiment.created_at.desc()))
 	experiments = result.scalars().all()
 
 	return experiments

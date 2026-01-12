@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class AuthorizationError(Exception):
 	"""Raised when tool requires authorization but user hasn't granted it."""
+
 	pass
 
 
@@ -54,9 +55,7 @@ class ToolExecutor:
 		self.db.expire_all()
 
 		# Get session with metadata
-		result = await self.db.execute(
-			select(ChatSession).where(ChatSession.session_id == self.session_id)
-		)
+		result = await self.db.execute(select(ChatSession).where(ChatSession.session_id == self.session_id))
 		session = result.scalar_one_or_none()
 
 		if not session or not session.session_metadata:
@@ -81,11 +80,7 @@ class ToolExecutor:
 
 		return True
 
-	async def execute_tool(
-		self,
-		tool_name: str,
-		tool_args: Dict[str, Any]
-	) -> Dict[str, Any]:
+	async def execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
 		"""
 		Execute a tool with authorization checks.
 
@@ -107,11 +102,7 @@ class ToolExecutor:
 		# Get tool from registry
 		tool = self.registry.get_tool(tool_name)
 		if not tool:
-			return {
-				"success": False,
-				"result": f"Tool '{tool_name}' not found",
-				"requires_auth": False
-			}
+			return {"success": False, "result": f"Tool '{tool_name}' not found", "requires_auth": False}
 
 		# Check if tool requires authorization
 		requires_auth = getattr(tool, "_requires_authorization", False)
@@ -131,7 +122,7 @@ class ToolExecutor:
 					"result": f"Tool requires authorization: {auth_scope.value}",
 					"requires_auth": True,
 					"auth_scope": auth_scope.value,
-					"authorized": False
+					"authorized": False,
 				}
 
 		# Execute tool
@@ -162,7 +153,7 @@ class ToolExecutor:
 				"result": result,
 				"requires_auth": requires_auth,
 				"auth_scope": auth_scope.value if auth_scope else None,
-				"authorized": True
+				"authorized": True,
 			}
 
 		except Exception as e:
@@ -171,13 +162,10 @@ class ToolExecutor:
 				"success": False,
 				"result": f"Tool execution failed: {str(e)}",
 				"requires_auth": requires_auth,
-				"auth_scope": auth_scope.value if auth_scope else None
+				"auth_scope": auth_scope.value if auth_scope else None,
 			}
 
-	async def execute_tool_calls(
-		self,
-		tool_calls: List[Dict[str, Any]]
-	) -> List[Dict[str, Any]]:
+	async def execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 		"""
 		Execute multiple tool calls.
 
@@ -269,10 +257,7 @@ class ToolExecutor:
 					fields_dict[field_name] = (field_info.annotation, field_info)
 
 			# Create new Pydantic model without 'db'
-			new_schema = create_model(
-				f"{original_schema.__name__}Filtered",
-				**fields_dict
-			)
+			new_schema = create_model(f"{original_schema.__name__}Filtered", **fields_dict)
 
 			# Create new tool with filtered schema
 			from langchain_core.tools import StructuredTool
@@ -282,7 +267,7 @@ class ToolExecutor:
 				description=tool.description,
 				func=original_func if not hasattr(tool, 'coroutine') else None,
 				coroutine=original_func if hasattr(tool, 'coroutine') else None,
-				args_schema=new_schema
+				args_schema=new_schema,
 			)
 
 			# Copy metadata attributes

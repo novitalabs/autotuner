@@ -15,12 +15,7 @@ class TaskService:
 	"""Service for task-related business logic."""
 
 	@staticmethod
-	async def list_tasks(
-		db: AsyncSession,
-		status: Optional[str] = None,
-		skip: int = 0,
-		limit: int = 100
-	) -> List[Task]:
+	async def list_tasks(db: AsyncSession, status: Optional[str] = None, skip: int = 0, limit: int = 100) -> List[Task]:
 		"""
 		List tasks with optional filtering.
 

@@ -29,7 +29,9 @@ def estimate_gpu_requirements(task_config: Dict[str, Any]) -> Tuple[int, int]:
 	pp = _extract_max_param_value(parameters, ["pipeline-parallel-size", "pp-size", "pp_size", "pp"], default=1)
 	dp = _extract_max_param_value(parameters, ["data-parallel-size", "dp-size", "dp_size", "dp"], default=1)
 	cp = _extract_max_param_value(parameters, ["context-parallel-size", "cp-size", "cp_size", "cp"], default=1)
-	dcp = _extract_max_param_value(parameters, ["decode-context-parallel-size", "dcp-size", "dcp_size", "dcp"], default=1)
+	dcp = _extract_max_param_value(
+		parameters, ["decode-context-parallel-size", "dcp-size", "dcp_size", "dcp"], default=1
+	)
 
 	# Calculate world_size = tp × pp × max(dp, dcp, cp)
 	world_size = tp * pp * max(dp, dcp, cp)
@@ -117,17 +119,13 @@ def check_gpu_availability(required_gpus: int, min_memory_mb: Optional[int] = No
 
 	# Check if enough GPUs meet the requirements
 	available_gpus = gpu_monitor.get_available_gpus(
-		min_memory_mb=min_memory_mb,
-		max_utilization=50  # Consider GPUs with <50% utilization
+		min_memory_mb=min_memory_mb, max_utilization=50  # Consider GPUs with <50% utilization
 	)
 
 	if len(available_gpus) < required_gpus:
 		# Try with relaxed memory constraint
 		if min_memory_mb:
-			available_gpus_relaxed = gpu_monitor.get_available_gpus(
-				min_memory_mb=None,
-				max_utilization=50
-			)
+			available_gpus_relaxed = gpu_monitor.get_available_gpus(min_memory_mb=None, max_utilization=50)
 
 			if len(available_gpus_relaxed) >= required_gpus:
 				message = (
@@ -141,10 +139,7 @@ def check_gpu_availability(required_gpus: int, min_memory_mb: Optional[int] = No
 		# Build detailed status message
 		gpu_status = []
 		for gpu in snapshot.gpus:
-			gpu_status.append(
-				f"GPU {gpu.index}: {gpu.utilization_gpu}% util, "
-				f"{gpu.memory_free_mb}MB free"
-			)
+			gpu_status.append(f"GPU {gpu.index}: {gpu.utilization_gpu}% util, " f"{gpu.memory_free_mb}MB free")
 
 		message = (
 			f"Insufficient available GPUs: need {required_gpus}, "
@@ -172,10 +167,7 @@ def check_gpu_availability(required_gpus: int, min_memory_mb: Optional[int] = No
 
 
 def wait_for_gpu_availability(
-	required_gpus: int,
-	min_memory_mb: Optional[int] = None,
-	timeout_seconds: int = 300,
-	check_interval: int = 30
+	required_gpus: int, min_memory_mb: Optional[int] = None, timeout_seconds: int = 300, check_interval: int = 30
 ) -> Tuple[bool, str]:
 	"""Wait for sufficient GPUs to become available.
 
@@ -194,8 +186,7 @@ def wait_for_gpu_availability(
 	check_count = 0
 
 	logger.info(
-		f"[GPU Scheduler] Waiting for {required_gpus} GPUs "
-		f"(timeout={timeout_seconds}s, interval={check_interval}s)"
+		f"[GPU Scheduler] Waiting for {required_gpus} GPUs " f"(timeout={timeout_seconds}s, interval={check_interval}s)"
 	)
 
 	while (time.time() - start_time) < timeout_seconds:
@@ -204,10 +195,7 @@ def wait_for_gpu_availability(
 
 		if is_available:
 			elapsed = time.time() - start_time
-			logger.info(
-				f"[GPU Scheduler] GPUs became available after {elapsed:.1f}s "
-				f"({check_count} checks)"
-			)
+			logger.info(f"[GPU Scheduler] GPUs became available after {elapsed:.1f}s " f"({check_count} checks)")
 			return True, message
 
 		# Log status periodically
@@ -220,8 +208,7 @@ def wait_for_gpu_availability(
 	# Timeout reached
 	elapsed = time.time() - start_time
 	timeout_message = (
-		f"Timeout waiting for GPUs after {elapsed:.1f}s "
-		f"({check_count} checks). Last status: {message}"
+		f"Timeout waiting for GPUs after {elapsed:.1f}s " f"({check_count} checks). Last status: {message}"
 	)
 	logger.error(f"[GPU Scheduler] {timeout_message}")
 	return False, timeout_message

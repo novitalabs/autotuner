@@ -17,23 +17,34 @@ sys.path.insert(0, str(Path(__file__).parent))
 # This allows running in local mode without docker/kubernetes dependencies
 def _import_ome_controller():
 	from controllers.ome_controller import OMEController
+
 	return OMEController
+
 
 def _import_docker_controller():
 	from controllers.docker_controller import DockerController
+
 	return DockerController
+
 
 def _import_local_controller():
 	from controllers.local_controller import LocalController
+
 	return LocalController
+
 
 def _import_benchmark_controller():
 	from controllers.benchmark_controller import BenchmarkController
+
 	return BenchmarkController
+
 
 def _import_direct_benchmark_controller():
 	from controllers.direct_benchmark_controller import DirectBenchmarkController
+
 	return DirectBenchmarkController
+
+
 from utils.optimizer import generate_parameter_grid, calculate_objective_score, create_optimization_strategy
 from utils.quantization_integration import prepare_runtime_parameters
 from config import clusterbasemodel_presets, clusterservingruntime_presets
@@ -90,7 +101,7 @@ class AutotunerOrchestrator:
 				http_proxy=http_proxy,
 				https_proxy=https_proxy,
 				no_proxy=no_proxy,
-				hf_token=hf_token
+				hf_token=hf_token,
 			)
 			# Local mode always uses direct benchmark
 			self.use_direct_benchmark = True
@@ -105,7 +116,7 @@ class AutotunerOrchestrator:
 				http_proxy=http_proxy,
 				https_proxy=https_proxy,
 				no_proxy=no_proxy,
-				hf_token=hf_token
+				hf_token=hf_token,
 			)
 			# Docker mode always uses direct benchmark (no K8s)
 			self.use_direct_benchmark = True
@@ -129,7 +140,9 @@ class AutotunerOrchestrator:
 
 		self.results = []
 
-	def run_experiment(self, task: Dict[str, Any], experiment_id: int, parameters: Dict[str, Any], on_benchmark_start=None) -> Dict[str, Any]:
+	def run_experiment(
+		self, task: Dict[str, Any], experiment_id: int, parameters: Dict[str, Any], on_benchmark_start=None
+	) -> Dict[str, Any]:
 		"""Run a single tuning experiment.
 
 		Args:
@@ -220,10 +233,7 @@ class AutotunerOrchestrator:
 
 		# Convert __quant__ prefixed parameters to runtime-specific CLI args
 		runtime_parameters = prepare_runtime_parameters(
-			base_runtime=runtime_name,
-			params=parameters,
-			model_path=model_name,
-			model_config=task.get("model")
+			base_runtime=runtime_name, params=parameters, model_path=model_name, model_config=task.get("model")
 		)
 
 		print(f"Runtime-specific parameters: {runtime_parameters}")
@@ -234,8 +244,8 @@ class AutotunerOrchestrator:
 			"status": "failed",
 			"metrics": None,
 			"container_logs": None,  # Will store container logs for Docker mode
-		"error_message": None,  # Will store error details for failed experiments
-		"created_resources": created_resources,  # Track created resources
+			"error_message": None,  # Will store error details for failed experiments
+			"created_resources": created_resources,  # Track created resources
 		}
 
 		# Step 1: Deploy InferenceService
@@ -404,11 +414,17 @@ class AutotunerOrchestrator:
 					# Also add per-GPU metrics to raw results
 					for raw_result in metrics.get("raw_results", []):
 						if "mean_output_throughput_tokens_per_s" in raw_result:
-							raw_result["mean_output_throughput_per_gpu"] = raw_result["mean_output_throughput_tokens_per_s"] / gpu_count
+							raw_result["mean_output_throughput_per_gpu"] = (
+								raw_result["mean_output_throughput_tokens_per_s"] / gpu_count
+							)
 						if "mean_input_throughput_tokens_per_s" in raw_result:
-							raw_result["mean_input_throughput_per_gpu"] = raw_result["mean_input_throughput_tokens_per_s"] / gpu_count
+							raw_result["mean_input_throughput_per_gpu"] = (
+								raw_result["mean_input_throughput_tokens_per_s"] / gpu_count
+							)
 						if "mean_total_tokens_throughput_tokens_per_s" in raw_result:
-							raw_result["mean_total_throughput_per_gpu"] = raw_result["mean_total_tokens_throughput_tokens_per_s"] / gpu_count
+							raw_result["mean_total_throughput_per_gpu"] = (
+								raw_result["mean_total_tokens_throughput_tokens_per_s"] / gpu_count
+							)
 
 				# Get SLO configuration from task if present
 				slo_config = task.get("slo")
@@ -417,7 +433,7 @@ class AutotunerOrchestrator:
 				score = calculate_objective_score(metrics, task["optimization"]["objective"], slo_config)
 
 				# Check if this is a hard SLO failure (score = inf/-inf)
-				is_slo_failure = (score == float("inf") or score == float("-inf"))
+				is_slo_failure = score == float("inf") or score == float("-inf")
 
 				if is_slo_failure:
 					experiment_result["status"] = "failed"
@@ -470,7 +486,7 @@ class AutotunerOrchestrator:
 				score = calculate_objective_score(metrics, task["optimization"]["objective"], slo_config)
 
 				# Check if this is a hard SLO failure (score = inf/-inf)
-				is_slo_failure = (score == float("inf") or score == float("-inf"))
+				is_slo_failure = score == float("inf") or score == float("-inf")
 
 				if is_slo_failure:
 					experiment_result["status"] = "failed"
@@ -597,18 +613,12 @@ class AutotunerOrchestrator:
 			# Update strategy with result
 			if result["status"] == "success":
 				strategy.tell_result(
-					parameters=parameters,
-					objective_score=result["objective_score"],
-					metrics=result.get("metrics", {})
+					parameters=parameters, objective_score=result["objective_score"], metrics=result.get("metrics", {})
 				)
 			else:
 				# For failed experiments, report worst possible score
 				worst_score = float("inf") if "minimize" in objective else float("-inf")
-				strategy.tell_result(
-					parameters=parameters,
-					objective_score=worst_score,
-					metrics={}
-				)
+				strategy.tell_result(parameters=parameters, objective_score=worst_score, metrics={})
 
 		elapsed = time.time() - start_time
 
@@ -686,10 +696,7 @@ class AutotunerOrchestrator:
 
 		# Ensure resource exists
 		success = self.model_controller.ensure_clusterbasemodel(
-			name=name,
-			spec=spec,
-			labels=config.get("labels"),
-			annotations=config.get("annotations")
+			name=name, spec=spec, labels=config.get("labels"), annotations=config.get("annotations")
 		)
 
 		return (name if success else fallback_name, success)
@@ -744,10 +751,7 @@ class AutotunerOrchestrator:
 
 		# Ensure resource exists
 		success = self.model_controller.ensure_clusterservingruntime(
-			name=name,
-			spec=spec,
-			labels=config.get("labels"),
-			annotations=config.get("annotations")
+			name=name, spec=spec, labels=config.get("labels"), annotations=config.get("annotations")
 		)
 
 		return (name if success else fallback_name, success)
