@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Add torch library path to LD_LIBRARY_PATH for sgl_kernel native libraries
+export LD_LIBRARY_PATH="/app/env/lib/python3.12/site-packages/torch/lib:${LD_LIBRARY_PATH}"
+
 # Create data directories if not exist
 mkdir -p /data/logs
 

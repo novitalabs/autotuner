@@ -167,7 +167,7 @@ Then open http://localhost:5173 to create and monitor tasks.
 task_name: my-tune
 
 model:
-  id_or_path: llama-3-2-1b-instruct
+  id_or_path: Qwen/Qwen2.5-0.5B-Instruct
 
 base_runtime: sglang
 
