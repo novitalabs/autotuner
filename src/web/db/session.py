@@ -4,6 +4,8 @@ Database session management.
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.engine.url import make_url
+from pathlib import Path
 from web.config import get_settings
 from web.db.models import Base
 
@@ -30,15 +32,26 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def init_db():
-	"""Initialize database (create tables) and enable WAL mode."""
-	async with engine.begin() as conn:
-		# Enable WAL (Write-Ahead Logging) mode for concurrent writes
-		# WAL mode allows multiple readers and one writer to access the database simultaneously
-		# This is critical for parallel experiment execution
-		await conn.execute(text("PRAGMA journal_mode=WAL"))
+    """Initialize database (create tables) and enable WAL mode."""
 
-		# Create all tables
-		await conn.run_sync(Base.metadata.create_all)
+    # --- 1) Ensure parent directory exists (for SQLite only) ---
+    url = make_url(str(engine.url))
+
+    if url.get_backend_name().startswith("sqlite"):
+        # url.database is the absolute file path for sqlite
+        db_path = Path(url.database) if url.database else None
+
+        if db_path:
+            db_dir = db_path.parent
+            db_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- 2) Proceed with DB init ---
+    async with engine.begin() as conn:
+        # Enable WAL mode for better concurrency
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
+
+        # Create all tables
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def get_db() -> AsyncSession:
