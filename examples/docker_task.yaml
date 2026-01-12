@@ -5,7 +5,7 @@ task_name: llama-3-docker-tune
 description: Tune Llama-3.2-1B parameters for optimal throughput
 
 model:
-  id_or_path: llama-3-2-1b-instruct  # Directory in /mnt/data/models/
+  id_or_path: meta-llama/Llama-3.2-1B-Instruct  # Directory in /mnt/data/models/
   namespace: autotuner
 
 base_runtime: sglang  # or "vllm"
