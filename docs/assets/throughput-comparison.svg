@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400">
   <!-- Title -->
   <text x="350" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#333">
-    Throughput: Baseline vs Optimized (FP8)
+    Throughput: Baseline vs Optimized
   </text>
 
   <!-- Subtitle -->
@@ -64,8 +64,8 @@
 
   <!-- Legend -->
   <rect x="170" y="370" width="20" height="15" fill="#94a3b8" rx="2"/>
-  <text x="195" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">FP16 Baseline</text>
+  <text x="195" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">Baseline</text>
 
   <rect x="300" y="370" width="20" height="15" fill="#10b981" rx="2"/>
-  <text x="325" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">FP8 Optimized</text>
+  <text x="325" y="381" font-family="Arial, sans-serif" font-size="12" fill="#666">Optimized</text>
 </svg>
