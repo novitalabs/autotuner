@@ -32,6 +32,7 @@ async def create_task(
     optimization_objective: str = "minimize_latency",
     benchmark_task: str = "text-to-text",
     traffic_scenarios: list = None,
+    hf_token: str = None,
     db: AsyncSession = None
 ) -> str:
     """
@@ -48,6 +49,7 @@ async def create_task(
         optimization_objective: Objective to optimize ("minimize_latency", "maximize_throughput", etc.)
         benchmark_task: Benchmark task type (default: "text-to-text")
         traffic_scenarios: Traffic patterns (default: ["D(100,100)"])
+        hf_token: HuggingFace token for accessing gated models (e.g., Llama). Leave empty to use global config.
 
     Returns:
         JSON string with created task details including ID
@@ -65,11 +67,16 @@ async def create_task(
     if existing_task:
         return json.dumps({"error": f"Task '{task_name}' already exists"})
 
+    # Build model config
+    model_config = {"id_or_path": model_id, "namespace": model_namespace}
+    if hf_token:
+        model_config["hf_token"] = hf_token
+
     # Create task
     db_task = Task(
         task_name=task_name,
         description=description,
-        model_config={"id_or_path": model_id, "namespace": model_namespace},
+        model_config=model_config,
         base_runtime=base_runtime,
         parameters=parameters,
         optimization_config={

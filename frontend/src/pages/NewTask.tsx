@@ -21,6 +21,7 @@ interface TaskFormData {
   model: {
     id_or_path: string;
     namespace: string;
+    hf_token?: string;
   };
   parameters: Record<string, any[]>;
   quant_config?: QuantizationConfig;
@@ -83,6 +84,7 @@ export default function NewTask() {
         if (duplicateConfig.model) {
           setModelIdOrPath(duplicateConfig.model.id_or_path || '');
           setModelNamespace(duplicateConfig.model.namespace || 'autotuner');
+          setHfToken(duplicateConfig.model.hf_token || '');
         }
 
         // Parameters - convert from API format to form format
@@ -220,6 +222,7 @@ export default function NewTask() {
       // Model config
       setModelIdOrPath(taskToEdit.model?.id_or_path || '');
       setModelNamespace(taskToEdit.model?.namespace || 'autotuner');
+      setHfToken(taskToEdit.model?.hf_token || '');
 
       // Parameters - convert from API format to form format
       const params: ParamField[] = [];
@@ -349,6 +352,7 @@ export default function NewTask() {
   // Model config
   const [modelIdOrPath, setModelIdOrPath] = useState('');
   const [modelNamespace, setModelNamespace] = useState('autotuner');
+  const [hfToken, setHfToken] = useState('');
 
   // Parameters (dynamic list)
   const [parameters, setParameters] = useState<ParamField[]>([]);
@@ -522,6 +526,7 @@ export default function NewTask() {
       if (config.model) {
         if (config.model.id_or_path) setModelIdOrPath(config.model.id_or_path);
         if (config.model.namespace) setModelNamespace(config.model.namespace);
+        if (config.model.hf_token) setHfToken(config.model.hf_token);
       }
 
       // Parameters
@@ -685,6 +690,7 @@ export default function NewTask() {
       model: {
         id_or_path: modelIdOrPath,
         namespace: modelNamespace,
+        ...(hfToken && { hf_token: hfToken }),
       },
       parameters: parsedParams,
       // Include quantization config if any field is set
@@ -1032,6 +1038,22 @@ export default function NewTask() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="autotuner"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                HuggingFace Token
+              </label>
+              <input
+                type="password"
+                value={hfToken}
+                onChange={(e) => setHfToken(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="hf_xxxxx (optional)"
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Token for accessing gated models (e.g., Llama). Leave empty to use global config.
+              </p>
             </div>
           </div>
         </div>

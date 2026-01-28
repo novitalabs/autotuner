@@ -551,6 +551,12 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 
 			logger.info(f"[ARQ Worker] Expected experiments: {total_experiments}")
 
+			# Extract hf_token from model config if available, otherwise use global settings
+			model_config = task_config.get("model", {})
+			hf_token = model_config.get("hf_token") or settings.hf_token
+			if hf_token and hf_token != settings.hf_token:
+				logger.info(f"[ARQ Worker] Using task-specific HuggingFace token")
+
 			# Create orchestrator
 			orchestrator = AutotunerOrchestrator(
 				deployment_mode=deployment_mode,
@@ -560,7 +566,7 @@ async def run_autotuning_task(ctx: Dict[str, Any], task_id: int, task_config: Di
 				http_proxy=settings.http_proxy,
 				https_proxy=settings.https_proxy,
 				no_proxy=settings.no_proxy,
-				hf_token=settings.hf_token,
+				hf_token=hf_token,
 			)
 
 			# Run experiments using strategy
