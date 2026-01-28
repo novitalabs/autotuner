@@ -439,13 +439,55 @@ async def get_task_logs(
 		)
 	
 	# Otherwise return static log content
-	if not log_file.exists():
-		return {"logs": "No logs available yet."}
-	
-	with open(log_file, "r") as f:
-		logs = f.read()
-	
-	return {"logs": logs}
+	if log_file.exists():
+		with open(log_file, "r") as f:
+			logs = f.read()
+		return {"logs": logs}
+
+	# Fallback to Redis remote logs for distributed workers
+	try:
+		import redis.asyncio as redis
+		import json
+		from web.config import get_settings
+		settings = get_settings()
+
+		client = redis.Redis(
+			host=settings.redis_host,
+			port=settings.redis_port,
+			db=settings.redis_db,
+			decode_responses=True,
+		)
+
+		# Get all log buffer keys
+		buffer_keys = await client.keys("logs:buffer:*")
+		all_logs = []
+
+		for key in buffer_keys:
+			logs_raw = await client.lrange(key, 0, -1)
+			for log_raw in logs_raw:
+				try:
+					log_entry = json.loads(log_raw)
+					# Filter by task_id only (include all experiments for this task)
+					if log_entry.get("task_id") == task.id:
+						all_logs.append(log_entry)
+				except:
+					continue
+
+		await client.close()
+
+		if all_logs:
+			# Sort by timestamp and format as text
+			all_logs.sort(key=lambda x: x.get("timestamp", ""))
+			formatted_logs = "\n".join([
+				f"[{log.get('timestamp', '')}] [{log.get('level', 'INFO')}] [Exp {log.get('experiment_id', '?')}] {log.get('message', '')}"
+				for log in all_logs
+			])
+			return {"logs": formatted_logs, "source": "remote"}
+
+	except Exception as e:
+		logger.warning(f"Failed to fetch remote logs: {e}")
+
+	return {"logs": "No logs available yet."}
 
 
 @router.delete("/{task_id}/logs", status_code=status.HTTP_204_NO_CONTENT)
